@@ -357,6 +357,7 @@ mapping: dict[str, TuyaBLECategoryNumberMapping] = {
                 [
                     "drlajpqc",
                     "nhj2j7su",
+                    "zmachryv",
                 ],  # Thermostatic Radiator Valve
                 [
                     TuyaBLENumberMapping(
@@ -414,19 +415,22 @@ mapping: dict[str, TuyaBLECategoryNumberMapping] = {
     ),
     "ggq": TuyaBLECategoryNumberMapping(
         products={
-            "6pahkcau": [  # Irrigation computer
-                TuyaBLENumberMapping(
-                    dp_id=5,
-                    description=NumberEntityDescription(
-                        key="countdown_duration",
-                        icon="mdi:timer",
-                        native_max_value=1440,
-                        native_min_value=1,
-                        native_unit_of_measurement=TIME_MINUTES,
-                        native_step=1,
+            **dict.fromkeys(
+                ["6pahkcau", "hfgdqhho", "qycalacn", "fnlw6npo", "jjqi2syk"],  # Irrigation computer
+                [
+                    TuyaBLENumberMapping(
+                        dp_id=5,
+                        description=NumberEntityDescription(
+                            key="countdown_duration",
+                            icon="mdi:timer",
+                            native_max_value=1440,
+                            native_min_value=1,
+                            native_unit_of_measurement=TIME_MINUTES,
+                            native_step=1,
+                        ),
                     ),
-                ),
-            ],
+                ],
+            ),
         },
     ),
     "sfkzq": TuyaBLECategoryNumberMapping(
@@ -456,6 +460,35 @@ mapping: dict[str, TuyaBLECategoryNumberMapping] = {
                 ),
             ],
             "nxquc5lb": [  # SOP10 water timer
+                TuyaBLENumberMapping(
+                    dp_id=11,
+                    description=NumberEntityDescription(
+                        key="countdown",
+                        icon="mdi:timer",
+                        native_max_value=1440,
+                        native_min_value=1,
+                        native_unit_of_measurement=TIME_MINUTES,
+                        native_step=1,
+                    ),
+                ),
+            ],
+            **dict.fromkeys(
+                ["c8800fd30884068f", "so5ybnw9", "tqzkwarw", "1fcnd8xk", "svhikeyq", "0axr5s0b", "46zia2nz", "ldcdnigc"],  # Single zone water timers
+                [
+                    TuyaBLENumberMapping(
+                        dp_id=11,
+                        description=NumberEntityDescription(
+                            key="countdown",
+                            icon="mdi:timer",
+                            native_max_value=1440,
+                            native_min_value=1,
+                            native_unit_of_measurement=TIME_MINUTES,
+                            native_step=1,
+                        ),
+                    ),
+                ],
+            ),
+            "16wgjvck": [  # Aldi water timer
                 TuyaBLENumberMapping(
                     dp_id=11,
                     description=NumberEntityDescription(

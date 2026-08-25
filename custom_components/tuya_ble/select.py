@@ -85,7 +85,7 @@ mapping: dict[str, TuyaBLECategorySelectMapping] = {
     "ms": TuyaBLECategorySelectMapping(
         products={
             **dict.fromkeys(
-                ["ludzroix", "isk2p555"], # Smart Lock
+                ["ludzroix", "isk2p555", "gumrixyt", "uamrw6h3", "sidhzylo", "mqc2hevy", "a6nttc41", "okkyfgfs", "k53ok3u9", "bvclwu9b"], # Smart Lock
                 [
                     TuyaBLESelectMapping(
                         dp_id=31,
@@ -227,6 +227,49 @@ mapping: dict[str, TuyaBLECategorySelectMapping] = {
                 ),
             ],
             "nxquc5lb": [  # SOP10 water timer
+                TuyaBLESelectMapping(
+                    dp_id=10,
+                    description=SelectEntityDescription(
+                        key="weather_delay",
+                        icon="mdi:weather-partly-cloudy",
+                        options=["off", "1h", "2h", "4h", "8h", "12h", "24h", "48h", "72h"],
+                        entity_category=EntityCategory.CONFIG,
+                    ),
+                ),
+                TuyaBLESelectMapping(
+                    dp_id=12,
+                    description=SelectEntityDescription(
+                        key="work_state",
+                        icon="mdi:sprinkler",
+                        options=["off", "manual", "auto"],
+                        entity_category=EntityCategory.CONFIG,
+                    ),
+                ),
+            ],
+            **dict.fromkeys(
+                ["c8800fd30884068f", "so5ybnw9", "tqzkwarw", "1fcnd8xk", "svhikeyq", "0axr5s0b", "46zia2nz", "ldcdnigc"],  # Single zone water timers
+                [
+                    TuyaBLESelectMapping(
+                        dp_id=10,
+                        description=SelectEntityDescription(
+                            key="weather_delay",
+                            icon="mdi:weather-partly-cloudy",
+                            options=["off", "1h", "2h", "4h", "8h", "12h", "24h", "48h", "72h"],
+                            entity_category=EntityCategory.CONFIG,
+                        ),
+                    ),
+                    TuyaBLESelectMapping(
+                        dp_id=12,
+                        description=SelectEntityDescription(
+                            key="work_state",
+                            icon="mdi:sprinkler",
+                            options=["off", "manual", "auto"],
+                            entity_category=EntityCategory.CONFIG,
+                        ),
+                    ),
+                ],
+            ),
+            "16wgjvck": [  # Aldi water timer
                 TuyaBLESelectMapping(
                     dp_id=10,
                     description=SelectEntityDescription(

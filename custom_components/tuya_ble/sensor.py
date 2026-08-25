@@ -149,7 +149,7 @@ mapping: dict[str, TuyaBLECategorySensorMapping] = {
     "ms": TuyaBLECategorySensorMapping(
         products={
             **dict.fromkeys(
-                ["ludzroix", "isk2p555"], # Smart Lock
+                ["ludzroix", "isk2p555", "gumrixyt", "uamrw6h3", "sidhzylo", "mqc2hevy", "a6nttc41", "okkyfgfs", "k53ok3u9", "bvclwu9b"], # Smart Lock
                 [
                     TuyaBLESensorMapping(
                         dp_id=21,
@@ -258,6 +258,86 @@ mapping: dict[str, TuyaBLECategorySensorMapping] = {
                 ),
                 TuyaBLEBatteryMapping(dp_id=4),
             ],
+            **dict.fromkeys(
+                ["iv7hudlj", "jm6iasmb", "tv6peegl", "vlzqwckk", "tr0kabuq"],  # Temperature and Humidity Sensor
+                [
+                    TuyaBLETemperatureMapping(dp_id=1),
+                    TuyaBLESensorMapping(
+                        dp_id=2,
+                        description=SensorEntityDescription(
+                            key="humidity",
+                            device_class=SensorDeviceClass.HUMIDITY,
+                            native_unit_of_measurement=PERCENTAGE,
+                            state_class=SensorStateClass.MEASUREMENT,
+                        ),
+                    ),
+                    TuyaBLEBatteryMapping(dp_id=4),
+                ],
+            ),
+        },
+    ),
+    "zwjcy": TuyaBLECategorySensorMapping(
+        products={
+            **dict.fromkeys(
+                ["jabotj1z", "gvygg3m8"],  # Plant Sensor
+                [
+                    TuyaBLESensorMapping(
+                        dp_id=1,
+                        description=SensorEntityDescription(
+                            key="soil_moisture",
+                            device_class=SensorDeviceClass.MOISTURE,
+                            native_unit_of_measurement=PERCENTAGE,
+                            state_class=SensorStateClass.MEASUREMENT,
+                        ),
+                    ),
+                    TuyaBLESensorMapping(
+                        dp_id=2,
+                        description=SensorEntityDescription(
+                            key="soil_conductivity",
+                            device_class=SensorDeviceClass.CONDUCTIVITY,
+                            native_unit_of_measurement="µS/cm",
+                            state_class=SensorStateClass.MEASUREMENT,
+                        ),
+                    ),
+                    TuyaBLESensorMapping(
+                        dp_id=3,
+                        description=SensorEntityDescription(
+                            key="battery_state",
+                            device_class=SensorDeviceClass.BATTERY,
+                            native_unit_of_measurement=PERCENTAGE,
+                            entity_category=EntityCategory.DIAGNOSTIC,
+                            state_class=SensorStateClass.MEASUREMENT,
+                        ),
+                    ),
+                    TuyaBLESensorMapping(
+                        dp_id=11,
+                        description=SensorEntityDescription(
+                            key="temperature",
+                            device_class=SensorDeviceClass.TEMPERATURE,
+                            native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+                            state_class=SensorStateClass.MEASUREMENT,
+                        ),
+                    ),
+                    TuyaBLESensorMapping(
+                        dp_id=12,
+                        description=SensorEntityDescription(
+                            key="humidity",
+                            device_class=SensorDeviceClass.HUMIDITY,
+                            native_unit_of_measurement=PERCENTAGE,
+                            state_class=SensorStateClass.MEASUREMENT,
+                        ),
+                    ),
+                    TuyaBLESensorMapping(
+                        dp_id=13,
+                        description=SensorEntityDescription(
+                            key="light",
+                            device_class=SensorDeviceClass.ILLUMINANCE,
+                            native_unit_of_measurement="lx",
+                            state_class=SensorStateClass.MEASUREMENT,
+                        ),
+                    ),
+                ],
+            ),
         },
     ),
     "znhsb": TuyaBLECategorySensorMapping(
@@ -292,18 +372,21 @@ mapping: dict[str, TuyaBLECategorySensorMapping] = {
     ),
     "ggq": TuyaBLECategorySensorMapping(
         products={
-            "6pahkcau": [  # Irrigation computer
-                TuyaBLEBatteryMapping(dp_id=11),
-                TuyaBLESensorMapping(
-                    dp_id=6,
-                    description=SensorEntityDescription(
-                        key="time_left",
-                        device_class=SensorDeviceClass.DURATION,
-                        native_unit_of_measurement=UnitOfTime.MINUTES,
-                        state_class=SensorStateClass.MEASUREMENT,
+            **dict.fromkeys(
+                ["6pahkcau", "hfgdqhho", "qycalacn", "fnlw6npo", "jjqi2syk"],  # Irrigation computer
+                [
+                    TuyaBLEBatteryMapping(dp_id=11),
+                    TuyaBLESensorMapping(
+                        dp_id=6,
+                        description=SensorEntityDescription(
+                            key="time_left",
+                            device_class=SensorDeviceClass.DURATION,
+                            native_unit_of_measurement=UnitOfTime.MINUTES,
+                            state_class=SensorStateClass.MEASUREMENT,
+                        ),
                     ),
-                ),
-            ],
+                ],
+            ),
         },
     ),
     "sfkzq": TuyaBLECategorySensorMapping(
@@ -371,6 +454,51 @@ mapping: dict[str, TuyaBLECategorySensorMapping] = {
                         device_class=SensorDeviceClass.DURATION,
                         native_unit_of_measurement=UnitOfTime.MINUTES,
                         state_class=SensorStateClass.MEASUREMENT,
+                    ),
+                ),
+            ],
+            **dict.fromkeys(
+                ["c8800fd30884068f", "so5ybnw9", "tqzkwarw", "1fcnd8xk", "svhikeyq", "0axr5s0b", "46zia2nz", "ldcdnigc"],  # Single zone water timers
+                [
+                    TuyaBLEBatteryMapping(dp_id=7),
+                    TuyaBLESensorMapping(
+                        dp_id=9,
+                        description=SensorEntityDescription(
+                            key="time_use",
+                            icon="mdi:timer",
+                            device_class=SensorDeviceClass.DURATION,
+                            native_unit_of_measurement=UnitOfTime.MINUTES,
+                            state_class=SensorStateClass.MEASUREMENT,
+                        ),
+                    ),
+                    TuyaBLESensorMapping(
+                        dp_id=12,
+                        description=SensorEntityDescription(
+                            key="work_state",
+                            device_class=SensorDeviceClass.ENUM,
+                            options=["off", "manual", "auto"],
+                        ),
+                    ),
+                ],
+            ),
+            "16wgjvck": [  # Aldi water timer
+                TuyaBLEBatteryMapping(dp_id=7),
+                TuyaBLESensorMapping(
+                    dp_id=9,
+                    description=SensorEntityDescription(
+                        key="time_use",
+                        icon="mdi:timer",
+                        device_class=SensorDeviceClass.DURATION,
+                        native_unit_of_measurement=UnitOfTime.MINUTES,
+                        state_class=SensorStateClass.MEASUREMENT,
+                    ),
+                ),
+                TuyaBLESensorMapping(
+                    dp_id=12,
+                    description=SensorEntityDescription(
+                        key="work_state",
+                        device_class=SensorDeviceClass.ENUM,
+                        options=["off", "manual", "auto"],
                     ),
                 ),
             ],

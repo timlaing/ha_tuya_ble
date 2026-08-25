@@ -163,7 +163,7 @@ mapping: dict[str, TuyaBLECategorySwitchMapping] = {
     "ms": TuyaBLECategorySwitchMapping(
         products={
             **dict.fromkeys(
-                ["ludzroix", "isk2p555"], # Smart Lock
+                ["ludzroix", "isk2p555", "gumrixyt", "uamrw6h3", "sidhzylo", "mqc2hevy", "a6nttc41", "okkyfgfs", "k53ok3u9", "bvclwu9b"], # Smart Lock
                 [
                     TuyaBLESwitchMapping(
                         dp_id=47,
@@ -246,6 +246,7 @@ mapping: dict[str, TuyaBLECategorySwitchMapping] = {
                 [
                     "drlajpqc",
                     "nhj2j7su",
+                    "zmachryv",
                 ],  # Thermostatic Radiator Valve
                 [
                     TuyaBLESwitchMapping(
@@ -293,6 +294,34 @@ mapping: dict[str, TuyaBLECategorySwitchMapping] = {
                         description=SwitchEntityDescription(
                             key="programming_switch",
                             icon="mdi:calendar-clock",
+                            entity_category=EntityCategory.CONFIG,
+                        ),
+                    ),
+                ],
+            ),
+        },
+    ),
+    "kg": TuyaBLECategorySwitchMapping(
+        products={
+            **dict.fromkeys(
+                [
+                    "mknd4lci",
+                    "riecov42",
+                    "bs3ubslo",
+                    "4ctjfrzq",
+                ],  # Fingerbot
+                [
+                    TuyaBLESwitchMapping(
+                        dp_id=1,
+                        description=SwitchEntityDescription(
+                            key="switch",
+                        ),
+                    ),
+                    TuyaBLESwitchMapping(
+                        dp_id=2,
+                        description=SwitchEntityDescription(
+                            key="reverse_positions",
+                            icon="mdi:arrow-up-down-bold",
                             entity_category=EntityCategory.CONFIG,
                         ),
                     ),

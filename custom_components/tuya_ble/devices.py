@@ -186,7 +186,15 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
             **dict.fromkeys(
                 [
                     "ludzroix",
-                    "isk2p555"
+                    "isk2p555",
+                    "gumrixyt",
+                    "uamrw6h3",
+                    "sidhzylo",
+                    "mqc2hevy",
+                    "a6nttc41",
+                    "okkyfgfs",
+                    "k53ok3u9",
+                    "bvclwu9b",
                 ],
                     TuyaBLEProductInfo(  # device product_id
                     name="Smart Lock",
@@ -264,14 +272,56 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
             ),
         },
     ),
+    "jtmspro": TuyaBLECategoryInfo(
+        products={
+            "xicdxood": TuyaBLEProductInfo(  # device product_id
+                name="Smart Lock",
+            ),
+            "rlyxv7pe": TuyaBLEProductInfo(  # device product_id
+                name="Smart Lock",
+            ),
+            "oyqux5vv": TuyaBLEProductInfo(  # device product_id
+                name="Smart Lock",
+            ),
+            "ebd5e0uauqx0vfsp": TuyaBLEProductInfo(  # device product_id
+                name="Smart Lock",
+            ),
+            "ajk32biq": TuyaBLEProductInfo(  # device product_id
+                name="Smart Lock",
+            ),
+            "z7lj676i": TuyaBLEProductInfo(  # device product_id
+                name="Smart Lock",
+            ),
+            "hs21i377": TuyaBLEProductInfo(  # device product_id
+                name="Smart Lock",
+            ),
+        },
+    ),
+    "kg": TuyaBLECategoryInfo(
+        products={
+            "mknd4lci": TuyaBLEProductInfo(  # device product_id
+                name="Fingerbot",
+            ),
+            "riecov42": TuyaBLEProductInfo(  # device product_id
+                name="Fingerbot",
+            ),
+            "bs3ubslo": TuyaBLEProductInfo(  # device product_id
+                name="Fingerbot",
+            ),
+            "4ctjfrzq": TuyaBLEProductInfo(  # device product_id
+                name="Fingerbot",
+            ),
+        },
+    ),
     "wk": TuyaBLECategoryInfo(
         products={
             **dict.fromkeys(
             [
-            "drlajpqc", 
+            "drlajpqc",
             "nhj2j7su",
+            "zmachryv",
             ],  # device product_id
-            TuyaBLEProductInfo(  
+            TuyaBLEProductInfo(
                 name="Thermostatic Radiator Valve",
                 ),
             ),
@@ -281,6 +331,79 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
         products={
             "ojzlzzsw": TuyaBLEProductInfo(  # device product_id
                 name="Soil moisture sensor",
+            ),
+            "iv7hudlj": TuyaBLEProductInfo(  # device product_id
+                name="Temperature and Humidity Sensor",
+            ),
+            "jm6iasmb": TuyaBLEProductInfo(  # device product_id
+                name="Temperature and Humidity Sensor",
+            ),
+            "tv6peegl": TuyaBLEProductInfo(  # device product_id
+                name="Temperature and Humidity Sensor",
+            ),
+            "vlzqwckk": TuyaBLEProductInfo(  # device product_id
+                name="Temperature and Humidity Sensor",
+            ),
+            "tr0kabuq": TuyaBLEProductInfo(  # device product_id
+                name="Temperature and Humidity Sensor",
+            ),
+        },
+    ),
+    "zwjcy": TuyaBLECategoryInfo(
+        products={
+            "jabotj1z": TuyaBLEProductInfo(  # device product_id
+                name="Plant Sensor",
+            ),
+            "gvygg3m8": TuyaBLEProductInfo(  # device product_id
+                name="Plant Sensor",
+            ),
+        },
+    ),
+    "dcb": TuyaBLECategoryInfo(
+        products={
+            "z5ztlw3k": TuyaBLEProductInfo(  # device product_id
+                name="Smart Battery",
+            ),
+            "ajrhf1aj": TuyaBLEProductInfo(  # device product_id
+                name="Smart Battery",
+            ),
+        },
+    ),
+    "cl": TuyaBLECategoryInfo(
+        products={
+            "4pbr8eig": TuyaBLEProductInfo(  # device product_id
+                name="BLE Blind Controller",
+            ),
+            "vlwf3ud6": TuyaBLEProductInfo(  # device product_id
+                name="BLE Blind Controller",
+            ),
+            "kcy0x4pi": TuyaBLEProductInfo(  # device product_id
+                name="BLE Curtain Controller",
+            ),
+            "dy4dh1q0": TuyaBLEProductInfo(  # device product_id
+                name="BLE Venetian Blind Motor",
+            ),
+            "qqdxfdht": TuyaBLEProductInfo(  # device product_id
+                name="BLE Blind Controller",
+            ),
+            "ulughw4g": TuyaBLEProductInfo(  # device product_id
+                name="BLE Blind Controller",
+            ),
+        },
+    ),
+    "dd": TuyaBLECategoryInfo(
+        products={
+            "nvfrtxlq": TuyaBLEProductInfo(  # device product_id
+                name="LED Strip Light",
+            ),
+            "umzu0c2y": TuyaBLEProductInfo(  # device product_id
+                name="LED Strip Light",
+            ),
+            "6jxcdae1": TuyaBLEProductInfo(  # device product_id
+                name="LED Strip Light",
+            ),
+            "0qgrjxum": TuyaBLEProductInfo(  # device product_id
+                name="LED Strip Light",
             ),
         },
     ),
@@ -298,6 +421,18 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
             TuyaBLEProductInfo(
                 name="Irrigation computer",
             ),
+            "hfgdqhho": TuyaBLEProductInfo(  # device product_id
+                name="Irrigation computer",
+            ),
+            "qycalacn": TuyaBLEProductInfo(  # device product_id
+                name="Irrigation computer",
+            ),
+            "fnlw6npo": TuyaBLEProductInfo(  # device product_id
+                name="Irrigation computer",
+            ),
+            "jjqi2syk": TuyaBLEProductInfo(  # device product_id
+                name="Irrigation computer",
+            ),
         },
     ),
     "sfkzq": TuyaBLECategoryInfo(
@@ -308,6 +443,34 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
             ),
             "nxquc5lb": TuyaBLEProductInfo(
                 name="SOP10 water timer",
+            ),
+            "c8800fd30884068f": TuyaBLEProductInfo(
+                name="HCT-611 Water Timer",
+            ),
+            "so5ybnw9": TuyaBLEProductInfo(
+                name="Water Timer",
+            ),
+            "tqzkwarw": TuyaBLEProductInfo(
+                name="HCT-611 Water Timer",
+            ),
+            "1fcnd8xk": TuyaBLEProductInfo(
+                name="Water Timer",
+            ),
+            "16wgjvck": TuyaBLEProductInfo(
+                name="Aldi Water Timer",
+                manufacturer="Aldi",
+            ),
+            "svhikeyq": TuyaBLEProductInfo(
+                name="Water Timer",
+            ),
+            "0axr5s0b": TuyaBLEProductInfo(
+                name="Water Timer",
+            ),
+            "46zia2nz": TuyaBLEProductInfo(
+                name="Water Timer",
+            ),
+            "ldcdnigc": TuyaBLEProductInfo(
+                name="Water Timer",
             ),
         },
     ),

@@ -226,6 +226,39 @@
             "valve": {
                 "name": "Valve"
             }
+        },
+        "cover": {
+            "ble_blind_controller": {
+                "name": "Blind controller"
+            },
+            "ble_curtain_controller": {
+                "name": "Curtain controller"
+            },
+            "ble_venetian_blind_motor": {
+                "name": "Venetian blind motor"
+            }
+        },
+        "lock": {
+            "lock": {
+                "name": "Lock"
+            }
+        },
+        "light": {
+            "backlight": {
+                "name": "Backlight"
+            },
+            "light": {
+                "name": "Light"
+            },
+            "light_2": {
+                "name": "Light 2"
+            },
+            "light_3": {
+                "name": "Light 3"
+            },
+            "night_light": {
+                "name": "Night light"
+            }
         }
     },
   "options": {
