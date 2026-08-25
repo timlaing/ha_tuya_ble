@@ -429,6 +429,47 @@ mapping: dict[str, TuyaBLECategoryNumberMapping] = {
             ],
         },
     ),
+    "sfkzq": TuyaBLECategoryNumberMapping(
+        products={
+            "fdrbxxbg": [  # Diivoo WT-05 dual water timer
+                TuyaBLENumberMapping(
+                    dp_id=106,
+                    description=NumberEntityDescription(
+                        key="countdown_zone1",
+                        icon="mdi:timer",
+                        native_max_value=1440,
+                        native_min_value=1,
+                        native_unit_of_measurement=TIME_MINUTES,
+                        native_step=1,
+                    ),
+                ),
+                TuyaBLENumberMapping(
+                    dp_id=103,
+                    description=NumberEntityDescription(
+                        key="countdown_zone2",
+                        icon="mdi:timer",
+                        native_max_value=1440,
+                        native_min_value=1,
+                        native_unit_of_measurement=TIME_MINUTES,
+                        native_step=1,
+                    ),
+                ),
+            ],
+            "nxquc5lb": [  # SOP10 water timer
+                TuyaBLENumberMapping(
+                    dp_id=11,
+                    description=NumberEntityDescription(
+                        key="countdown",
+                        icon="mdi:timer",
+                        native_max_value=1440,
+                        native_min_value=1,
+                        native_unit_of_measurement=TIME_MINUTES,
+                        native_step=1,
+                    ),
+                ),
+            ],
+        },
+    ),
 }
 
 

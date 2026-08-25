@@ -204,6 +204,50 @@ mapping: dict[str, TuyaBLECategorySelectMapping] = {
             ],
         },
     ),
+    "sfkzq": TuyaBLECategorySelectMapping(
+        products={
+            "fdrbxxbg": [  # Diivoo WT-05 dual water timer
+                TuyaBLESelectMapping(
+                    dp_id=117,
+                    description=SelectEntityDescription(
+                        key="weather_delay_zone1",
+                        icon="mdi:weather-partly-cloudy",
+                        options=["off", "1h", "2h", "4h", "8h", "12h", "24h", "48h", "72h"],
+                        entity_category=EntityCategory.CONFIG,
+                    ),
+                ),
+                TuyaBLESelectMapping(
+                    dp_id=114,
+                    description=SelectEntityDescription(
+                        key="weather_delay_zone2",
+                        icon="mdi:weather-partly-cloudy",
+                        options=["off", "1h", "2h", "4h", "8h", "12h", "24h", "48h", "72h"],
+                        entity_category=EntityCategory.CONFIG,
+                    ),
+                ),
+            ],
+            "nxquc5lb": [  # SOP10 water timer
+                TuyaBLESelectMapping(
+                    dp_id=10,
+                    description=SelectEntityDescription(
+                        key="weather_delay",
+                        icon="mdi:weather-partly-cloudy",
+                        options=["off", "1h", "2h", "4h", "8h", "12h", "24h", "48h", "72h"],
+                        entity_category=EntityCategory.CONFIG,
+                    ),
+                ),
+                TuyaBLESelectMapping(
+                    dp_id=12,
+                    description=SelectEntityDescription(
+                        key="work_state",
+                        icon="mdi:sprinkler",
+                        options=["off", "manual", "auto"],
+                        entity_category=EntityCategory.CONFIG,
+                    ),
+                ),
+            ],
+        },
+    ),
 }
 
 

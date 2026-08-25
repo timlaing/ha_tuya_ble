@@ -48,6 +48,12 @@ The integration works locally, but connection to Tuya BLE device requires device
 * Irrigation computer (category_id 'ggq')
   + Irrigation computer (product_id '6pahkcau')
 
+* Water valve controllers (category_id 'sfkzq')
+  + Diivoo WT-05 dual water timer (product_id 'fdrbxxbg'), dual-zone BLE water timer.
+  + SOP10 water timer (product_id 'nxquc5lb'), single-zone BLE water timer.
+
+  Entities exposed: valve (open/close/stop), battery, countdown timer, weather delay, work state.
+
 ## Support project
 
 I am working on this integration in Ukraine. Our country was subjected to brutal aggression by Russia. The war still continues. The capital of Ukraine - Kyiv, where I live, and many other cities and villages are constantly under threat of rocket attacks. Our air defense forces are doing wonders, but they also need support. So if you want to help the development of this integration, donate some money and I will spend it to support our air defense.

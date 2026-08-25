@@ -315,19 +315,6 @@ mapping: dict[str, TuyaBLECategorySwitchMapping] = {
             ],
         },
     ),
-    "ggq": TuyaBLECategorySwitchMapping(
-        products={
-            "6pahkcau": [  # Irrigation computer
-                TuyaBLESwitchMapping(
-                    dp_id=1,
-                    description=SwitchEntityDescription(
-                        key="water_valve",
-                        entity_registry_enabled_default=True,
-                    ),
-                ),
-            ],
-        },
-    ),
 }
 
 

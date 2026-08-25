@@ -306,6 +306,76 @@ mapping: dict[str, TuyaBLECategorySensorMapping] = {
             ],
         },
     ),
+    "sfkzq": TuyaBLECategorySensorMapping(
+        products={
+            "fdrbxxbg": [  # Diivoo WT-05 dual water timer
+                TuyaBLEBatteryMapping(dp_id=11),
+                TuyaBLESensorMapping(
+                    dp_id=110,
+                    description=SensorEntityDescription(
+                        key="last_use_time_zone1",
+                        icon="mdi:clock-outline",
+                        device_class=SensorDeviceClass.TIMESTAMP,
+                    ),
+                ),
+                TuyaBLESensorMapping(
+                    dp_id=111,
+                    description=SensorEntityDescription(
+                        key="last_use_time_zone2",
+                        icon="mdi:clock-outline",
+                        device_class=SensorDeviceClass.TIMESTAMP,
+                    ),
+                ),
+                TuyaBLESensorMapping(
+                    dp_id=112,
+                    description=SensorEntityDescription(
+                        key="work_states_zone1",
+                        device_class=SensorDeviceClass.ENUM,
+                        options=["off", "manual", "auto"],
+                    ),
+                ),
+                TuyaBLESensorMapping(
+                    dp_id=113,
+                    description=SensorEntityDescription(
+                        key="work_states_zone2",
+                        device_class=SensorDeviceClass.ENUM,
+                        options=["off", "manual", "auto"],
+                    ),
+                ),
+            ],
+            "nxquc5lb": [  # SOP10 water timer
+                TuyaBLEBatteryMapping(dp_id=7),
+                TuyaBLESensorMapping(
+                    dp_id=9,
+                    description=SensorEntityDescription(
+                        key="time_use",
+                        icon="mdi:timer",
+                        device_class=SensorDeviceClass.DURATION,
+                        native_unit_of_measurement=UnitOfTime.MINUTES,
+                        state_class=SensorStateClass.MEASUREMENT,
+                    ),
+                ),
+                TuyaBLESensorMapping(
+                    dp_id=12,
+                    description=SensorEntityDescription(
+                        key="work_state",
+                        device_class=SensorDeviceClass.ENUM,
+                        options=["off", "manual", "auto"],
+                    ),
+                ),
+                TuyaBLESensorMapping(
+                    dp_id=15,
+                    description=SensorEntityDescription(
+                        key="use_time_one",
+                        icon="mdi:timer-check",
+                        device_class=SensorDeviceClass.DURATION,
+                        native_unit_of_measurement=UnitOfTime.MINUTES,
+                        state_class=SensorStateClass.MEASUREMENT,
+                    ),
+                ),
+            ],
+        },
+    ),
 }
 
 

@@ -74,6 +74,14 @@ and this project adheres to [Semantic Versioning].
 
 - Improved connection stability.
 
+## [0.1.9] - 2026-08-25
+
+### Added
+
+- Added support for water valve controllers (category 'sfkzq'): Diivoo WT-05 dual water timer and SOP10 water timer.
+- Added `valve` platform for native HA valve entities (open/close/stop with water device class).
+- Moved existing irrigation computer valve from `switch` to `valve` platform.
+
 ## [0.1.8] - 2023-07-09
 
 ### Added

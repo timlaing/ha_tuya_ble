@@ -300,6 +300,17 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
             ),
         },
     ),
+    "sfkzq": TuyaBLECategoryInfo(
+        products={
+            "fdrbxxbg": TuyaBLEProductInfo(
+                name="Diivoo WT-05 dual water timer",
+                manufacturer="Diivoo",
+            ),
+            "nxquc5lb": TuyaBLEProductInfo(
+                name="SOP10 water timer",
+            ),
+        },
+    ),
 }
 
 

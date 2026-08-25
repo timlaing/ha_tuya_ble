@@ -208,12 +208,26 @@
           "name": "Irrigation valve"
       }    
     },
-    "text": {
-      "program": {
-        "name": "Program: position[/time];..."
-      }
-    }
-  },
+        "text": {
+            "program": {
+                "name": "Program: position[/time];..."
+            }
+        },
+        "valve": {
+            "water_valve": {
+                "name": "Irrigation valve"
+            },
+            "valve_zone1": {
+                "name": "Valve zone 1"
+            },
+            "valve_zone2": {
+                "name": "Valve zone 2"
+            },
+            "valve": {
+                "name": "Valve"
+            }
+        }
+    },
   "options": {
     "error": {
       "device_not_registered": "Device is not registered in Tuya cloud",
