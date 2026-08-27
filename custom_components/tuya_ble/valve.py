@@ -1,47 +1,38 @@
-"""The Tuya BLE integration."""
+"""Valve platform for Tuya BLE water valves and irrigation controllers."""
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 
-import logging
-from typing import Any, Callable
-
-from homeassistant.components.valve import (
-    ValveDeviceClass,
-    ValveEntity,
-    ValveEntityDescription,
-    ValveEntityFeature,
-)
+from homeassistant.components.valve.const import ValveDeviceClass, ValveEntityFeature
+from homeassistant.components.valve.entity import ValveEntity, ValveEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import DOMAIN
-from .devices import TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
+from .devices import (
+    TuyaBLECoordinator,
+    TuyaBLEData,
+    TuyaBLEEntity,
+    TuyaBLEProductInfo,
+)
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
-_LOGGER = logging.getLogger(__name__)
+TuyaBLEValveGetter = Callable[["TuyaBLEValve", TuyaBLEProductInfo], bool | None] | None
 
 
-TuyaBLEValveGetter = (
-    Callable[["TuyaBLEValve", TuyaBLEProductInfo], bool | None] | None
-)
+TuyaBLEValveIsAvailable = Callable[["TuyaBLEValve", TuyaBLEProductInfo], bool] | None
 
 
-TuyaBLEValveIsAvailable = (
-    Callable[["TuyaBLEValve", TuyaBLEProductInfo], bool] | None
-)
-
-
-TuyaBLEValveSetter = (
-    Callable[["TuyaBLEValve", TuyaBLEProductInfo, bool], None] | None
-)
+TuyaBLEValveSetter = Callable[["TuyaBLEValve", TuyaBLEProductInfo, bool], None] | None
 
 
 @dataclass
 class TuyaBLEValveMapping:
+    """Mapping of a Tuya BLE data point to a Home Assistant valve entity."""
+
     dp_id: int
     description: ValveEntityDescription
     force_add: bool = True
@@ -53,23 +44,52 @@ class TuyaBLEValveMapping:
 
 @dataclass
 class TuyaBLECategoryValveMapping:
+    """Container for product-specific and default valve mappings."""
+
     products: dict[str, list[TuyaBLEValveMapping]] | None = None
     mapping: list[TuyaBLEValveMapping] | None = None
 
 
+# pylint: disable=unexpected-keyword-arg
+# ValveEntityDescription accepts key and entity_registry_enabled_default,
+# but pylint cannot resolve the constructor through the FrozenOrThawed wrapper.
 mapping: dict[str, TuyaBLECategoryValveMapping] = {
     "ggq": TuyaBLECategoryValveMapping(
         products={
-            "6pahkcau": [  # Irrigation computer
-                TuyaBLEValveMapping(
-                    dp_id=1,
-                    description=ValveEntityDescription(
-                        key="water_valve",
-                        device_class=ValveDeviceClass.WATER,
-                        entity_registry_enabled_default=True,
+            **{
+                k: [
+                    TuyaBLEValveMapping(
+                        dp_id=1,
+                        description=ValveEntityDescription(
+                            key="water_valve",
+                            device_class=ValveDeviceClass.WATER,
+                            entity_registry_enabled_default=True,
+                        ),
+                    )
+                ]
+                for k in ["6pahkcau", "hfgdqhho"]
+            },
+            **{
+                k: [
+                    TuyaBLEValveMapping(
+                        dp_id=105,
+                        description=ValveEntityDescription(
+                            key="valve_zone1",
+                            device_class=ValveDeviceClass.WATER,
+                            entity_registry_enabled_default=True,
+                        ),
                     ),
-                ),
-            ],
+                    TuyaBLEValveMapping(
+                        dp_id=104,
+                        description=ValveEntityDescription(
+                            key="valve_zone2",
+                            device_class=ValveDeviceClass.WATER,
+                            entity_registry_enabled_default=True,
+                        ),
+                    ),
+                ]
+                for k in ["qycalacn", "fnlw6npo", "jjqi2syk"]
+            },
         },
     ),
     "sfkzq": TuyaBLECategoryValveMapping(
@@ -92,22 +112,34 @@ mapping: dict[str, TuyaBLECategoryValveMapping] = {
                     ),
                 ),
             ],
-            "nxquc5lb": [  # SOP10 water timer
-                TuyaBLEValveMapping(
-                    dp_id=1,
-                    description=ValveEntityDescription(
-                        key="valve",
-                        device_class=ValveDeviceClass.WATER,
-                        entity_registry_enabled_default=True,
-                    ),
-                ),
-            ],
+            **{
+                k: [
+                    TuyaBLEValveMapping(
+                        dp_id=1,
+                        description=ValveEntityDescription(
+                            key="valve",
+                            device_class=ValveDeviceClass.WATER,
+                            entity_registry_enabled_default=True,
+                        ),
+                    )
+                ]
+                for k in [
+                    "nxquc5lb",
+                    "16wgjvck",
+                    "0axr5s0b",
+                    "svhikeyq",
+                    "46zia2nz",
+                    "1fcnd8xk",
+                    "ldcdnigc",
+                ]
+            },
         },
     ),
 }
 
 
 def get_mapping_by_device(device: TuyaBLEDevice) -> list[TuyaBLEValveMapping]:
+    """Get the valve mappings for a device."""
     category = mapping.get(device.category)
     if category is not None and category.products is not None:
         product_mapping = category.products.get(device.product_id)
@@ -115,10 +147,8 @@ def get_mapping_by_device(device: TuyaBLEDevice) -> list[TuyaBLEValveMapping]:
             return product_mapping
         if category.mapping is not None:
             return category.mapping
-        else:
-            return []
-    else:
         return []
+    return []
 
 
 class TuyaBLEValve(TuyaBLEEntity, ValveEntity):
@@ -129,21 +159,21 @@ class TuyaBLEValve(TuyaBLEEntity, ValveEntity):
     def __init__(
         self,
         hass: HomeAssistant,
-        coordinator: DataUpdateCoordinator,
+        coordinator: TuyaBLECoordinator,
         device: TuyaBLEDevice,
         product: TuyaBLEProductInfo,
-        mapping: TuyaBLEValveMapping,
+        valve_mapping: TuyaBLEValveMapping,
     ) -> None:
-        super().__init__(hass, coordinator, device, product, mapping.description)
-        self._mapping = mapping
+        super().__init__(hass, coordinator, device, product, valve_mapping.description)
+        self._mapping = valve_mapping
 
     @property
     def is_closed(self) -> bool | None:
         """Return true if the valve is closed."""
-        if self._mapping.getter:
+        if self._mapping.getter is not None:
             return self._mapping.getter(self, self._product)
 
-        datapoint = self._device.datapoints[self._mapping.dp_id]
+        datapoint = self.device.datapoints[self._mapping.dp_id]
         if datapoint:
             return not bool(datapoint.value)
         return None
@@ -151,43 +181,48 @@ class TuyaBLEValve(TuyaBLEEntity, ValveEntity):
     def open_valve(self) -> None:
         """Open the valve."""
         if self._mapping.setter:
-            return self._mapping.setter(self, self._product, True)
+            self._mapping.setter(self, self._product, True)
+            return
 
-        datapoint = self._device.datapoints.get_or_create(
+        datapoint = self.device.datapoints.get_or_create(
             self._mapping.dp_id,
             TuyaBLEDataPointType.DT_BOOL,
             True,
         )
         if datapoint:
-            self._hass.create_task(datapoint.set_value(True))
+            self.hass.create_task(datapoint.set_value(True))
 
     def close_valve(self) -> None:
         """Close the valve."""
         if self._mapping.setter:
-            return self._mapping.setter(self, self._product, False)
+            self._mapping.setter(self, self._product, False)
+            return
 
-        datapoint = self._device.datapoints.get_or_create(
+        datapoint = self.device.datapoints.get_or_create(
             self._mapping.dp_id,
             TuyaBLEDataPointType.DT_BOOL,
             False,
         )
         if datapoint:
-            self._hass.create_task(datapoint.set_value(False))
+            self.hass.create_task(datapoint.set_value(False))
 
     def stop_valve(self) -> None:
         """Stop the valve (close it)."""
         self.close_valve()
 
+    def set_valve_position(self, position: int) -> None:
+        """Set the valve position. Not supported by this device."""
+
     @property
     def available(self) -> bool:
-        """Return if entity is available."""
+        """True when coordinator is connected and the availability predicate passes."""
         result = super().available
-        if result and self._mapping.is_available:
+        if result and self._mapping.is_available is not None:
             result = self._mapping.is_available(self, self._product)
         return result
 
 
-async def async_setup_entry(
+async def async_setup_entry(  # noqa: S7503
     hass: HomeAssistant,
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
@@ -196,9 +231,9 @@ async def async_setup_entry(
     data: TuyaBLEData = hass.data[DOMAIN][entry.entry_id]
     mappings = get_mapping_by_device(data.device)
     entities: list[TuyaBLEValve] = []
-    for mapping in mappings:
-        if mapping.force_add or data.device.datapoints.has_id(
-            mapping.dp_id, mapping.dp_type
+    for valve_mapping in mappings:
+        if valve_mapping.force_add or data.device.datapoints.has_id(
+            valve_mapping.dp_id, valve_mapping.dp_type
         ):
             entities.append(
                 TuyaBLEValve(
@@ -206,7 +241,7 @@ async def async_setup_entry(
                     data.coordinator,
                     data.device,
                     data.product,
-                    mapping,
+                    valve_mapping,
                 )
             )
     async_add_entities(entities)

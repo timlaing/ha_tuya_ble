@@ -1,5 +1,6 @@
 {
-  "name": "Tuya BLE",
   "content_in_root": false,
+  "homeassistant": "2026.8.0",
+  "name": "Tuya BLE",
   "render_readme": true
 }

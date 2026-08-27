@@ -1,0 +1,79 @@
+name: Device support request
+description: Request support for a new Tuya BLE device
+labels: ["device request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        To add a new device, we need its Tuya identifiers. You can find these in the
+        Smart Life / Tuya Smart app under device info, or from the Tuya IoT platform.
+
+  - type: input
+    id: device-name
+    attributes:
+      label: Device name
+      description: The commercial name of the device
+      placeholder: "e.g. Diivoo WT-05 dual water timer"
+    validations:
+      required: true
+
+  - type: input
+    id: manufacturer
+    attributes:
+      label: Manufacturer
+      placeholder: "e.g. Diivoo"
+    validations:
+      required: false
+
+  - type: input
+    id: product-id
+    attributes:
+      label: Tuya product_id
+      description: Found in the app under device info, or from the Tuya IoT platform
+      placeholder: "e.g. fdrbxxbg"
+    validations:
+      required: true
+
+  - type: input
+    id: category-id
+    attributes:
+      label: Tuya category_id
+      description: The device category (e.g. sfkzq, ggq, ms, wk, szjqr)
+      placeholder: "e.g. sfkzq"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: app
+    attributes:
+      label: App used
+      description: Which app did you set up the device with?
+      options:
+        - Smart Life
+        - Tuya Smart
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: datapoints
+    attributes:
+      label: Datapoint list (if available)
+      description: |
+        If you can retrieve the device's data points from the Tuya cloud or app,
+        paste them here. Include the dp_id, code/name, type, and value range.
+      placeholder: |
+        dp_id: 1, code: switch_1, type: bool
+        dp_id: 11, code: battery_state, type: enum (0=low, 1=normal, 2=high)
+        dp_id: 12, code: work_state, type: enum (0=off, 1=on)
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Photos, links to the product page, or anything else that helps
+    validations:
+      required: false

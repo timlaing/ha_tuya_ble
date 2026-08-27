@@ -1,0 +1,21 @@
+{
+  "configurations": [
+    {
+      "name": "Attach to HA",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "localhost",
+        "port": 5678
+      },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}/custom_components/tuya_ble",
+          "remoteRoot": "/config/custom_components/tuya_ble"
+        }
+      ],
+      "justMyCode": false
+    }
+  ],
+  "version": "0.2.0"
+}

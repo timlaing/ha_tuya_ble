@@ -2,206 +2,51 @@
 
 from __future__ import annotations
 
-import logging
-import pycountry
 from typing import Any
 
-import voluptuous as vol
-from tuya_iot import AuthType
-
-from homeassistant.config_entries import (
-    ConfigEntry,
-    ConfigFlow,
-    OptionsFlowWithConfigEntry,
-)
 from homeassistant.components.bluetooth import (
     BluetoothServiceInfoBleak,
     async_discovered_service_info,
 )
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlowWithConfigEntry,
+)
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import callback
-from homeassistant.data_entry_flow import FlowHandler, FlowResult
+from homeassistant.helpers import selector
+from tuya_sharing import LoginControl
+import voluptuous as vol
 
-from homeassistant.components.tuya.const import (
-    CONF_ACCESS_ID,
-    CONF_ACCESS_SECRET,
-    CONF_APP_TYPE,
-    CONF_AUTH_TYPE,
-    CONF_COUNTRY_CODE,
+from .cloud import HASSTuyaBLEDeviceManager
+from .const import (
+    CONF_CATEGORY,
+    CONF_DEVICE_NAME,
     CONF_ENDPOINT,
-    CONF_PASSWORD,
-    CONF_USERNAME,
-    SMARTLIFE_APP,
-    TUYA_COUNTRIES,
+    CONF_FUNCTIONS,
+    CONF_LOCAL_KEY,
+    CONF_PRODUCT_ID,
+    CONF_PRODUCT_MODEL,
+    CONF_PRODUCT_NAME,
+    CONF_STATUS_RANGE,
+    CONF_TERMINAL_ID,
+    CONF_TOKEN_INFO,
+    CONF_USER_CODE,
+    CONF_UUID,
+    DOMAIN,
+    TUYA_CLIENT_ID,
     TUYA_RESPONSE_CODE,
     TUYA_RESPONSE_MSG,
+    TUYA_RESPONSE_QR_CODE,
+    TUYA_RESPONSE_RESULT,
     TUYA_RESPONSE_SUCCESS,
-    TUYA_SMART_APP,
+    TUYA_SCHEMA,
 )
+from .tuya_ble import SERVICE_UUID
 
-from .tuya_ble import SERVICE_UUID, TuyaBLEDeviceCredentials
-
-from .const import (
-    DOMAIN,
-)
-from .devices import TuyaBLEData, get_device_readable_name
-from .cloud import HASSTuyaBLEDeviceManager
-
-_LOGGER = logging.getLogger(__name__)
-
-
-async def _try_login(
-    manager: HASSTuyaBLEDeviceManager,
-    user_input: dict[str, Any],
-    errors: dict[str, str],
-    placeholders: dict[str, Any],
-) -> dict[str, Any] | None:
-    response: dict[Any, Any] | None
-    data: dict[str, Any]
-
-    country = [
-        country
-        for country in TUYA_COUNTRIES
-        if country.name == user_input[CONF_COUNTRY_CODE]
-    ][0]
-
-    data = {
-        CONF_ENDPOINT: country.endpoint,
-        CONF_AUTH_TYPE: AuthType.CUSTOM,
-        CONF_ACCESS_ID: user_input[CONF_ACCESS_ID],
-        CONF_ACCESS_SECRET: user_input[CONF_ACCESS_SECRET],
-        CONF_USERNAME: user_input[CONF_USERNAME],
-        CONF_PASSWORD: user_input[CONF_PASSWORD],
-        CONF_COUNTRY_CODE: country.country_code,
-    }
-
-    for app_type in (TUYA_SMART_APP, SMARTLIFE_APP, ""):
-        data[CONF_APP_TYPE] = app_type
-        if app_type == "":
-            data[CONF_AUTH_TYPE] = AuthType.CUSTOM
-        else:
-            data[CONF_AUTH_TYPE] = AuthType.SMART_HOME
-
-        response = await manager._login(data, True)
-
-        if response.get(TUYA_RESPONSE_SUCCESS, False):
-            return data
-
-    errors["base"] = "login_error"
-    if response:
-        placeholders.update(
-            {
-                TUYA_RESPONSE_CODE: response.get(TUYA_RESPONSE_CODE),
-                TUYA_RESPONSE_MSG: response.get(TUYA_RESPONSE_MSG),
-            }
-        )
-
-    return None
-
-
-def _show_login_form(
-    flow: FlowHandler,
-    user_input: dict[str, Any],
-    errors: dict[str, str],
-    placeholders: dict[str, Any],
-) -> FlowResult:
-    """Shows the Tuya IOT platform login form."""
-    if user_input is not None and user_input.get(CONF_COUNTRY_CODE) is not None:
-        for country in TUYA_COUNTRIES:
-            if country.country_code == user_input[CONF_COUNTRY_CODE]:
-                user_input[CONF_COUNTRY_CODE] = country.name
-                break
-
-    def_country_name: str | None = None
-    try:
-        def_country = pycountry.countries.get(alpha_2=flow.hass.config.country)
-        if def_country:
-            def_country_name = def_country.name
-    except:
-        pass
-
-    return flow.async_show_form(
-        step_id="login",
-        data_schema=vol.Schema(
-            {
-                vol.Required(
-                    CONF_COUNTRY_CODE,
-                    default=user_input.get(CONF_COUNTRY_CODE, def_country_name),
-                ): vol.In(
-                    # We don't pass a dict {code:name} because country codes can be duplicate.
-                    [country.name for country in TUYA_COUNTRIES]
-                ),
-                vol.Required(
-                    CONF_ACCESS_ID, default=user_input.get(CONF_ACCESS_ID, "")
-                ): str,
-                vol.Required(
-                    CONF_ACCESS_SECRET,
-                    default=user_input.get(CONF_ACCESS_SECRET, ""),
-                ): str,
-                vol.Required(
-                    CONF_USERNAME, default=user_input.get(CONF_USERNAME, "")
-                ): str,
-                vol.Required(
-                    CONF_PASSWORD, default=user_input.get(CONF_PASSWORD, "")
-                ): str,
-            }
-        ),
-        errors=errors,
-        description_placeholders=placeholders,
-    )
-
-
-class TuyaBLEOptionsFlow(OptionsFlowWithConfigEntry):
-    """Handle a Tuya BLE options flow."""
-
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialize options flow."""
-        super().__init__(config_entry)
-
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Manage the options."""
-        return await self.async_step_login(user_input)
-
-    async def async_step_login(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle the Tuya IOT platform login step."""
-        errors: dict[str, str] = {}
-        placeholders: dict[str, Any] = {}
-        credentials: TuyaBLEDeviceCredentials | None = None
-        address: str | None = self.config_entry.data.get(CONF_ADDRESS)
-
-        if user_input is not None:
-            entry: TuyaBLEData | None = None
-            domain_data = self.hass.data.get(DOMAIN)
-            if domain_data:
-                entry = domain_data.get(self.config_entry.entry_id)
-            if entry:
-                login_data = await _try_login(
-                    entry.manager,
-                    user_input,
-                    errors,
-                    placeholders,
-                )
-                if login_data:
-                    credentials = await entry.manager.get_device_credentials(
-                        address, True, True
-                    )
-                    if credentials:
-                        return self.async_create_entry(
-                            title=self.config_entry.title,
-                            data=entry.manager.data,
-                        )
-                    else:
-                        errors["base"] = "device_not_registered"
-
-        if user_input is None:
-            user_input = {}
-            user_input.update(self.config_entry.options)
-
-        return _show_login_form(self, user_input, errors, placeholders)
+UNKNOWN_ERROR = "Unknown error"
 
 
 class TuyaBLEConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -210,125 +55,190 @@ class TuyaBLEConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     def __init__(self) -> None:
-        """Initialize the config flow."""
+        """Set up mutable state for the QR-code login flow."""
         super().__init__()
-        self._discovery_info: BluetoothServiceInfoBleak | None = None
+        self.discovery_info: BluetoothServiceInfoBleak | None = None
         self._discovered_devices: dict[str, BluetoothServiceInfoBleak] = {}
         self._data: dict[str, Any] = {}
         self._manager: HASSTuyaBLEDeviceManager | None = None
         self._get_device_info_error = False
+        self.__user_code: str = ""
+        self.__qr_code: str = ""
+        self.__login_control = LoginControl()
+
+    def is_matching(self, other_flow: ConfigFlow) -> bool:
+        """Return True if other_flow is matching this flow."""
+        return (
+            isinstance(other_flow, TuyaBLEConfigFlow)
+            and self.discovery_info is not None
+            and other_flow.discovery_info is not None
+            and self.discovery_info.address == other_flow.discovery_info.address
+        )
 
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfoBleak
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle the bluetooth discovery step."""
         await self.async_set_unique_id(discovery_info.address)
         self._abort_if_unique_id_configured()
-        self._discovery_info = discovery_info
-        if self._manager is None:
-            self._manager = HASSTuyaBLEDeviceManager(self.hass, self._data)
-        await self._manager.build_cache()
-        self.context["title_placeholders"] = {
-            "name": await get_device_readable_name(
-                discovery_info,
-                self._manager,
-            )
-        }
-        return await self.async_step_login()
+        self.discovery_info = discovery_info
+        return await self.async_step_user()
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle the user step."""
-        if self._manager is None:
-            self._manager = HASSTuyaBLEDeviceManager(self.hass, self._data)
-        await self._manager.build_cache()
-        return await self.async_step_login()
-
-    async def async_step_login(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle the Tuya IOT platform login step."""
-        data: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle the user step - ask for user code."""
         errors: dict[str, str] = {}
         placeholders: dict[str, Any] = {}
 
         if user_input is not None:
-            data = await _try_login(
-                self._manager,
-                user_input,
-                errors,
-                placeholders,
+            success, response = await self.__async_get_qr_code(
+                user_input[CONF_USER_CODE]
             )
-            if data:
-                self._data.update(data)
-                return await self.async_step_device()
+            if success:
+                self._data[CONF_USER_CODE] = user_input[CONF_USER_CODE]
+                return await self.async_step_qr()
 
-        if user_input is None:
+            errors["base"] = "login_error"
+            placeholders = {
+                TUYA_RESPONSE_MSG: response.get(TUYA_RESPONSE_MSG, UNKNOWN_ERROR),
+                TUYA_RESPONSE_CODE: response.get(TUYA_RESPONSE_CODE, "0"),
+            }
+        else:
             user_input = {}
-            if self._discovery_info:
-                await self._manager.get_device_credentials(
-                    self._discovery_info.address,
-                    False,
-                    True,
-                )
-            if self._data is None or len(self._data) == 0:
-                self._manager.get_login_from_cache()
-            if self._data is not None and len(self._data) > 0:
-                user_input.update(self._data)
 
-        return _show_login_form(self, user_input, errors, placeholders)
+        return self.async_show_form(
+            step_id="user",
+            data_schema=vol.Schema({
+                vol.Required(
+                    CONF_USER_CODE, default=user_input.get(CONF_USER_CODE, "")
+                ): str,
+            }),
+            errors=errors,
+            description_placeholders=placeholders,
+        )
+
+    async def async_step_qr(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show QR code for scanning in Tuya/Smart Life app."""
+        if user_input is None:
+            return self.async_show_form(
+                step_id="qr",
+                data_schema=vol.Schema({
+                    vol.Optional("QR"): selector.QrCodeSelector(
+                        config=selector.QrCodeSelectorConfig(
+                            data=f"tuyaSmart--qrLogin?token={self.__qr_code}",
+                            scale=5,
+                            error_correction_level=(
+                                selector.QrErrorCorrectionLevel.QUARTILE
+                            ),
+                        )
+                    )
+                }),
+            )
+
+        return await self.async_step_scan()
+
+    async def async_step_scan(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Wait for QR code scan and complete login."""
+        ret, info = await self.hass.async_add_executor_job(
+            self.__login_control.login_result,
+            self.__qr_code,
+            TUYA_CLIENT_ID,
+            self.__user_code,
+        )
+        if not ret:
+            await self.__async_get_qr_code(self.__user_code)
+            return self.async_show_form(
+                step_id="qr",
+                errors={"base": "login_error"},
+                data_schema=vol.Schema({
+                    vol.Optional("QR"): selector.QrCodeSelector(
+                        config=selector.QrCodeSelectorConfig(
+                            data=f"tuyaSmart--qrLogin?token={self.__qr_code}",
+                            scale=5,
+                            error_correction_level=(
+                                selector.QrErrorCorrectionLevel.QUARTILE
+                            ),
+                        )
+                    )
+                }),
+                description_placeholders={
+                    TUYA_RESPONSE_MSG: info.get(TUYA_RESPONSE_MSG, UNKNOWN_ERROR),
+                    TUYA_RESPONSE_CODE: info.get(TUYA_RESPONSE_CODE, 0),
+                },
+            )
+
+        self._data[CONF_TOKEN_INFO] = {
+            "t": info["t"],
+            "uid": info["uid"],
+            "expire_time": info["expire_time"],
+            "access_token": info["access_token"],
+            "refresh_token": info["refresh_token"],
+        }
+        self._data[CONF_TERMINAL_ID] = info[CONF_TERMINAL_ID]
+        self._data[CONF_ENDPOINT] = info[CONF_ENDPOINT]
+
+        self._manager = HASSTuyaBLEDeviceManager(self.hass, self._data)
+        await self._manager.initialize()
+
+        return await self.async_step_device()
 
     async def async_step_device(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle the user step to pick discovered device."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
             address = user_input[CONF_ADDRESS]
             discovery_info = self._discovered_devices[address]
-            local_name = await get_device_readable_name(discovery_info, self._manager)
             await self.async_set_unique_id(
                 discovery_info.address, raise_on_progress=False
             )
             self._abort_if_unique_id_configured()
+            assert self._manager is not None
             credentials = await self._manager.get_device_credentials(
                 discovery_info.address, self._get_device_info_error, True
             )
-            self._data[CONF_ADDRESS] = discovery_info.address
             if credentials is None:
                 self._get_device_info_error = True
                 errors["base"] = "device_not_registered"
             else:
+                entry_data: dict[str, Any] = {
+                    CONF_ADDRESS: discovery_info.address,
+                    CONF_UUID: credentials.uuid,
+                    CONF_LOCAL_KEY: credentials.local_key,
+                    "device_id": credentials.device_id,
+                    CONF_CATEGORY: credentials.category,
+                    CONF_PRODUCT_ID: credentials.product_id,
+                    CONF_DEVICE_NAME: credentials.device_name,
+                    CONF_PRODUCT_MODEL: credentials.product_model,
+                    CONF_PRODUCT_NAME: credentials.product_name,
+                    CONF_FUNCTIONS: credentials.functions,
+                    CONF_STATUS_RANGE: credentials.status_range,
+                }
                 return self.async_create_entry(
-                    title=local_name,
-                    data={CONF_ADDRESS: discovery_info.address},
-                    options=self._data,
+                    title=discovery_info.name or discovery_info.address,
+                    data=entry_data,
                 )
 
-        if discovery := self._discovery_info:
+        if discovery := self.discovery_info:
             self._discovered_devices[discovery.address] = discovery
         else:
-            current_addresses = self._async_current_ids()
-            for discovery in async_discovered_service_info(self.hass):
-                if (
-                    discovery.address in current_addresses
-                    or discovery.address in self._discovered_devices
-                    or discovery.service_data is None
-                    or not SERVICE_UUID in discovery.service_data.keys()
-                ):
-                    continue
-                self._discovered_devices[discovery.address] = discovery
+            self._refresh_discovered_devices()
 
         if not self._discovered_devices:
             return self.async_abort(reason="no_unconfigured_devices")
 
         def_address: str
         if user_input:
-            def_address = user_input.get(CONF_ADDRESS)
+            def_address = str(user_input.get(CONF_ADDRESS, ""))
         else:
-            def_address = list(self._discovered_devices)[0]
+            def_address = next(iter(self._discovered_devices))
 
         return self.async_show_form(
             step_id="device",
@@ -337,19 +247,41 @@ class TuyaBLEConfigFlow(ConfigFlow, domain=DOMAIN):
                     vol.Required(
                         CONF_ADDRESS,
                         default=def_address,
-                    ): vol.In(
-                        {
-                            service_info.address: await get_device_readable_name(
-                                service_info,
-                                self._manager,
-                            )
-                            for service_info in self._discovered_devices.values()
-                        }
-                    ),
+                    ): vol.In({
+                        service_info.address: service_info.name or service_info.address
+                        for service_info in self._discovered_devices.values()
+                    }),
                 },
             ),
             errors=errors,
         )
+
+    @callback
+    def _refresh_discovered_devices(self) -> None:
+        """Scan for newly discovered Tuya BLE devices."""
+        current_addresses = self._async_current_ids()
+        for discovery in async_discovered_service_info(self.hass):
+            if (
+                discovery.address in current_addresses
+                or discovery.address in self._discovered_devices
+                or discovery.service_data is None
+                or SERVICE_UUID not in discovery.service_data
+            ):
+                continue
+            self._discovered_devices[discovery.address] = discovery
+
+    async def __async_get_qr_code(self, user_code: str) -> tuple[bool, dict[str, Any]]:
+        """Request a QR code token from the Tuya cloud for the given user code."""
+        response = await self.hass.async_add_executor_job(
+            self.__login_control.qr_code,
+            TUYA_CLIENT_ID,
+            TUYA_SCHEMA,
+            user_code,
+        )
+        if success := response.get(TUYA_RESPONSE_SUCCESS, False):
+            self.__user_code = user_code
+            self.__qr_code = response[TUYA_RESPONSE_RESULT][TUYA_RESPONSE_QR_CODE]
+        return success, response
 
     @staticmethod
     @callback
@@ -358,3 +290,139 @@ class TuyaBLEConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> TuyaBLEOptionsFlow:
         """Get the options flow for this handler."""
         return TuyaBLEOptionsFlow(config_entry)
+
+
+class TuyaBLEOptionsFlow(OptionsFlowWithConfigEntry):
+    """Handle a Tuya BLE options flow."""
+
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        """Set up mutable state for the re-authentication QR-code flow."""
+        super().__init__(config_entry)
+        self.__user_code: str = ""
+        self.__qr_code: str = ""
+        self.__login_control = LoginControl()
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Delegate to the user step for re-authentication."""
+        return await self.async_step_user(user_input)
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle re-authentication via QR code."""
+        errors: dict[str, str] = {}
+        placeholders: dict[str, Any] = {}
+
+        if user_input is not None:
+            success, response = await self.__async_get_qr_code(
+                user_input[CONF_USER_CODE]
+            )
+            if success:
+                return await self.async_step_qr()
+
+            errors["base"] = "login_error"
+            placeholders = {
+                TUYA_RESPONSE_MSG: response.get(TUYA_RESPONSE_MSG, UNKNOWN_ERROR),
+                TUYA_RESPONSE_CODE: response.get(TUYA_RESPONSE_CODE, "0"),
+            }
+        else:
+            user_input = {}
+            user_input[CONF_USER_CODE] = self.config_entry.options.get(
+                CONF_USER_CODE, ""
+            )
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=vol.Schema({
+                vol.Required(
+                    CONF_USER_CODE, default=user_input.get(CONF_USER_CODE, "")
+                ): str,
+            }),
+            errors=errors,
+            description_placeholders=placeholders,
+        )
+
+    async def async_step_qr(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show QR code for scanning."""
+        if user_input is None:
+            return self.async_show_form(
+                step_id="qr",
+                data_schema=vol.Schema({
+                    vol.Optional("QR"): selector.QrCodeSelector(
+                        config=selector.QrCodeSelectorConfig(
+                            data=f"tuyaSmart--qrLogin?token={self.__qr_code}",
+                            scale=5,
+                            error_correction_level=(
+                                selector.QrErrorCorrectionLevel.QUARTILE
+                            ),
+                        )
+                    )
+                }),
+            )
+        return await self.async_step_scan()
+
+    async def async_step_scan(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Wait for QR code scan and complete login."""
+        ret, info = await self.hass.async_add_executor_job(
+            self.__login_control.login_result,
+            self.__qr_code,
+            TUYA_CLIENT_ID,
+            self.__user_code,
+        )
+        if not ret:
+            await self.__async_get_qr_code(self.__user_code)
+            return self.async_show_form(
+                step_id="qr",
+                errors={"base": "login_error"},
+                data_schema=vol.Schema({
+                    vol.Optional("QR"): selector.QrCodeSelector(
+                        config=selector.QrCodeSelectorConfig(
+                            data=f"tuyaSmart--qrLogin?token={self.__qr_code}",
+                            scale=5,
+                            error_correction_level=(
+                                selector.QrErrorCorrectionLevel.QUARTILE
+                            ),
+                        )
+                    )
+                }),
+                description_placeholders={
+                    TUYA_RESPONSE_MSG: info.get(TUYA_RESPONSE_MSG, UNKNOWN_ERROR),
+                    TUYA_RESPONSE_CODE: info.get(TUYA_RESPONSE_CODE, 0),
+                },
+            )
+
+        new_data = dict(self.config_entry.options)
+        new_data[CONF_USER_CODE] = self.__user_code
+        new_data[CONF_TOKEN_INFO] = {
+            "t": info["t"],
+            "uid": info["uid"],
+            "expire_time": info["expire_time"],
+            "access_token": info["access_token"],
+            "refresh_token": info["refresh_token"],
+        }
+        new_data[CONF_TERMINAL_ID] = info[CONF_TERMINAL_ID]
+        new_data[CONF_ENDPOINT] = info[CONF_ENDPOINT]
+
+        return self.async_create_entry(
+            title="",
+            data=new_data,
+        )
+
+    async def __async_get_qr_code(self, user_code: str) -> tuple[bool, dict[str, Any]]:
+        """Request a QR code token from the Tuya cloud for the given user code."""
+        response = await self.hass.async_add_executor_job(
+            self.__login_control.qr_code,
+            TUYA_CLIENT_ID,
+            TUYA_SCHEMA,
+            user_code,
+        )
+        if success := response.get(TUYA_RESPONSE_SUCCESS, False):
+            self.__user_code = user_code
+            self.__qr_code = response[TUYA_RESPONSE_RESULT][TUYA_RESPONSE_QR_CODE]
+        return success, response

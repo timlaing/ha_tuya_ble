@@ -1,3 +1,5 @@
+"""Exceptions raised by the Tuya BLE protocol library."""
+
 from __future__ import annotations
 
 
@@ -37,4 +39,4 @@ class TuyaBLEDeviceError(TuyaBLEError):
     """Raised when Tuya BLE device returned error in response to command."""
 
     def __init__(self, code: int) -> None:
-        super().__init__(("BLE deice returned error code %s") % (code))
+        super().__init__(f"BLE deice returned error code {code}")

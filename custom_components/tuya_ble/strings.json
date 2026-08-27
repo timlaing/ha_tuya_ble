@@ -10,21 +10,23 @@
     },
     "flow_title": "{name}",
     "step": {
+      "user": {
+        "data": {
+          "user_code": "User Code"
+        },
+        "description": "Enter your Tuya User Code (found in Smart Life app: Me > Settings > Account and Security > User Code)."
+      },
+      "qr": {
+        "description": "Scan this QR code in your Tuya Smart or Smart Life app."
+      },
+      "scan": {
+        "description": "Waiting for QR code scan..."
+      },
       "device": {
         "data": {
           "address": "Tuya BLE device"
         },
-        "description": "Select Tuya BLE device to setup. Device must be registered in the cloud using the mobile application. It's better to unbind the device from Tuya Bluetooth gateway, if any."
-      },
-      "login": {
-        "data": {
-          "access_id": "Tuya IoT Access ID",
-          "access_secret": "Tuya IoT Access Secret",
-          "country_code": "Country",
-          "password": "[%key:common::config_flow::data::password%]",
-          "username": "Account"
-        },
-        "description": "Tuya BLE requires obtaining encryption key from Tuya cloud. Almost all devices only need to access the cloud once during setup.\n\nRefer to documentation of Tuya integration to retrive the cloud credentials https://www.home-assistant.io/integrations/tuya/\n\nEnter your Tuya credentials."
+        "description": "Select Tuya BLE device to setup. Device must be registered in the cloud using the mobile application."
       }
     }
   },
@@ -32,6 +34,16 @@
     "button": {
       "push": {
         "name": "Push"
+      }
+    },
+    "lock": {
+      "lock": {
+        "name": "[%key:component::lock::entity_component::_::name%]"
+      }
+    },
+    "cover": {
+      "cover": {
+        "name": "[%key:component::cover::entity_component::_::name%]"
       }
     },
     "number": {
@@ -86,7 +98,7 @@
         }
       },
       "beep_volume": {
-          "name": "Lock Volume"
+        "name": "Lock Volume"
       }
     },
     "binary_sensor": {
@@ -140,27 +152,27 @@
         "name": "Water intake"
       },
       "residual_electricity": {
-          "name": "Battery"
+        "name": "Battery"
       },
       "alarm_lock": {
-          "name": "Alarm"
+        "name": "Alarm"
       },
       "wrong_finger": {
-          "name": "Wrong Fingerprint"
+        "name": "Wrong Fingerprint"
       },
       "wrong_password": {
-          "name": "Wrong Password"
+        "name": "Wrong Password"
       },
       "low_battery": {
-          "name": "Low Battery"
+        "name": "Low Battery"
       },
       "time_left": {
-          "name": "Remaining irrigation time"
+        "name": "Remaining irrigation time"
       }
     },
     "switch": {
       "programming_mode": {
-        "name": "Programming Mode" 
+        "name": "Programming Mode"
       },
       "programming_switch": {
         "name": "Programming Switch"
@@ -194,7 +206,7 @@
       },
       "program_repeat_forever": {
         "name": "Repeat forever"
-      },      
+      },
       "reverse_positions": {
         "name": "Reverse positions"
       },
@@ -202,32 +214,32 @@
         "name": "[%key:component::switch::entity_component::_::name%]"
       },
       "lock_motor_state": {
-          "name": "Motor State"
-      },            
+        "name": "Motor State"
+      },
       "water_valve": {
-          "name": "Irrigation valve"
-      }    
+        "name": "Irrigation valve"
+      }
     },
-        "text": {
-            "program": {
-                "name": "Program: position[/time];..."
-            }
-        },
-        "valve": {
-            "water_valve": {
-                "name": "Irrigation valve"
-            },
-            "valve_zone1": {
-                "name": "Valve zone 1"
-            },
-            "valve_zone2": {
-                "name": "Valve zone 2"
-            },
-            "valve": {
-                "name": "Valve"
-            }
-        }
+    "text": {
+      "program": {
+        "name": "Program: position[/time];..."
+      }
     },
+    "valve": {
+      "water_valve": {
+        "name": "Irrigation valve"
+      },
+      "valve_zone1": {
+        "name": "Valve zone 1"
+      },
+      "valve_zone2": {
+        "name": "Valve zone 2"
+      },
+      "valve": {
+        "name": "Valve"
+      }
+    }
+  },
   "options": {
     "error": {
       "device_not_registered": "Device is not registered in Tuya cloud",
@@ -235,15 +247,17 @@
       "login_error": "Login error ({code}): {msg}"
     },
     "step": {
-      "login": {
+      "user": {
         "data": {
-          "access_id": "Tuya IoT Access ID",
-          "access_secret": "Tuya IoT Access Secret",
-          "country_code": "Country",
-          "password": "[%key:common::config_flow::data::password%]",
-          "username": "Account"
+          "user_code": "User Code"
         },
-        "description": "Refer to documentation of Tuya integration to retrive the cloud credentials https://www.home-assistant.io/integrations/tuya/\n\nEnter your Tuya credentials."
+        "description": "Re-authenticate with your Tuya User Code."
+      },
+      "qr": {
+        "description": "Scan this QR code in your Tuya Smart or Smart Life app."
+      },
+      "scan": {
+        "description": "Waiting for QR code scan..."
       }
     }
   }

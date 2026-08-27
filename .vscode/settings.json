@@ -1,0 +1,29 @@
+{
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[markdown]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll.ruff": "explicit",
+      "source.organizeImports.ruff": "explicit"
+    }
+  },
+  "[yaml]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "mypy-type-checker.importStrategy": "fromEnvironment",
+  "pylint.importStrategy": "fromEnvironment",
+  "python-envs.defaultEnvManager": "ms-python.python:system",
+  "python.testing.pytestArgs": ["tests"],
+  "python.testing.pytestEnabled": true,
+  "ruff.importStrategy": "fromEnvironment",
+  "sonarlint.connectedMode.project": {
+    "connectionId": "timlaing",
+    "projectKey": "timlaing_ha_tuya_ble"
+  }
+}

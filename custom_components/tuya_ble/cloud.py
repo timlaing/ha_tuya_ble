@@ -1,237 +1,71 @@
-"""The Tuya BLE integration."""
+"""Cloud credential manager for Tuya BLE devices via the Tuya Sharing SDK."""
+
 from __future__ import annotations
 
 import logging
+from typing import Any
 
-from dataclasses import dataclass
-import json
-from typing import Any, Iterable
-
-from homeassistant.const import CONF_ADDRESS, CONF_DEVICE_ID
+from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
-from homeassistant.components.tuya.const import (
-    CONF_ACCESS_ID,
-    CONF_ACCESS_SECRET,
-    CONF_APP_TYPE,
-    CONF_AUTH_TYPE,
-    CONF_COUNTRY_CODE,
-    CONF_ENDPOINT,
-    CONF_PASSWORD,
-    CONF_USERNAME,
-    DOMAIN as TUYA_DOMAIN,
-    TUYA_RESPONSE_RESULT,
-    TUYA_RESPONSE_SUCCESS,
-)
-from homeassistant.helpers.entity import DeviceInfo, EntityDescription
-from homeassistant.helpers.update_coordinator import (
-    CoordinatorEntity,
-    DataUpdateCoordinator,
-)
-
-from tuya_iot import (
-    TuyaOpenAPI,
-    AuthType,
-    TuyaOpenMQ,
-    TuyaDeviceManager,
-)
-
-from .tuya_ble import (
-    AbstaractTuyaBLEDeviceManager,
-    TuyaBLEDevice,
-    TuyaBLEDeviceCredentials,
-)
+from tuya_sharing import CustomerDevice, Manager, SharingTokenListener
 
 from .const import (
-    CONF_PRODUCT_MODEL,
-    CONF_UUID,
-    CONF_LOCAL_KEY,
-    CONF_CATEGORY,
-    CONF_PRODUCT_ID,
-    CONF_DEVICE_NAME,
-    CONF_PRODUCT_NAME,
-    DOMAIN,
-    TUYA_API_DEVICES_URL,
+    CONF_ENDPOINT,
+    CONF_TERMINAL_ID,
+    CONF_TOKEN_INFO,
+    CONF_USER_CODE,
     TUYA_API_FACTORY_INFO_URL,
+    TUYA_CLIENT_ID,
     TUYA_FACTORY_INFO_MAC,
+)
+from .tuya_ble import (
+    AbstractTuyaBLEDeviceManager,
+    TuyaBLEDeviceCredentials,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 
-@dataclass
-class TuyaCloudCacheItem:
-    api: TuyaOpenAPI | None
-    login: dict[str, Any]
-    credentials: dict[str, dict[str, Any]]
+class TokenRefreshListener(SharingTokenListener):  # type: ignore[misc]
+    """Persist refreshed tokens back to config entry data."""
+
+    def __init__(self, hass: HomeAssistant, data: dict[str, Any]) -> None:
+        self._hass = hass
+        self._data = data
+
+    def update_token(self, token_info: dict[str, Any]) -> None:
+        """Update stored token info when refreshed."""
+        self._data.update(token_info)
+        _LOGGER.debug("Token refreshed for Tuya BLE")
 
 
-CONF_TUYA_LOGIN_KEYS = [
-    CONF_ENDPOINT,
-    CONF_ACCESS_ID,
-    CONF_ACCESS_SECRET,
-    CONF_AUTH_TYPE,
-    CONF_USERNAME,
-    CONF_PASSWORD,
-    CONF_COUNTRY_CODE,
-    CONF_APP_TYPE,
-]
-
-CONF_TUYA_DEVICE_KEYS = [
-    CONF_UUID,
-    CONF_LOCAL_KEY,
-    CONF_DEVICE_ID,
-    CONF_CATEGORY,
-    CONF_PRODUCT_ID,
-    CONF_DEVICE_NAME,
-    CONF_PRODUCT_NAME,
-    CONF_PRODUCT_MODEL,
-]
-
-_cache: dict[str, TuyaCloudCacheItem] = {}
-
-
-class HASSTuyaBLEDeviceManager(AbstaractTuyaBLEDeviceManager):
+class HASSTuyaBLEDeviceManager(AbstractTuyaBLEDeviceManager):
     """Cloud connected manager of the Tuya BLE devices credentials."""
 
     def __init__(self, hass: HomeAssistant, data: dict[str, Any]) -> None:
         assert hass is not None
         self._hass = hass
         self._data = data
+        self._manager: Manager | None = None
 
-    @staticmethod
-    def _is_login_success(response: dict[Any, Any]) -> bool:
-        return bool(response.get(TUYA_RESPONSE_SUCCESS, False))
+    async def initialize(self) -> None:
+        """Create tuya_sharing.Manager from stored token info."""
+        token_info = self._data.get(CONF_TOKEN_INFO, {})
 
-    @staticmethod
-    def _get_cache_key(data: dict[str, Any]) -> str:
-        key_dict = {key: data.get(key) for key in CONF_TUYA_LOGIN_KEYS}
-        return json.dumps(key_dict)
-
-    @staticmethod
-    def _has_login(data: dict[Any, Any]) -> bool:
-        for key in CONF_TUYA_LOGIN_KEYS:
-            if data.get(key) is None:
-                return False
-        return True
-
-    @staticmethod
-    def _has_credentials(data: dict[Any, Any]) -> bool:
-        for key in CONF_TUYA_DEVICE_KEYS:
-            if data.get(key) is None:
-                return False
-        return True
-
-    async def _login(self, data: dict[str, Any], add_to_cache: bool) -> dict[Any, Any]:
-        """Login into Tuya cloud using credentials from data dictionary."""
-        global _cache
-
-        if len(data) == 0:
-            return {}
-
-        api = TuyaOpenAPI(
-            endpoint=data.get(CONF_ENDPOINT, ""),
-            access_id=data.get(CONF_ACCESS_ID, ""),
-            access_secret=data.get(CONF_ACCESS_SECRET, ""),
-            auth_type=data.get(CONF_AUTH_TYPE, ""),
-        )
-        api.set_dev_channel("hass")
-
-        response = await self._hass.async_add_executor_job(
-            api.connect,
-            data.get(CONF_USERNAME, ""),
-            data.get(CONF_PASSWORD, ""),
-            data.get(CONF_COUNTRY_CODE, ""),
-            data.get(CONF_APP_TYPE, ""),
+        self._manager = Manager(
+            client_id=TUYA_CLIENT_ID,
+            user_code=self._data.get(CONF_USER_CODE, ""),
+            terminal_id=self._data.get(CONF_TERMINAL_ID, ""),
+            end_point=self._data.get(CONF_ENDPOINT, ""),
+            token_response=token_info,
+            listener=TokenRefreshListener(self._hass, self._data),
         )
 
-        if self._is_login_success(response):
-            _LOGGER.debug("Successful login for %s", data[CONF_USERNAME])
-            if add_to_cache:
-                auth_type = data[CONF_AUTH_TYPE]
-                if type(auth_type) is AuthType:
-                    data[CONF_AUTH_TYPE] = auth_type.value
-                cache_key = self._get_cache_key(data)
-                cache_item = _cache.get(cache_key)
-                if cache_item:
-                    cache_item.api = api
-                    cache_item.login = data
-                else:
-                    _cache[cache_key] = TuyaCloudCacheItem(api, data, {})
-
-        return response
-
-    def _check_login(self) -> bool:
-        cache_key = self._get_cache_key(self._data)
-        return _cache.get(cache_key) != None
-
-    async def login(self, add_to_cache: bool = False) -> dict[Any, Any]:
-        return await self._login(self._data, add_to_cache)
-
-    async def _fill_cache_item(self, item: TuyaCloudCacheItem) -> None:
-        devices_response = await self._hass.async_add_executor_job(
-            item.api.get,
-            TUYA_API_DEVICES_URL % (item.api.token_info.uid),
+        await self._hass.async_add_executor_job(self._manager.update_device_cache)
+        _LOGGER.debug(
+            "Tuya BLE manager initialized, found %d devices",
+            len(self._manager.device_map),
         )
-        if devices_response.get(TUYA_RESPONSE_SUCCESS):
-            devices = devices_response.get(TUYA_RESPONSE_RESULT)
-            if isinstance(devices, Iterable):
-                for device in devices:
-                    fi_response = await self._hass.async_add_executor_job(
-                        item.api.get,
-                        TUYA_API_FACTORY_INFO_URL % (device.get("id")),
-                    )
-                    fi_response_result = fi_response.get(TUYA_RESPONSE_RESULT)
-                    if fi_response_result and len(fi_response_result) > 0:
-                        factory_info = fi_response_result[0]
-                        if factory_info and (TUYA_FACTORY_INFO_MAC in factory_info):
-                            mac = ":".join(
-                                factory_info[TUYA_FACTORY_INFO_MAC][i : i + 2]
-                                for i in range(0, 12, 2)
-                            ).upper()
-                            item.credentials[mac] = {
-                                CONF_ADDRESS: mac,
-                                CONF_UUID: device.get("uuid"),
-                                CONF_LOCAL_KEY: device.get("local_key"),
-                                CONF_DEVICE_ID: device.get("id"),
-                                CONF_CATEGORY: device.get("category"),
-                                CONF_PRODUCT_ID: device.get("product_id"),
-                                CONF_DEVICE_NAME: device.get("name"),
-                                CONF_PRODUCT_MODEL: device.get("model"),
-                                CONF_PRODUCT_NAME: device.get("product_name"),
-                            }
-
-    async def build_cache(self) -> None:
-        global _cache
-        data = {}
-        tuya_config_entries = self._hass.config_entries.async_entries(TUYA_DOMAIN)
-        for config_entry in tuya_config_entries:
-            data.clear()
-            data.update(config_entry.data)
-            key = self._get_cache_key(data)
-            item = _cache.get(key)
-            if item is None or len(item.credentials) == 0:
-                if self._is_login_success(await self._login(data, True)):
-                    item = _cache.get(key)
-                    if item and len(item.credentials) == 0:
-                        await self._fill_cache_item(item)
-
-        ble_config_entries = self._hass.config_entries.async_entries(DOMAIN)
-        for config_entry in ble_config_entries:
-            data.clear()
-            data.update(config_entry.options)
-            key = self._get_cache_key(data)
-            item = _cache.get(key)
-            if item is None or len(item.credentials) == 0:
-                if self._is_login_success(await self._login(data, True)):
-                    item = _cache.get(key)
-                    if item and len(item.credentials) == 0:
-                        await self._fill_cache_item(item)
-
-    def get_login_from_cache(self) -> None:
-        global _cache
-        for cache_item in _cache.values():
-            self._data.update(cache_item.login)
-            break
 
     async def get_device_credentials(
         self,
@@ -239,53 +73,102 @@ class HASSTuyaBLEDeviceManager(AbstaractTuyaBLEDeviceManager):
         force_update: bool = False,
         save_data: bool = False,
     ) -> TuyaBLEDeviceCredentials | None:
-        """Get credentials of the Tuya BLE device."""
-        global _cache
-        item: TuyaCloudCacheItem | None = None
-        credentials: dict[str, any] | None = None
-        result: TuyaBLEDeviceCredentials | None = None
+        """Get credentials of the Tuya BLE device by MAC address."""
+        if self._manager is None:
+            await self.initialize()
 
-        if not force_update and self._has_credentials(self._data):
-            credentials = self._data.copy()
-        else:
-            cache_key: str | None = None
-            if self._has_login(self._data):
-                cache_key = self._get_cache_key(self._data)
-            else:
-                for key in _cache.keys():
-                    if _cache[key].credentials.get(address) is not None:
-                        cache_key = key
-                        break
-            if cache_key:
-                item = _cache.get(cache_key)
-            if item is None or force_update:
-                if self._is_login_success(await self.login(True)):
-                    item = _cache.get(cache_key)
-                    if item:
-                        await self._fill_cache_item(item)
+        assert self._manager is not None
 
-            if item:
-                credentials = item.credentials.get(address)
+        if force_update:
+            await self._hass.async_add_executor_job(self._manager.update_device_cache)
 
-        if credentials:
-            result = TuyaBLEDeviceCredentials(
-                credentials.get(CONF_UUID, ""),
-                credentials.get(CONF_LOCAL_KEY, ""),
-                credentials.get(CONF_DEVICE_ID, ""),
-                credentials.get(CONF_CATEGORY, ""),
-                credentials.get(CONF_PRODUCT_ID, ""),
-                credentials.get(CONF_DEVICE_NAME, ""),
-                credentials.get(CONF_PRODUCT_MODEL, ""),
-                credentials.get(CONF_PRODUCT_NAME, ""),
-            )
-            _LOGGER.debug("Retrieved: %s", result)
-            if save_data:
-                if item:
-                    self._data.update(item.login)
-                self._data.update(credentials)
+        for device in self._manager.device_map.values():
+            if result := await self._fetch_device_credentials(device, address):
+                _LOGGER.debug("Retrieved credentials for %s", address)
+                if save_data:
+                    self._data[CONF_ADDRESS] = address
+                return result
 
-        return result
+        _LOGGER.warning("No Tuya credentials found for MAC %s", address)
+        return None
+
+    async def _fetch_device_credentials(
+        self,
+        device: CustomerDevice,
+        address: str,
+    ) -> TuyaBLEDeviceCredentials | None:
+        """Build a device's credentials if its factory MAC matches the address."""
+        assert self._manager is not None
+
+        response = await self._hass.async_add_executor_job(
+            self._manager.customer_api.get,
+            TUYA_API_FACTORY_INFO_URL % device.id,
+        )
+        result = response.get("result") if response else None
+        if not result:
+            return None
+
+        factory_info = result[0]
+        if TUYA_FACTORY_INFO_MAC not in factory_info:
+            return None
+
+        if _normalize_mac(factory_info[TUYA_FACTORY_INFO_MAC]) != address:
+            return None
+
+        return _build_credentials(device)
 
     @property
     def data(self) -> dict[str, Any]:
+        """Return the stored configuration data."""
         return self._data
+
+
+def _normalize_mac(mac: str) -> str:
+    """Normalize a MAC address to uppercase, colon-separated form."""
+    return ":".join(mac[i : i + 2] for i in range(0, 12, 2)).upper()
+
+
+def _extract_functions(device: CustomerDevice) -> list[dict[str, str]]:
+    """Extract function specifications from a device."""
+    if not device.function:
+        return []
+    return [
+        {
+            "code": f.code,
+            "desc": f.desc,
+            "name": f.name,
+            "type": f.type,
+            "values": f.values,
+        }
+        for f in device.function.values()
+    ]
+
+
+def _extract_status_range(device: CustomerDevice) -> list[dict[str, str]]:
+    """Extract status range specifications from a device."""
+    if not device.status_range:
+        return []
+    return [
+        {
+            "code": s.code,
+            "type": s.type,
+            "values": s.values,
+        }
+        for s in device.status_range.values()
+    ]
+
+
+def _build_credentials(device: CustomerDevice) -> TuyaBLEDeviceCredentials:
+    """Build Tuya BLE credentials from a cloud device."""
+    return TuyaBLEDeviceCredentials(
+        uuid=device.uuid,
+        local_key=device.local_key,
+        device_id=device.id,
+        category=device.category,
+        product_id=device.product_id,
+        device_name=device.name,
+        product_model=None,
+        product_name=device.product_name,
+        functions=_extract_functions(device),
+        status_range=_extract_status_range(device),
+    )

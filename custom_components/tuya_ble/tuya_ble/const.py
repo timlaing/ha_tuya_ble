@@ -1,3 +1,5 @@
+"""Constants for the Tuya BLE protocol."""
+
 from __future__ import annotations
 
 from enum import Enum
@@ -17,6 +19,8 @@ RESPONSE_WAIT_TIMEOUT = 60
 
 
 class TuyaBLECode(Enum):
+    """Function codes used in the Tuya BLE protocol."""
+
     FUN_SENDER_DEVICE_INFO = 0x0000
     FUN_SENDER_PAIR = 0x0001
     FUN_SENDER_DPS = 0x0002
@@ -46,6 +50,8 @@ class TuyaBLECode(Enum):
 
 
 class TuyaBLEDataPointType(Enum):
+    """Data types supported by Tuya BLE data points."""
+
     DT_RAW = 0
     DT_BOOL = 1
     DT_VALUE = 2

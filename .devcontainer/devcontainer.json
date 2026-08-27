@@ -1,0 +1,63 @@
+{
+  "containerEnv": {
+    "WORKSPACE_DIRECTORY": "${containerWorkspaceFolder}",
+    "DEVCONTAINER": "1",
+    "HTTPS_PROXY": "http://192.168.150.149:8118",
+    "HTTP_PROXY": "http://192.168.150.149:8118"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "charliermarsh.ruff",
+        "donjayamanne.git-extension-pack",
+        "donjayamanne.python-extension-pack",
+        "esbenp.prettier-vscode",
+        "foxundermoon.shell-format",
+        "github.vscode-github-actions",
+        "ms-python.mypy-type-checker",
+        "ms-python.pylint",
+        "ms-python.python",
+        "redhat.vscode-yaml",
+        "ryanluker.vscode-coverage-gutters",
+        "streetsidesoftware.code-spell-checker",
+        "SonarSource.sonarlint-vscode",
+        "sst-dev.opencode"
+      ],
+      "settings": {
+        "sonarlint.ls.javaHome": "/usr/local/sdkman/candidates/java/current",
+        "editor.tabSize": 4,
+        "terminal.integrated.profiles.linux": {
+          "zsh": {
+            "path": "/usr/bin/zsh",
+            "args": ["-l"]
+          }
+        },
+        "terminal.integrated.defaultProfile.linux": "zsh"
+      }
+    }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/java:1": {
+      "jdkDistro": "open",
+      "gradleVersion": "latest",
+      "mavenVersion": "latest",
+      "antVersion": "latest",
+      "groovyVersion": "latest"
+    },
+    "ghcr.io/devcontainers/features/node:2": {
+      "version": "lts",
+      "pnpmVersion": "latest",
+      "nvmVersion": "latest"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:4": {
+      "moby": false
+    },
+    "ghcr.io/dhoeric/features/act": {},
+    "ghcr.io/devcontainers-extra/features/uv": {}
+  },
+  "image": "mcr.microsoft.com/devcontainers/python:3.14",
+  "name": "ha_tuya_ble dev",
+  "postCreateCommand": "git config --global --add safe.directory ${containerWorkspaceFolder} && scripts/setup.sh",
+  "postStartCommand": "scripts/startup.sh"
+}

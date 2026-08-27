@@ -1,10 +1,9 @@
-"""The Tuya BLE integration."""
+"""Binary sensor platform for Tuya BLE devices."""
+
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-
-import logging
-from typing import Callable
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -12,18 +11,15 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
     DOMAIN,
 )
-from .devices import TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
+from .devices import TuyaBLECoordinator, TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
-
-_LOGGER = logging.getLogger(__name__)
 
 SIGNAL_STRENGTH_DP_ID = -1
 
@@ -35,18 +31,20 @@ TuyaBLEBinarySensorIsAvailable = (
 
 @dataclass
 class TuyaBLEBinarySensorMapping:
+    """Mapping of a Tuya BLE data point to a Home Assistant binary sensor entity."""
+
     dp_id: int
     description: BinarySensorEntityDescription
     force_add: bool = True
     dp_type: TuyaBLEDataPointType | None = None
     getter: Callable[[TuyaBLEBinarySensor], None] | None = None
-    #coefficient: float = 1.0
-    #icons: list[str] | None = None
     is_available: TuyaBLEBinarySensorIsAvailable = None
 
 
 @dataclass
 class TuyaBLECategoryBinarySensorMapping:
+    """Container for product-specific and default binary sensor mappings."""
+
     products: dict[str, list[TuyaBLEBinarySensorMapping]] | None = None
     mapping: list[TuyaBLEBinarySensorMapping] | None = None
 
@@ -59,7 +57,6 @@ mapping: dict[str, TuyaBLECategoryBinarySensorMapping] = {
                     dp_id=105,
                     description=BinarySensorEntityDescription(
                         key="battery",
-                        #icon="mdi:battery-alert",
                         device_class=BinarySensorDeviceClass.BATTERY,
                         entity_category=EntityCategory.DIAGNOSTIC,
                     ),
@@ -71,6 +68,7 @@ mapping: dict[str, TuyaBLECategoryBinarySensorMapping] = {
 
 
 def get_mapping_by_device(device: TuyaBLEDevice) -> list[TuyaBLEBinarySensorMapping]:
+    """Get the binary sensor mappings for a device."""
     category = mapping.get(device.category)
     if category is not None and category.products is not None:
         product_mapping = category.products.get(device.product_id)
@@ -78,10 +76,8 @@ def get_mapping_by_device(device: TuyaBLEDevice) -> list[TuyaBLEBinarySensorMapp
             return product_mapping
         if category.mapping is not None:
             return category.mapping
-        else:
-            return []
-    else:
         return []
+    return []
 
 
 class TuyaBLEBinarySensor(TuyaBLEEntity, BinarySensorEntity):
@@ -90,69 +86,48 @@ class TuyaBLEBinarySensor(TuyaBLEEntity, BinarySensorEntity):
     def __init__(
         self,
         hass: HomeAssistant,
-        coordinator: DataUpdateCoordinator,
+        coordinator: TuyaBLECoordinator,
         device: TuyaBLEDevice,
         product: TuyaBLEProductInfo,
-        mapping: TuyaBLEBinarySensorMapping,
+        binary_sensor_mapping: TuyaBLEBinarySensorMapping,
     ) -> None:
-        super().__init__(hass, coordinator, device, product, mapping.description)
-        self._mapping = mapping
+        super().__init__(
+            hass, coordinator, device, product, binary_sensor_mapping.description
+        )
+        self._mapping = binary_sensor_mapping
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
+        """Read the mapped datapoint and update the binary state."""
         if self._mapping.getter is not None:
             self._mapping.getter(self)
         else:
-            datapoint = self._device.datapoints[self._mapping.dp_id]
+            datapoint = self.device.datapoints[self._mapping.dp_id]
             if datapoint:
                 self._attr_is_on = bool(datapoint.value)
-                '''
-                if datapoint.type == TuyaBLEDataPointType.DT_ENUM:
-                    if self.entity_description.options is not None:
-                        if datapoint.value >= 0 and datapoint.value < len(
-                            self.entity_description.options
-                        ):
-                            self._attr_native_value = self.entity_description.options[
-                                datapoint.value
-                            ]
-                        else:
-                            self._attr_native_value = datapoint.value
-                    if self._mapping.icons is not None:
-                        if datapoint.value >= 0 and datapoint.value < len(
-                            self._mapping.icons
-                        ):
-                            self._attr_icon = self._mapping.icons[datapoint.value]
-                elif datapoint.type == TuyaBLEDataPointType.DT_VALUE:
-                    self._attr_native_value = (
-                        datapoint.value / self._mapping.coefficient
-                    )
-                else:
-                    self._attr_native_value = datapoint.value
-                '''
         self.async_write_ha_state()
 
     @property
     def available(self) -> bool:
-        """Return if entity is available."""
+        """True when coordinator is connected and the availability predicate passes."""
         result = super().available
-        if result and self._mapping.is_available:
+        if result and self._mapping.is_available is not None:
             result = self._mapping.is_available(self, self._product)
         return result
 
 
-async def async_setup_entry(
+async def async_setup_entry(  # noqa: S7503
     hass: HomeAssistant,
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the Tuya BLE sensors."""
+    """Set up Tuya BLE binary sensor entities for the config entry."""
     data: TuyaBLEData = hass.data[DOMAIN][entry.entry_id]
     mappings = get_mapping_by_device(data.device)
     entities: list[TuyaBLEBinarySensor] = []
-    for mapping in mappings:
-        if mapping.force_add or data.device.datapoints.has_id(
-            mapping.dp_id, mapping.dp_type
+    for binary_sensor_mapping in mappings:
+        if binary_sensor_mapping.force_add or data.device.datapoints.has_id(
+            binary_sensor_mapping.dp_id, binary_sensor_mapping.dp_type
         ):
             entities.append(
                 TuyaBLEBinarySensor(
@@ -160,7 +135,7 @@ async def async_setup_entry(
                     data.coordinator,
                     data.device,
                     data.product,
-                    mapping,
+                    binary_sensor_mapping,
                 )
             )
     async_add_entities(entities)
