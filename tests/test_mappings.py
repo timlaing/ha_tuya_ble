@@ -212,7 +212,7 @@ class TestTextHelpers:
         value = b"\x00\x01\x02" + b"\x02" + b"\x05\x00\x07" + b"\x0a\x13\x88"
         product = make_product(program=121)
         self_ = make_self([make_dp(value=value, dp_id=121)])
-        result = text.get_fingerbot_program(self_, product)
+        result = fingerbot.get_fingerbot_program(self_, product)
         assert result is not None
         assert result.startswith("5/7")
 
@@ -220,21 +220,21 @@ class TestTextHelpers:
         """Verify get_fingerbot_program returns None when no datapoint exists."""
         product = make_product(program=121)
         self_ = make_self([make_dp(value=5, dp_id=121)])
-        assert text.get_fingerbot_program(self_, product) is None
+        assert fingerbot.get_fingerbot_program(self_, product) is None
 
     def test_format_program_step(self) -> None:
         """Verify a single program step is formatted correctly."""
         data = b"\x00\x00\x00\x01" + b"\x05\x13\x88"
-        assert text._format_program_step(data, 0) == "5/5000"
+        assert fingerbot._format_program_step(data, 0) == "5/5000"
         data2 = b"\x00\x00\x00\x01" + b"\x05\x00\x00"
-        assert text._format_program_step(data2, 0) == "5"
+        assert fingerbot._format_program_step(data2, 0) == "5"
 
     def test_set_fingerbot_program(self) -> None:
         """Verify setting a fingerbot program records the expected call."""
         value = b"\x00\x01\x02" + b"\x01" + b"\x05\x13\x88"
         product = make_product(program=121)
         self_ = make_self([make_dp(value=value, dp_id=121)])
-        text.set_fingerbot_program(self_, product, "5/5000;10")
+        fingerbot.set_fingerbot_program(self_, product, "5/5000;10")
 
 
 class TestNumberHelpers:

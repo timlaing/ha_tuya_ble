@@ -70,8 +70,12 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
     ),
     "ms": TuyaBLECategoryInfo(
         products={
-            **dict.fromkeys(
-                [
+            **{
+                k: TuyaBLEProductInfo(  # device product_id
+                    name="Smart Lock",
+                    lock=1,
+                )
+                for k in [
                     "ludzroix",
                     "isk2p555",
                     "gumrixyt",
@@ -79,12 +83,8 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
                     "sidhzylo",
                     "mqc2hevy",
                     "a6nttc41",
-                ],
-                TuyaBLEProductInfo(  # device product_id
-                    name="Smart Lock",
-                    lock=1,
-                ),
-            ),
+                ]
+            },
             "okkyfgfs": TuyaBLEProductInfo(
                 name="TEKXDD Fingerprint Smart Lock",
                 lock=1,
@@ -140,17 +140,8 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
                     reverse_positions=4,
                 ),
             ),
-            **dict.fromkeys(
-                [
-                    "blliqpsj",
-                    "ndvkgsrm",
-                    "yiihr7zh",
-                    "neq16kgd",
-                    "6jcvqwh0",
-                    "riecov42",
-                    "h8kdwywx",
-                ],  # device product_ids
-                TuyaBLEProductInfo(
+            **{
+                k: TuyaBLEProductInfo(
                     name="Fingerbot Plus",
                     fingerbot=TuyaBLEFingerbotInfo(
                         switch=2,
@@ -162,19 +153,19 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
                         manual_control=17,
                         program=121,
                     ),
-                ),
-            ),
-            **dict.fromkeys(
-                [
-                    "ltak7e1p",
-                    "y6kttvd6",
-                    "yrnk7mnn",
-                    "nvr2rocq",
-                    "bnt7wajf",
-                    "rvdceqjh",
-                    "5xhbk964",
-                ],  # device product_ids
-                TuyaBLEProductInfo(
+                )
+                for k in [
+                    "blliqpsj",
+                    "ndvkgsrm",
+                    "yiihr7zh",
+                    "neq16kgd",
+                    "6jcvqwh0",
+                    "riecov42",
+                    "h8kdwywx",
+                ]  # device product_ids
+            },
+            **{
+                k: TuyaBLEProductInfo(
                     name="Fingerbot",
                     fingerbot=TuyaBLEFingerbotInfo(
                         switch=2,
@@ -185,8 +176,17 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
                         reverse_positions=11,
                         program=121,
                     ),
-                ),
-            ),
+                )
+                for k in [
+                    "ltak7e1p",
+                    "y6kttvd6",
+                    "yrnk7mnn",
+                    "nvr2rocq",
+                    "bnt7wajf",
+                    "rvdceqjh",
+                    "5xhbk964",
+                ]  # device product_ids
+            },
             "yn4x5fa7": TuyaBLEProductInfo(
                 name="Nedis SmartLife Finger Robot",
                 fingerbot=TuyaBLEFingerbotInfo(
@@ -202,9 +202,8 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
     ),
     "kg": TuyaBLECategoryInfo(
         products={
-            **dict.fromkeys(
-                ["mknd4lci", "riecov42", "bs3ubslo"],  # device product_ids
-                TuyaBLEProductInfo(
+            **{
+                k: TuyaBLEProductInfo(
                     name="Fingerbot Plus",
                     fingerbot=TuyaBLEFingerbotInfo(
                         switch=1,
@@ -216,8 +215,9 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
                         manual_control=107,
                         program=109,
                     ),
-                ),
-            ),
+                )
+                for k in ["mknd4lci", "riecov42", "bs3ubslo"]  # device product_ids
+            },
             "4ctjfrzq": TuyaBLEProductInfo(
                 name="Switch Robot",
             ),
@@ -225,16 +225,16 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
     ),
     "wk": TuyaBLECategoryInfo(
         products={
-            **dict.fromkeys(
-                [
+            **{
+                k: TuyaBLEProductInfo(
+                    name="Thermostatic Radiator Valve",
+                )
+                for k in [
                     "drlajpqc",
                     "nhj2j7su",
                     "zmachryv",
-                ],  # device product_id
-                TuyaBLEProductInfo(
-                    name="Thermostatic Radiator Valve",
-                ),
-            ),
+                ]  # device product_id
+            },
         },
     ),
     "wsdcg": TuyaBLECategoryInfo(
@@ -265,24 +265,20 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
                     use_time=15,
                 ),
             ),
-            **dict.fromkeys(
-                [
+            **{
+                k: TuyaBLEProductInfo(
+                    name="Irrigation computer",
+                )
+                for k in [
                     "6pahkcau",
                     "hfgdqhho",
                     "qycalacn",
                     "fnlw6npo",
                     "jjqi2syk",
-                ],  # device product_ids
-                TuyaBLEProductInfo(
-                    name="Irrigation computer",
-                ),
-            ),
-            **dict.fromkeys(
-                [
-                    "svhikeyq",
-                    "0axr5s0b",
-                ],  # device product_id
-                TuyaBLEProductInfo(
+                ]  # device product_ids
+            },
+            **{
+                k: TuyaBLEProductInfo(
                     name="Valve controller",
                     watervalve=TuyaBLEWaterValveInfo(
                         switch=1,
@@ -291,15 +287,14 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
                         smart_weather=13,
                         use_time=15,
                     ),
-                ),
-            ),
-            **dict.fromkeys(
-                [
-                    "nxquc5lb",
-                    "46zia2nz",
-                    "1fcnd8xk",
-                ],
-                TuyaBLEProductInfo(
+                )
+                for k in [
+                    "svhikeyq",
+                    "0axr5s0b",
+                ]  # device product_id
+            },
+            **{
+                k: TuyaBLEProductInfo(
                     name="Water valve controller",
                     watervalve=TuyaBLEWaterValveInfo(
                         switch=1,
@@ -308,8 +303,13 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
                         smart_weather=13,
                         use_time=9,
                     ),
-                ),
-            ),
+                )
+                for k in [
+                    "nxquc5lb",
+                    "46zia2nz",
+                    "1fcnd8xk",
+                ]
+            },
             "ldcdnigc": TuyaBLEProductInfo(
                 name="ZX-7378 Smart Irrigation Controller",
             ),
@@ -321,12 +321,12 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
     ),
     "ggq": TuyaBLECategoryInfo(
         products={
-            **dict.fromkeys(
-                ["6pahkcau", "hfgdqhho"],
-                TuyaBLEProductInfo(
+            **{
+                k: TuyaBLEProductInfo(
                     name="Irrigation computer",
-                ),
-            ),
+                )
+                for k in ["6pahkcau", "hfgdqhho"]
+            },
         },
     ),
     "dd": TuyaBLECategoryInfo(
@@ -351,9 +351,10 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
     ),
     "cl": TuyaBLECategoryInfo(
         products={
-            **dict.fromkeys(
-                ["4pbr8eig", "vlwf3ud6"], TuyaBLEProductInfo(name="Blind Controller")
-            ),
+            **{
+                k: TuyaBLEProductInfo(name="Blind Controller")
+                for k in ["4pbr8eig", "vlwf3ud6"]
+            },
             "kcy0x4pi": TuyaBLEProductInfo(name="Curtain Controller"),
             "dy4dh1q0": TuyaBLEProductInfo(name="AOK AM24 Venetian Blinds Motor"),
         },

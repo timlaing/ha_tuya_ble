@@ -5,8 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import MagicMock, patch
 
 from homeassistant.const import CONF_ADDRESS
+from homeassistant.exceptions import ConfigEntryNotReady
+import pytest
 
 from custom_components.tuya_ble.cloud import (
     HASSTuyaBLEDeviceManager,
@@ -188,3 +191,72 @@ class TestGetDeviceCredentials:
             "11:22:33:44:55:66", force_update=True
         )
         assert result is not None
+
+
+class TestManagerInit:
+    """Tests for HASSTuyaBLEDeviceManager construction and initialize()."""
+
+    def test_none_hass_raises(self) -> None:
+        """Assert that a None hass is rejected at construction time."""
+        with pytest.raises(ValueError):
+            HASSTuyaBLEDeviceManager(hass=None, data={})  # type: ignore[arg-type]
+
+    async def test_initialize_builds_manager(self) -> None:
+        """Assert that initialize() constructs a Manager and refreshes the cache."""
+        hass = FakeHass()
+        data: dict[str, Any] = {
+            "token_info": {"t": 1},
+            "user_code": "uc",
+            "terminal_id": "tid",
+            "endpoint": "ep",
+        }
+        mgr = HASSTuyaBLEDeviceManager(hass, data)  # type: ignore[arg-type]
+        fake_manager = MagicMock()
+        fake_manager.update_device_cache = MagicMock()
+        fake_manager.device_map = {}
+        with patch(
+            "custom_components.tuya_ble.cloud.Manager", return_value=fake_manager
+        ) as m:
+            await mgr.initialize()
+        m.assert_called_once()
+        assert mgr._manager is fake_manager  # pylint: disable=protected-access
+        fake_manager.update_device_cache.assert_called_once()
+
+    async def test_get_device_credentials_lazy_init(self) -> None:
+        """Assert that get_device_credentials initializes when needed."""
+        hass = FakeHass()
+        mgr = HASSTuyaBLEDeviceManager(hass, {})  # type: ignore[arg-type]
+        fake_manager = MagicMock()
+        fake_manager.update_device_cache = MagicMock()
+        fake_manager.device_map = {}
+        with patch(
+            "custom_components.tuya_ble.cloud.Manager", return_value=fake_manager
+        ):
+            result = await mgr.get_device_credentials("AA:BB:CC:DD:EE:FF")
+        assert result is None
+        assert mgr._manager is fake_manager  # pylint: disable=protected-access
+        fake_manager.update_device_cache.assert_called_once()
+
+    async def test_get_device_credentials_no_manager_raises(self) -> None:
+        """Assert that a failed initialization raises ConfigEntryNotReady."""
+        hass = FakeHass()
+        mgr = HASSTuyaBLEDeviceManager(hass, {})  # type: ignore[arg-type]
+
+        async def noop_initialize() -> None:
+            """Leave _manager as None."""
+
+        with (
+            patch.object(mgr, "initialize", new=noop_initialize),
+            pytest.raises(ConfigEntryNotReady),
+        ):
+            await mgr.get_device_credentials("AA:BB:CC:DD:EE:FF")
+
+    async def test_fetch_device_credentials_no_manager_raises(self) -> None:
+        """Assert that _fetch_device_credentials requires a manager."""
+        hass = FakeHass()
+        mgr = HASSTuyaBLEDeviceManager(hass, {})  # type: ignore[arg-type]
+        device = make_device()
+        with pytest.raises(ConfigEntryNotReady):
+            await mgr._fetch_device_credentials(  # pylint: disable=protected-access
+                device, "AA:BB:CC:DD:EE:FF"
+            )

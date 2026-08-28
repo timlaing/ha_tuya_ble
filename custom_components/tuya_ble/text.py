@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from struct import pack, unpack
 
 from homeassistant.components.text import (
     TextEntity,
@@ -19,7 +18,11 @@ from .const import (
     DOMAIN,
 )
 from .devices import TuyaBLECoordinator, TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
-from .fingerbot import is_fingerbot_in_program_mode
+from .fingerbot import (
+    get_fingerbot_program,
+    is_fingerbot_in_program_mode,
+    set_fingerbot_program,
+)
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
 SIGNAL_STRENGTH_DP_ID = -1
@@ -31,55 +34,6 @@ TuyaBLETextIsAvailable = Callable[["TuyaBLEText", TuyaBLEProductInfo], bool] | N
 
 
 TuyaBLETextSetter = Callable[["TuyaBLEText", TuyaBLEProductInfo, str], None] | None
-
-
-def get_fingerbot_program(
-    self: TuyaBLEText,
-    product: TuyaBLEProductInfo,
-) -> str | None:
-    """Get the fingerbot program as a formatted string."""
-    result: str | None = None
-    if product.fingerbot and product.fingerbot.program:
-        datapoint = self.device.datapoints[product.fingerbot.program]
-        if datapoint and isinstance(datapoint.value, bytes):
-            result = ""
-            step_count: int = datapoint.value[3]
-            for step in range(step_count):
-                result += _format_program_step(datapoint.value, step)
-    return result
-
-
-def _format_program_step(program_bytes: bytes, step: int) -> str:
-    """Format a single program step into its string representation."""
-    step_pos = 4 + step * 3
-    step_data = program_bytes[step_pos : step_pos + 3]
-    position, delay = unpack(">BH", step_data)
-    delay = min(delay, 9999)
-    return (
-        (";" if step > 0 else "")
-        + str(position)
-        + (("/" + str(delay)) if delay > 0 else "")
-    )
-
-
-def set_fingerbot_program(
-    self: TuyaBLEText,
-    product: TuyaBLEProductInfo,
-    value: str,
-) -> None:
-    """Set the fingerbot program from a formatted string."""
-    if product.fingerbot and product.fingerbot.program:
-        datapoint = self.device.datapoints[product.fingerbot.program]
-        if datapoint and isinstance(datapoint.value, bytes):
-            new_value = bytearray(datapoint.value[0:3])
-            steps = value.split(";")
-            new_value += int.to_bytes(len(steps), 1, "big")
-            for step in steps:
-                step_values = step.split("/")
-                position = int(step_values[0])
-                delay = int(step_values[1]) if len(step_values) > 1 else 0
-                new_value += pack(">BH", position, delay)
-            self.hass.create_task(datapoint.set_value(bytes(new_value)))
 
 
 @dataclass

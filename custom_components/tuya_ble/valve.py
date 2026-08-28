@@ -189,8 +189,7 @@ class TuyaBLEValve(TuyaBLEEntity, ValveEntity):
             TuyaBLEDataPointType.DT_BOOL,
             True,
         )
-        if datapoint:
-            self.hass.create_task(datapoint.set_value(True))
+        self.hass.create_task(datapoint.set_value(True))
 
     def close_valve(self) -> None:
         """Close the valve."""
@@ -203,8 +202,7 @@ class TuyaBLEValve(TuyaBLEEntity, ValveEntity):
             TuyaBLEDataPointType.DT_BOOL,
             False,
         )
-        if datapoint:
-            self.hass.create_task(datapoint.set_value(False))
+        self.hass.create_task(datapoint.set_value(False))
 
     def stop_valve(self) -> None:
         """Stop the valve (close it)."""

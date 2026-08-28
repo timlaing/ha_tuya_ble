@@ -13,7 +13,11 @@ from custom_components.tuya_ble.devices import (
     TuyaBLEFingerbotInfo,
     TuyaBLEProductInfo,
 )
-from custom_components.tuya_ble.fingerbot import is_fingerbot_in_program_mode
+from custom_components.tuya_ble.fingerbot import (
+    get_fingerbot_program,
+    is_fingerbot_in_program_mode,
+    set_fingerbot_program,
+)
 from custom_components.tuya_ble.text import TuyaBLEText
 from custom_components.tuya_ble.tuya_ble import (
     TuyaBLEDataPointType,
@@ -165,7 +169,7 @@ async def test_get_fingerbot_program_no_fingerbot(hass: HomeAssistant) -> None:
         device,
         coordinator,
         product,
-        getter=text.get_fingerbot_program,
+        getter=get_fingerbot_program,
     )
     assert entity.native_value is None
 
@@ -178,7 +182,7 @@ async def test_set_fingerbot_program_no_fingerbot(hass: HomeAssistant) -> None:
         device,
         coordinator,
         product,
-        setter=text.set_fingerbot_program,
+        setter=set_fingerbot_program,
     )
     entity.set_value("50;100/5")
 
@@ -201,7 +205,7 @@ async def test_get_fingerbot_program_no_datapoint(hass: HomeAssistant) -> None:
         device,
         coordinator,
         product,
-        getter=text.get_fingerbot_program,
+        getter=get_fingerbot_program,
     )
     assert entity.native_value is None
 
@@ -224,6 +228,6 @@ async def test_set_fingerbot_program_no_datapoint(hass: HomeAssistant) -> None:
         device,
         coordinator,
         product,
-        setter=text.set_fingerbot_program,
+        setter=set_fingerbot_program,
     )
     entity.set_value("50;100/5")

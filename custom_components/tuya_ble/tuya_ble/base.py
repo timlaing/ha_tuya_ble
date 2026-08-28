@@ -21,11 +21,11 @@ from bleak_retry_connector import (
 )
 from Crypto.Cipher import AES
 
-from ..const import DPType
 from .const import (
     CHARACTERISTIC_NOTIFY,
     MANUFACTURER_DATA_ID,
     SERVICE_UUID,
+    DPType,
     TuyaBLECode,
     TuyaBLEDataPointType,
 )

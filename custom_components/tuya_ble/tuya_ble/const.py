@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import Enum, StrEnum
 
 GATT_MTU = 20
 
@@ -16,6 +16,17 @@ SERVICE_UUID = "0000a201-0000-1000-8000-00805f9b34fb"
 MANUFACTURER_DATA_ID = 0x07D0
 
 RESPONSE_WAIT_TIMEOUT = 60
+
+
+class DPType(StrEnum):
+    """Data point types (cloud spec)."""
+
+    BOOLEAN = "Boolean"
+    ENUM = "Enum"
+    INTEGER = "Integer"
+    JSON = "Json"
+    RAW = "Raw"
+    STRING = "String"
 
 
 class TuyaBLECode(Enum):
