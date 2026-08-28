@@ -338,12 +338,12 @@ class TuyaBLEClimate(TuyaBLEEntity, ClimateEntity):
 
         keys = list(self._mapping.preset_mode_dp_ids)
         values = list(self._mapping.preset_mode_dp_ids.values())
+        datapoint: TuyaBLEDataPoint
 
         if all(values[0] == elem for elem in values) and keys[0] == PRESET_AWAY:
             # TRVs with only Away and None modes can be set with a single
             # datapoint and share a single DP ID
             bool_value = preset_mode == PRESET_AWAY
-            datapoint: TuyaBLEDataPoint | None
             datapoint = self.device.datapoints.get_or_create(
                 values[0],
                 TuyaBLEDataPointType.DT_BOOL,
@@ -351,7 +351,6 @@ class TuyaBLEClimate(TuyaBLEEntity, ClimateEntity):
             )
         else:
             bool_value = False
-            datapoint = None
             for dp_preset_mode, dp_id in self._mapping.preset_mode_dp_ids.items():
                 bool_value = dp_preset_mode == preset_mode
                 datapoint = self.device.datapoints.get_or_create(
@@ -359,8 +358,9 @@ class TuyaBLEClimate(TuyaBLEEntity, ClimateEntity):
                     TuyaBLEDataPointType.DT_BOOL,
                     bool_value,
                 )
+
         self.hass.create_task(
-            datapoint.set_value(bool_value),  # type: ignore[union-attr]
+            datapoint.set_value(bool_value),
         )
 
     def set_temperature(self, **kwargs: Any) -> None:

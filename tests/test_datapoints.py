@@ -9,7 +9,10 @@ from custom_components.tuya_ble.tuya_ble.datapoints import (
     TuyaBLEDataPoint,
     TuyaBLEDataPoints,
 )
-from custom_components.tuya_ble.tuya_ble.exceptions import TuyaBLEEnumValueError
+from custom_components.tuya_ble.tuya_ble.exceptions import (
+    TuyaBLEDataFormatError,
+    TuyaBLEEnumValueError,
+)
 from tests.conftest import FakeDatapointsOwner
 
 
@@ -256,3 +259,51 @@ class TestDTString:
         dp = dps.get_or_create(1, TuyaBLEDataPointType.DT_STRING, "old")
         await dp.set_value(123)
         assert dp.value == "123"
+
+
+class TestDataTypeErrors:
+    """Tests for get_value type mismatch errors."""
+
+    def test_get_value_dt_raw_wrong_type(self, datapoints: TuyaBLEDataPoints) -> None:
+        """DT_RAW get_value raises TuyaBLEDataFormatError when value is not bytes."""
+        dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_RAW, value="not_bytes")
+        with pytest.raises(TuyaBLEDataFormatError):
+            dp.get_value()
+
+    def test_get_value_dt_bitmap_wrong_type(
+        self, datapoints: TuyaBLEDataPoints
+    ) -> None:
+        """DT_BITMAP get_value raises TuyaBLEDataFormatError for non-bytes."""
+        dp = make_dp(
+            datapoints, dp_type=TuyaBLEDataPointType.DT_BITMAP, value="not_bytes"
+        )
+        with pytest.raises(TuyaBLEDataFormatError):
+            dp.get_value()
+
+    def test_get_value_dt_value_wrong_type(self, datapoints: TuyaBLEDataPoints) -> None:
+        """DT_VALUE get_value raises TuyaBLEDataFormatError when value is not int."""
+        dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_VALUE, value="not_int")
+        with pytest.raises(TuyaBLEDataFormatError):
+            dp.get_value()
+
+    def test_get_value_dt_enum_wrong_type(self, datapoints: TuyaBLEDataPoints) -> None:
+        """DT_ENUM get_value raises TuyaBLEDataFormatError when value is not int."""
+        dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_ENUM, value="not_int")
+        with pytest.raises(TuyaBLEDataFormatError):
+            dp.get_value()
+
+    def test_get_value_dt_string_wrong_type(
+        self, datapoints: TuyaBLEDataPoints
+    ) -> None:
+        """DT_STRING get_value raises TuyaBLEDataFormatError when value is not str."""
+        dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_STRING, value=123)
+        with pytest.raises(TuyaBLEDataFormatError):
+            dp.get_value()
+
+    def test_set_value_dt_enum_wrong_type_raises(
+        self, datapoints: TuyaBLEDataPoints
+    ) -> None:
+        """DT_ENUM set_value raises TuyaBLEEnumValueError for non-int/str."""
+        dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_ENUM, value=1)
+        with pytest.raises(TuyaBLEEnumValueError):
+            dp._set_enum_value(b"\x01")  # pylint: disable=protected-access

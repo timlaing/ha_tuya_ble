@@ -104,8 +104,8 @@ class TuyaBLEDataPoint:
         """Return whether the value was changed by the device."""
         return self._changed_by_device
 
-    async def set_value(self, value: bytes | bool | int | str) -> None:
-        """Set the data point value and send the update to the device."""
+    def set_value_no_notify(self, value: bytes | bool | int | str) -> None:
+        """Set the value without sending an update to the device."""
         match self._type:
             case TuyaBLEDataPointType.DT_RAW | TuyaBLEDataPointType.DT_BITMAP:
                 self._value = (
@@ -119,8 +119,11 @@ class TuyaBLEDataPoint:
                 self._set_enum_value(value)
             case TuyaBLEDataPointType.DT_STRING:
                 self._value = str(value)
-
         self._changed_by_device = False
+
+    async def set_value(self, value: bytes | bool | int | str) -> None:
+        """Set the data point value and send the update to the device."""
+        self.set_value_no_notify(value)
         await self._owner.update_from_user(self._id)
 
     def _set_enum_value(self, value: bytes | bool | int | str) -> None:

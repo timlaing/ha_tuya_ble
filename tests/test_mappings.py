@@ -355,19 +355,19 @@ class TestSensorHelpers:
 
 
 class TestButtonHelpers:
-    """Tests for button.py fingerbot helper functions."""
+    """Tests for fingerbot.py button helper functions."""
 
     def test_is_fingerbot_in_push_mode_true(self) -> None:
         """Verify push mode is detected when the mode datapoint is 0."""
         product = make_product(mode=2)
         self_ = make_self([make_dp(value=0, dp_id=2)])
-        assert button.is_fingerbot_in_push_mode(self_, product) is True
+        assert fingerbot.is_fingerbot_in_push_mode(self_, product) is True
 
     def test_is_fingerbot_in_push_mode_false(self) -> None:
         """Verify push mode is not detected when the mode datapoint is not 0."""
         product = make_product(mode=2)
         self_ = make_self([make_dp(value=1, dp_id=2)])
-        assert button.is_fingerbot_in_push_mode(self_, product) is False
+        assert fingerbot.is_fingerbot_in_push_mode(self_, product) is False
 
 
 class TestSelectDescription:

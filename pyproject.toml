@@ -144,6 +144,8 @@ addopts = ["--disable-socket", "--allow-unix-socket", "--timeout=2"]
 
 [tool.coverage.run]
 branch = true
+relative_files = true
+source = ["custom_components/tuya_ble"]
 omit = [
     "conftest.py",
     "protocol_harness.py"

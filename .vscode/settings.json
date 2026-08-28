@@ -18,7 +18,7 @@
   },
   "mypy-type-checker.importStrategy": "fromEnvironment",
   "pylint.importStrategy": "fromEnvironment",
-  "python-envs.defaultEnvManager": "ms-python.python:system",
+  "python-envs.defaultEnvManager": "ms-python.python:venv",
   "python.testing.pytestArgs": ["tests"],
   "python.testing.pytestEnabled": true,
   "ruff.importStrategy": "fromEnvironment",

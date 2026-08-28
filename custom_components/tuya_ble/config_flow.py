@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from homeassistant.components.bluetooth import (
@@ -15,7 +16,7 @@ from homeassistant.config_entries import (
     OptionsFlowWithConfigEntry,
 )
 from homeassistant.const import CONF_ADDRESS
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
 from tuya_sharing import LoginControl
 import voluptuous as vol
@@ -56,6 +57,21 @@ class _QRCodeLoginMixin:
     _qr_login_control: LoginControl
     _qr_user_code: str
     _qr_code: str
+    hass: HomeAssistant
+
+    # Proxy to the actual async_show_form method. Subclasses must implement this.
+    def async_show_form(
+        self,
+        *,
+        step_id: str | None = None,
+        data_schema: vol.Schema | None = None,
+        errors: dict[str, str] | None = None,
+        description_placeholders: Mapping[str, str] | None = None,
+        last_step: bool | None = None,
+        preview: str | None = None,
+    ) -> ConfigFlowResult:
+        """Proxy to the actual async_show_form method."""
+        raise NotImplementedError
 
     # Subclass hook: store login data and return next step.
     async def _async_qr_login_store_and_advance(
@@ -70,7 +86,7 @@ class _QRCodeLoginMixin:
         description_placeholders: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Show the QR code form."""
-        return self.async_show_form(  # type: ignore[attr-defined, no-any-return]
+        return self.async_show_form(
             step_id=step_id,
             data_schema=vol.Schema({
                 vol.Optional("QR"): selector.QrCodeSelector(
@@ -89,7 +105,7 @@ class _QRCodeLoginMixin:
 
     async def _async_fetch_qr_code(self, user_code: str) -> tuple[bool, dict[str, Any]]:
         """Request a QR code token from the Tuya cloud for the given user code."""
-        response = await self.hass.async_add_executor_job(  # type: ignore[attr-defined]
+        response = await self.hass.async_add_executor_job(
             self._qr_login_control.qr_code,
             TUYA_CLIENT_ID,
             TUYA_SCHEMA,
@@ -112,7 +128,7 @@ class _QRCodeLoginMixin:
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Wait for QR code scan and complete login."""
-        hass = self.hass  # type: ignore[attr-defined]
+        hass = self.hass
         ret, info = await hass.async_add_executor_job(
             self._qr_login_control.login_result,
             self._qr_code,
