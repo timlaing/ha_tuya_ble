@@ -113,6 +113,11 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         self._function: dict[str, TuyaBLEDeviceFunction] = {}
         self._status_range: dict[str, TuyaBLEDeviceFunction] = {}
 
+        self._disconnect_task: asyncio.Task[None] | None = None
+        self._reconnect_task: asyncio.Task[None] | None = None
+        self._resend_task: asyncio.Task[None] | None = None
+        self._send_response_task: asyncio.Task[None] | None = None
+
     def set_ble_device_and_advertisement_data(
         self, ble_device: BLEDevice, advertisement_data: AdvertisementData
     ) -> None:
@@ -426,11 +431,11 @@ class TuyaBLEDevice(TuyaBLEProtocol):
                 self.address,
                 self.rssi,
             )
-            asyncio.create_task(self._reconnect())
+            self._reconnect_task = asyncio.create_task(self._reconnect())
 
     def _disconnect(self) -> None:
         """Disconnect from device."""
-        asyncio.create_task(self._execute_timed_disconnect())
+        self._disconnect_task = asyncio.create_task(self._execute_timed_disconnect())
 
     async def _execute_timed_disconnect(self) -> None:
         """Execute timed disconnection."""
@@ -643,4 +648,4 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             )
             await asyncio.sleep(BLEAK_BACKOFF_TIME)
             _LOGGER.debug("%s: Reconnecting again", self.address)
-            asyncio.create_task(self._reconnect())
+            self._reconnect_task = asyncio.create_task(self._reconnect())

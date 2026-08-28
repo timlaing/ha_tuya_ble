@@ -69,6 +69,10 @@ class TuyaBLEProtocol(Protocol):
     _datapoints: TuyaBLEDataPoints
     _callbacks: list[Callable[[list[TuyaBLEDataPoint]], None]]
 
+    _reconnect_task: asyncio.Task[None] | None
+    _resend_task: asyncio.Task[None] | None
+    _send_response_task: asyncio.Task[None] | None
+
     @property
     def address(self) -> str:
         """Return the BLE address."""
@@ -381,9 +385,9 @@ class TuyaBLEProtocol(Protocol):
                 ex,
             )
             if self._is_paired:
-                asyncio.create_task(self._resend_packets(packets))
+                self._resend_task = asyncio.create_task(self._resend_packets(packets))
             else:
-                asyncio.create_task(self._reconnect())
+                self._reconnect_task = asyncio.create_task(self._reconnect())
             raise BleakError from ex
         except BleakError as ex:
             # Disconnect so we can reset state and try again
@@ -394,9 +398,9 @@ class TuyaBLEProtocol(Protocol):
                 ex,
             )
             if self._is_paired:
-                asyncio.create_task(self._resend_packets(packets))
+                self._resend_task = asyncio.create_task(self._resend_packets(packets))
             else:
-                asyncio.create_task(self._reconnect())
+                self._reconnect_task = asyncio.create_task(self._reconnect())
             raise
 
     async def _int_send_packets_locked(self, packets: list[bytes]) -> None:
@@ -595,7 +599,7 @@ class TuyaBLEProtocol(Protocol):
         timestamp = int(time.time_ns() / 1000000)
         timezone = -int(time.timezone / 36)
         data = str(timestamp).encode() + pack(">h", timezone)
-        asyncio.create_task(
+        self._send_response_task = asyncio.create_task(
             self._send_response(TuyaBLECode.FUN_RECEIVE_TIME1_REQ, data, seq_num)
         )
 
@@ -614,14 +618,14 @@ class TuyaBLEProtocol(Protocol):
             time_str.tm_wday,
             timezone,
         )
-        asyncio.create_task(
+        self._send_response_task = asyncio.create_task(
             self._send_response(TuyaBLECode.FUN_RECEIVE_TIME2_REQ, data, seq_num)
         )
 
     def _handle_receive_dp(self, seq_num: int, data: bytes) -> None:
         """Handle FUN_RECEIVE_DP: parse datapoints and send ack."""
         self._parse_datapoints_v3(time.time(), 0, data, 0)
-        asyncio.create_task(
+        self._send_response_task = asyncio.create_task(
             self._send_response(TuyaBLECode.FUN_RECEIVE_DP, bytes(0), seq_num)
         )
 
@@ -631,7 +635,7 @@ class TuyaBLEProtocol(Protocol):
         flags = data[2]
         self._parse_datapoints_v3(time.time(), flags, data, 2)
         response = pack(">HBB", dp_seq_num, flags, 0)
-        asyncio.create_task(
+        self._send_response_task = asyncio.create_task(
             self._send_response(TuyaBLECode.FUN_RECEIVE_SIGN_DP, response, seq_num)
         )
 
@@ -641,7 +645,7 @@ class TuyaBLEProtocol(Protocol):
         dp_pos: int
         ts, dp_pos = self._parse_timestamp(data, 0)
         self._parse_datapoints_v3(ts, 0, data, dp_pos)
-        asyncio.create_task(
+        self._send_response_task = asyncio.create_task(
             self._send_response(TuyaBLECode.FUN_RECEIVE_TIME_DP, bytes(0), seq_num)
         )
 
@@ -652,7 +656,7 @@ class TuyaBLEProtocol(Protocol):
         _ts, dp_pos = self._parse_timestamp(data, 3)
         self._parse_datapoints_v3(time.time(), flags, data, dp_pos)
         response = pack(">HBB", dp_seq_num, flags, 0)
-        asyncio.create_task(
+        self._send_response_task = asyncio.create_task(
             self._send_response(TuyaBLECode.FUN_RECEIVE_SIGN_TIME_DP, response, seq_num)
         )
 
