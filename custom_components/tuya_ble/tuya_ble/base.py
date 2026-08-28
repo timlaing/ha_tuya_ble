@@ -439,7 +439,6 @@ class TuyaBLEDevice(TuyaBLEProtocol):
 
     async def _execute_timed_disconnect(self) -> None:
         """Execute timed disconnection."""
-        self._disconnect_task = None
         _LOGGER.debug(
             "%s: Disconnecting",
             self.address,
@@ -631,7 +630,6 @@ class TuyaBLEDevice(TuyaBLEProtocol):
 
     async def _reconnect(self) -> None:
         """Attempt reconnection with exponential backoff, retrying on BLE errors."""
-        self._reconnect_task = None
         _LOGGER.debug("%s: Reconnect, ensuring connection", self.address)
         async with self._seq_num_lock:
             self._current_seq_num = 1

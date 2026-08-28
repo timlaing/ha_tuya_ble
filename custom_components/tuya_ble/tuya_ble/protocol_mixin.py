@@ -281,7 +281,6 @@ class TuyaBLEProtocol(Protocol):
         response_to: int,
     ) -> None:
         """Send response to received packet."""
-        self._send_response_task = None
         if self._client and self._client.is_connected:
             await self._send_packet_while_connected(code, data, response_to, False)
 
@@ -364,7 +363,6 @@ class TuyaBLEProtocol(Protocol):
 
     async def _resend_packets(self, packets: list[bytes]) -> None:
         """Re-send packets after a transient disconnection."""
-        self._resend_task = None
         if self._expected_disconnect:
             return
         await self._ensure_connected()
