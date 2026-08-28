@@ -79,6 +79,7 @@ repos:
         additional_dependencies:
           - prettier-plugin-sort-json
           - "@prettier/plugin-xml"
+        exclude: custom_components/tuya_ble/manifest.json
         pass_filenames: true
       - id: mypy
         name: MyPy Type checker

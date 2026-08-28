@@ -1,4 +1,6 @@
 {
+  "domain": "tuya_ble",
+  "name": "Tuya BLE",
   "after_dependencies": ["tuya"],
   "bluetooth": [
     {
@@ -10,10 +12,8 @@
   "config_flow": true,
   "dependencies": ["bluetooth_adapters"],
   "documentation": "https://github.com/timlaing/ha_tuya_ble",
-  "domain": "tuya_ble",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/timlaing/ha_tuya_ble/issues",
-  "name": "Tuya BLE",
   "requirements": ["tuya-device-sharing-sdk==0.2.15"],
   "version": "2.0.0"
 }
