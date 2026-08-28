@@ -7,7 +7,7 @@ import time
 from typing import TYPE_CHECKING
 
 from .const import TuyaBLEDataPointType
-from .exceptions import TuyaBLEEnumValueError
+from .exceptions import TuyaBLEDataFormatError, TuyaBLEEnumValueError
 
 if TYPE_CHECKING:
     from .base import TuyaBLEDevice
@@ -50,15 +50,18 @@ class TuyaBLEDataPoint:
         result = b""
         match self._type:
             case TuyaBLEDataPointType.DT_RAW | TuyaBLEDataPointType.DT_BITMAP:
-                assert isinstance(self._value, bytes)
+                if not isinstance(self._value, bytes):
+                    raise TuyaBLEDataFormatError()
                 result = self._value
             case TuyaBLEDataPointType.DT_BOOL:
                 result = pack(">B", 1 if self._value else 0)
             case TuyaBLEDataPointType.DT_VALUE:
-                assert isinstance(self._value, int)
+                if not isinstance(self._value, int):
+                    raise TuyaBLEDataFormatError()
                 result = pack(">i", self._value)
             case TuyaBLEDataPointType.DT_ENUM:
-                assert isinstance(self._value, int)
+                if not isinstance(self._value, int):
+                    raise TuyaBLEDataFormatError()
                 if self._value > 0xFFFF:
                     result = pack(">I", self._value)
                 elif self._value > 0xFF:
@@ -66,7 +69,8 @@ class TuyaBLEDataPoint:
                 else:
                     result = pack(">B", self._value)
             case TuyaBLEDataPointType.DT_STRING:
-                assert isinstance(self._value, str)
+                if not isinstance(self._value, str):
+                    raise TuyaBLEDataFormatError()
                 result = self._value.encode()
         return result
 

@@ -101,7 +101,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await device.initialize_with_credentials(credentials)
 
     product_info = get_device_product_info(device)
-    assert product_info is not None
+    if product_info is None:
+        raise ConfigEntryNotReady(f"Unknown device: {device.product_id}")
 
     coordinator = TuyaBLECoordinator(hass, device)
 

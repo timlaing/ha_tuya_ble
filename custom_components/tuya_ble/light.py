@@ -26,20 +26,7 @@ from .devices import (
     TuyaBLEProductInfo,
 )
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
-
-
-def _remap_value(
-    value: float | int,
-    from_min: float = 0,
-    from_max: float = 255,
-    to_min: float = 0,
-    to_max: float = 255,
-    reverse: bool = False,
-) -> float:
-    """Remap a value from one range to another."""
-    if reverse:
-        value = from_max - value + from_min
-    return ((value - from_min) / (from_max - from_min)) * (to_max - to_min) + to_min
+from .util import remap_value
 
 
 @dataclass
@@ -167,7 +154,7 @@ class TuyaBLELight(TuyaBLEEntity, LightEntity):
             color_data = self._get_color_data()
             if color_data is not None:
                 _h, _s, v = color_data
-                return round(_remap_value(v, 0, 1000, 0, 255))
+                return round(remap_value(v, 0, 1000, 0, 255))
 
         if self._mapping.brightness_dp_id == 0:
             return None
@@ -175,7 +162,7 @@ class TuyaBLELight(TuyaBLEEntity, LightEntity):
         if datapoint is None:
             return None
         return round(
-            _remap_value(
+            remap_value(
                 int(datapoint.value),
                 self._mapping.brightness_min,
                 self._mapping.brightness_max,
@@ -192,7 +179,7 @@ class TuyaBLELight(TuyaBLEEntity, LightEntity):
         datapoint = self.device.datapoints[self._mapping.color_temp_dp_id]
         if datapoint is None:
             return None
-        mireds = _remap_value(
+        mireds = remap_value(
             int(datapoint.value),
             self._mapping.color_temp_min,
             self._mapping.color_temp_max,
@@ -212,8 +199,8 @@ class TuyaBLELight(TuyaBLEEntity, LightEntity):
             return None
         h, s, _v = color_data
         return (
-            _remap_value(h, 0, 360, 0, 360),
-            _remap_value(s, 0, 1000, 0, 100),
+            remap_value(h, 0, 360, 0, 360),
+            remap_value(s, 0, 1000, 0, 100),
         )
 
     @property
@@ -251,7 +238,7 @@ class TuyaBLELight(TuyaBLEEntity, LightEntity):
                 kwargs[ATTR_COLOR_TEMP_KELVIN]
             )
             value = round(
-                _remap_value(
+                remap_value(
                     mireds,
                     self._attr_min_mireds,
                     self._attr_max_mireds,
@@ -275,9 +262,9 @@ class TuyaBLELight(TuyaBLEEntity, LightEntity):
                 })
             hs_color = kwargs[ATTR_HS_COLOR]
             brightness = kwargs.get(ATTR_BRIGHTNESS, self.brightness or 0)
-            h = round(_remap_value(hs_color[0], 0, 360, 0, 360))
-            s = round(_remap_value(hs_color[1], 0, 100, 0, 1000))
-            v = round(_remap_value(brightness, 0, 255, 0, 1000))
+            h = round(remap_value(hs_color[0], 0, 360, 0, 360))
+            s = round(remap_value(hs_color[1], 0, 100, 0, 1000))
+            v = round(remap_value(brightness, 0, 255, 0, 1000))
             colorstr = f"{h:04x}{s:04x}{v:04x}"
             commands.append({
                 "dp_id": self._mapping.color_data_dp_id,
@@ -286,7 +273,7 @@ class TuyaBLELight(TuyaBLEEntity, LightEntity):
             })
         elif ATTR_BRIGHTNESS in kwargs and self._mapping.brightness_dp_id != 0:
             value = round(
-                _remap_value(
+                remap_value(
                     kwargs[ATTR_BRIGHTNESS],
                     0,
                     255,

@@ -29,6 +29,7 @@ from .const import (
     TuyaBLEDataPointType,
 )
 from .datapoints import TuyaBLEDataPoint, TuyaBLEDataPoints
+from .exceptions import TuyaBLEDeviceError
 from .manager import AbstractTuyaBLEDeviceManager, TuyaBLEDeviceCredentials
 from .protocol_mixin import (
     BLE_CONNECTION_EXCEPTIONS,
@@ -131,6 +132,8 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         """Initialize the device with pre-built credentials (no cloud needed)."""
         _LOGGER.debug("%s: Initializing with stored credentials", self.address)
         self._device_info = credentials
+        if len(credentials.local_key) < 6:
+            raise TuyaBLEDeviceError(0)
         self._local_key = credentials.local_key[:6].encode()
         self._login_key = hashlib.md5(self._local_key).digest()  # noqa: S4790
         self.append_functions(
@@ -141,8 +144,8 @@ class TuyaBLEDevice(TuyaBLEProtocol):
 
     def _build_pairing_request(self) -> bytes:
         result = bytearray()
-        assert self._device_info is not None
-        assert self._local_key is not None
+        if self._device_info is None or self._local_key is None:
+            raise TuyaBLEDeviceError(0)
 
         result += self._device_info.uuid.encode()
         result += self._local_key
@@ -170,6 +173,8 @@ class TuyaBLEDevice(TuyaBLEProtocol):
                     self._ble_device.address, False
                 )
             if self._device_info:
+                if len(self._device_info.local_key) < 6:
+                    raise TuyaBLEDeviceError(0)
                 self._local_key = self._device_info.local_key[:6].encode()
                 self._login_key = hashlib.md5(self._local_key).digest()  # noqa: S4790
                 self.append_functions(

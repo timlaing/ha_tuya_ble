@@ -133,7 +133,8 @@ class TuyaBLEProtocol(Protocol):
         data = bytearray()
         for dp_id in datapoint_ids:
             dp = self._datapoints[dp_id]
-            assert dp is not None
+            if dp is None:
+                raise TuyaBLEDeviceError(0)
             value = dp.get_value()
             _LOGGER.debug(
                 "%s: Sending datapoint update, id: %s, type: %s: value: %s",
@@ -207,9 +208,11 @@ class TuyaBLEProtocol(Protocol):
     def _select_encryption_key(self, code: TuyaBLECode) -> tuple[bytes, bytes]:
         """Select the encryption key and security flag for the given code."""
         if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO:
-            assert self._login_key is not None
+            if self._login_key is None:
+                raise TuyaBLEDeviceError(0)
             return self._login_key, b"\x04"
-        assert self._session_key is not None
+        if self._session_key is None:
+            raise TuyaBLEDeviceError(0)
         return self._session_key, b"\x05"
 
     def _encrypt_payload(
@@ -440,13 +443,16 @@ class TuyaBLEProtocol(Protocol):
     def _get_key(self, security_flag: int) -> bytes:
         """Return the encryption key for the given security flag."""
         if security_flag == 1:
-            assert self._auth_key is not None
+            if self._auth_key is None:
+                raise TuyaBLEDeviceError(0)
             return self._auth_key
         if security_flag == 4:
-            assert self._login_key is not None
+            if self._login_key is None:
+                raise TuyaBLEDeviceError(0)
             return self._login_key
         if security_flag == 5:
-            assert self._session_key is not None
+            if self._session_key is None:
+                raise TuyaBLEDeviceError(0)
             return self._session_key
         raise TuyaBLEDataFormatError()
 
@@ -521,7 +527,8 @@ class TuyaBLEProtocol(Protocol):
             )
             self._datapoints.update_from_device(dp_id, timestamp, flags, dp_type, value)
             dp = self._datapoints[dp_id]
-            assert dp is not None
+            if dp is None:
+                raise TuyaBLEDeviceError(0)
             datapoints.append(dp)
             pos = next_pos
 
@@ -572,7 +579,8 @@ class TuyaBLEProtocol(Protocol):
         self._is_bound = data[5] != 0
 
         srand = data[6:12]
-        assert self._local_key is not None
+        if self._local_key is None:
+            raise TuyaBLEDeviceError(0)
         self._session_key = hashlib.md5(self._local_key + srand).digest()  # noqa: S4790
         self._auth_key = data[14:46]
 
@@ -712,7 +720,8 @@ class TuyaBLEProtocol(Protocol):
 
     def _decrypt_input(self) -> bytes:
         """Decrypt the input buffer and return raw bytes."""
-        assert self._input_buffer is not None
+        if self._input_buffer is None:
+            raise TuyaBLEDataFormatError()
         security_flag = self._input_buffer[0]
         key = self._get_key(security_flag)
         iv = self._input_buffer[1:17]
@@ -779,7 +788,9 @@ class TuyaBLEProtocol(Protocol):
                 self._input_buffer = bytearray()
                 self._input_expected_length, pos = self._unpack_int(bytes(data), pos)
                 pos += 1
-            assert self._input_buffer is not None
+            if self._input_buffer is None:
+                _LOGGER.error("%s: Buffer not initialized", self.address)
+                return
             self._input_buffer += data[pos:]
             self._input_expected_packet_num += 1
         else:

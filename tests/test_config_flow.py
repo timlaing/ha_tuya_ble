@@ -19,12 +19,6 @@ from custom_components.tuya_ble.const import CONF_USER_CODE, DOMAIN
 from custom_components.tuya_ble.tuya_ble import SERVICE_UUID, TuyaBLEDeviceCredentials
 
 
-def _mangle(obj: Any, name: str) -> str:
-    """Return the name-mangled private attribute name."""
-    cls = type(obj)
-    return f"_{cls.__name__}__{name}"
-
-
 class FakeLogin:
     """Fake login control used to stub out cloud login calls."""
 
@@ -109,7 +103,7 @@ def build_flow(
     flow.hass = hass
     flow._data = {}
     flow.context = {}
-    setattr(flow, _mangle(flow, "login_control"), FakeLogin(qr_success, login_success))
+    flow._qr_login_control = FakeLogin(qr_success, login_success)  # noqa: SLF001
     return flow
 
 
@@ -133,7 +127,7 @@ def build_options_flow(
     flow.hass = hass
     flow.context = {}
     flow.handler = entry.entry_id
-    setattr(flow, _mangle(flow, "login_control"), FakeLogin(qr_success, login_success))
+    flow._qr_login_control = FakeLogin(qr_success, login_success)  # noqa: SLF001
     return flow, entry
 
 
@@ -483,7 +477,7 @@ async def test_options_qr_form(hass: HomeAssistant) -> None:
 async def test_options_qr_submit(hass: HomeAssistant) -> None:
     """Test the options QR step submitting credentials."""
     flow, _ = build_options_flow(hass)
-    setattr(flow, _mangle(flow, "user_code"), "user1")
+    flow._qr_user_code = "user1"  # noqa: SLF001
     result = await flow.async_step_qr(user_input={})
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_USER_CODE] == "user1"
@@ -492,7 +486,7 @@ async def test_options_qr_submit(hass: HomeAssistant) -> None:
 async def test_options_scan_success(hass: HomeAssistant) -> None:
     """Test the options scan step submitting credentials."""
     flow, _ = build_options_flow(hass)
-    setattr(flow, _mangle(flow, "user_code"), "user1")
+    flow._qr_user_code = "user1"  # noqa: SLF001
     result = await flow.async_step_scan(user_input={})
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_USER_CODE] == "user1"
@@ -501,7 +495,7 @@ async def test_options_scan_success(hass: HomeAssistant) -> None:
 async def test_options_scan_error(hass: HomeAssistant) -> None:
     """Test the options scan step handling a login error."""
     flow, _ = build_options_flow(hass, login_success=False)
-    setattr(flow, _mangle(flow, "user_code"), "user1")
+    flow._qr_user_code = "user1"  # noqa: SLF001
     result = await flow.async_step_scan(user_input={})
     assert result["step_id"] == "qr"
     assert result["errors"]["base"] == "login_error"  # type: ignore[index]

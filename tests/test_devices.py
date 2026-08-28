@@ -229,7 +229,7 @@ class TestCoordinator:
         """Schedule the delayed disconnect callback via async_call_later."""
         coord, _ = self._make_coord(hass)
         assert coord._unsub_disconnect is None
-        with patch("custom_components.tuya_ble.devices.async_call_later") as acl:
+        with patch("custom_components.tuya_ble.coordinator.async_call_later") as acl:
             coord._async_handle_disconnect()
         assert acl.called
         assert coord._unsub_disconnect is not None
@@ -238,7 +238,7 @@ class TestCoordinator:
         """Do not schedule a second timer when one is already pending."""
         coord, _ = self._make_coord(hass)
         coord._unsub_disconnect = MagicMock()
-        with patch("custom_components.tuya_ble.devices.async_call_later") as acl:
+        with patch("custom_components.tuya_ble.coordinator.async_call_later") as acl:
             coord._async_handle_disconnect()
         assert not acl.called
 
@@ -258,7 +258,7 @@ class TestCoordinator:
         )
         product = TuyaBLEProductInfo(name="Fingerbot", fingerbot=fingerbot)
         with patch(
-            "custom_components.tuya_ble.devices.get_device_product_info",
+            "custom_components.tuya_ble.coordinator.get_device_product_info",
             return_value=product,
         ):
             device.datapoints.update_from_device(
@@ -282,8 +282,8 @@ class TestCoordinator:
         captured: list[Event[Any]] = []
         hass.bus.async_listen(FINGERBOT_BUTTON_EVENT, captured.append)
         with patch(
-            "custom_components.tuya_ble.devices.get_device_product_info",
-            return_value=TuyaBLEProductInfo(name="Plain"),
+            "custom_components.tuya_ble.coordinator.get_device_product_info",
+            return_value=None,
         ):
             coordinator._async_handle_update([])
             await hass.async_block_till_done()
@@ -397,7 +397,7 @@ class TestFingerbotEventChangedByDevice:
         captured: list[Event[Any]] = []
         hass.bus.async_listen(FINGERBOT_BUTTON_EVENT, captured.append)
         with patch(
-            "custom_components.tuya_ble.devices.get_device_product_info",
+            "custom_components.tuya_ble.coordinator.get_device_product_info",
             return_value=product,
         ):
             coordinator._async_handle_update([update])

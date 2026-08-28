@@ -13,6 +13,7 @@ from custom_components.tuya_ble.devices import (
     TuyaBLEFingerbotInfo,
     TuyaBLEProductInfo,
 )
+from custom_components.tuya_ble.fingerbot import is_fingerbot_in_program_mode
 from custom_components.tuya_ble.text import TuyaBLEText
 from custom_components.tuya_ble.tuya_ble import (
     TuyaBLEDataPointType,
@@ -125,7 +126,7 @@ async def test_fingerbot_in_program_mode_no_fingerbot(
         device,
         coordinator,
         product,
-        is_available=text.is_fingerbot_in_program_mode,
+        is_available=is_fingerbot_in_program_mode,
     )
     await connect(coordinator)
     assert entity.available is True
@@ -150,7 +151,7 @@ async def test_fingerbot_in_program_mode_no_datapoint(
         device,
         coordinator,
         product,
-        is_available=text.is_fingerbot_in_program_mode,
+        is_available=is_fingerbot_in_program_mode,
     )
     await connect(coordinator)
     assert entity.available is True
