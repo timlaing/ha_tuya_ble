@@ -340,7 +340,7 @@ class TestValidation:
         raw = make_raw(1, 0, 0x9999, b"\x00")
         msg = frame_packet0(encrypt_raw(session_key(h), 5, raw))
         h.notify(msg)
-        assert True
+        # No crash = unhandled code silently ignored.
 
     async def test_crc_error(self, h: ProtocolHarness) -> None:
         """A bad CRC should raise a CRC error."""

@@ -193,7 +193,7 @@ async def test_async_step_qr_submit(hass: HomeAssistant) -> None:
     with (
         patch(
             "custom_components.tuya_ble.config_flow.HASSTuyaBLEDeviceManager",
-            lambda hass, data: manager,
+            return_value=manager,
         ),
         patch.object(flow, "_async_current_ids", return_value=set()),
         patch(
@@ -235,7 +235,7 @@ async def test_async_step_scan_success(hass: HomeAssistant) -> None:
     with (
         patch(
             "custom_components.tuya_ble.config_flow.HASSTuyaBLEDeviceManager",
-            lambda hass, data: manager,
+            return_value=manager,
         ),
         patch.object(flow, "_async_current_ids", return_value=set()),
         patch(
