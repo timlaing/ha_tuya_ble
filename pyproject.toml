@@ -27,7 +27,7 @@ bug_tracker = "https://github.com/timlaing/ha_tuya_ble/issues"
 repository = "https://github.com/timlaing/ha_tuya_ble"
 
 [build-system]
-requires = ["setuptools >= 82.0.1,< 82.1", "setuptools-scm"]
+requires = ["setuptools >= 82.0.1,< 84.1", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
