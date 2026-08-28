@@ -355,7 +355,7 @@ class TestSensorHelpers:
 
 
 class TestButtonHelpers:
-    """Tests for button.py fingerbot helper functions."""
+    """Tests for fingerbot.py button helper functions."""
 
     def test_is_fingerbot_in_push_mode_true(self) -> None:
         """Verify push mode is detected when the mode datapoint is 0."""

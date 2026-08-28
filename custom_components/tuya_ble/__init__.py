@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from bleak_retry_connector import get_device
 from homeassistant.components import bluetooth
-from homeassistant.components.bluetooth.match import ADDRESS, BluetoothCallbackMatcher
+from homeassistant.components.bluetooth.match import BluetoothCallbackMatcher
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONF_ADDRESS,
@@ -122,7 +122,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         bluetooth.async_register_callback(
             hass,
             _async_update_ble,
-            BluetoothCallbackMatcher({ADDRESS: address}),
+            BluetoothCallbackMatcher({"address": address}),
             bluetooth.BluetoothScanningMode.ACTIVE,
         )
     )
