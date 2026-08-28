@@ -125,7 +125,7 @@ class _QRCodeLoginMixin:
         return await self.async_step_scan()
 
     async def async_step_scan(
-        self, user_input: dict[str, Any] | None = None
+        self, _user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Wait for QR code scan and complete login."""
         hass = self.hass

@@ -71,7 +71,7 @@ class TuyaBLEProtocol(Protocol):
 
     _reconnect_task: asyncio.Task[None] | None
     _resend_task: asyncio.Task[None] | None
-    _send_response_task: asyncio.Task[None] | None
+    _send_response_tasks: set[asyncio.Task[None]]
 
     @property
     def address(self) -> str:
@@ -283,6 +283,11 @@ class TuyaBLEProtocol(Protocol):
         """Send response to received packet."""
         if self._client and self._client.is_connected:
             await self._send_packet_while_connected(code, data, response_to, False)
+
+    def _track_send_response_task(self, task: asyncio.Task[None]) -> None:
+        """Track a send-response task so outstanding tasks can be cancelled."""
+        self._send_response_tasks.add(task)
+        task.add_done_callback(self._send_response_tasks.discard)
 
     async def _send_packet_while_connected(
         self,
@@ -599,8 +604,10 @@ class TuyaBLEProtocol(Protocol):
         timestamp = int(time.time_ns() / 1000000)
         timezone = -int(time.timezone / 36)
         data = str(timestamp).encode() + pack(">h", timezone)
-        self._send_response_task = asyncio.create_task(
-            self._send_response(TuyaBLECode.FUN_RECEIVE_TIME1_REQ, data, seq_num)
+        self._track_send_response_task(
+            asyncio.create_task(
+                self._send_response(TuyaBLECode.FUN_RECEIVE_TIME1_REQ, data, seq_num)
+            )
         )
 
     def _handle_time2_request(self, seq_num: int) -> None:
@@ -618,15 +625,19 @@ class TuyaBLEProtocol(Protocol):
             time_str.tm_wday,
             timezone,
         )
-        self._send_response_task = asyncio.create_task(
-            self._send_response(TuyaBLECode.FUN_RECEIVE_TIME2_REQ, data, seq_num)
+        self._track_send_response_task(
+            asyncio.create_task(
+                self._send_response(TuyaBLECode.FUN_RECEIVE_TIME2_REQ, data, seq_num)
+            )
         )
 
     def _handle_receive_dp(self, seq_num: int, data: bytes) -> None:
         """Handle FUN_RECEIVE_DP: parse datapoints and send ack."""
         self._parse_datapoints_v3(time.time(), 0, data, 0)
-        self._send_response_task = asyncio.create_task(
-            self._send_response(TuyaBLECode.FUN_RECEIVE_DP, bytes(0), seq_num)
+        self._track_send_response_task(
+            asyncio.create_task(
+                self._send_response(TuyaBLECode.FUN_RECEIVE_DP, bytes(0), seq_num)
+            )
         )
 
     def _handle_receive_sign_dp(self, seq_num: int, data: bytes) -> None:
@@ -635,8 +646,10 @@ class TuyaBLEProtocol(Protocol):
         flags = data[2]
         self._parse_datapoints_v3(time.time(), flags, data, 2)
         response = pack(">HBB", dp_seq_num, flags, 0)
-        self._send_response_task = asyncio.create_task(
-            self._send_response(TuyaBLECode.FUN_RECEIVE_SIGN_DP, response, seq_num)
+        self._track_send_response_task(
+            asyncio.create_task(
+                self._send_response(TuyaBLECode.FUN_RECEIVE_SIGN_DP, response, seq_num)
+            )
         )
 
     def _handle_receive_time_dp(self, seq_num: int, data: bytes) -> None:
@@ -645,8 +658,10 @@ class TuyaBLEProtocol(Protocol):
         dp_pos: int
         ts, dp_pos = self._parse_timestamp(data, 0)
         self._parse_datapoints_v3(ts, 0, data, dp_pos)
-        self._send_response_task = asyncio.create_task(
-            self._send_response(TuyaBLECode.FUN_RECEIVE_TIME_DP, bytes(0), seq_num)
+        self._track_send_response_task(
+            asyncio.create_task(
+                self._send_response(TuyaBLECode.FUN_RECEIVE_TIME_DP, bytes(0), seq_num)
+            )
         )
 
     def _handle_receive_sign_time_dp(self, seq_num: int, data: bytes) -> None:
@@ -656,8 +671,12 @@ class TuyaBLEProtocol(Protocol):
         _ts, dp_pos = self._parse_timestamp(data, 3)
         self._parse_datapoints_v3(time.time(), flags, data, dp_pos)
         response = pack(">HBB", dp_seq_num, flags, 0)
-        self._send_response_task = asyncio.create_task(
-            self._send_response(TuyaBLECode.FUN_RECEIVE_SIGN_TIME_DP, response, seq_num)
+        self._track_send_response_task(
+            asyncio.create_task(
+                self._send_response(
+                    TuyaBLECode.FUN_RECEIVE_SIGN_TIME_DP, response, seq_num
+                )
+            )
         )
 
     def _resolve_expected_response(self, response_to: int, result: int) -> None:

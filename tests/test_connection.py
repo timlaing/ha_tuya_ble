@@ -487,6 +487,25 @@ class TestReconnectEdgeCases:
         ):
             await dev._reconnect()
 
+    async def test_no_retry_when_disconnect_during_backoff(self) -> None:
+        """Do not reschedule reconnect when disconnect is set during backoff."""
+        dev = make_device(manager=FakeBLEManager(make_credentials()))
+
+        async def set_disconnect_during_backoff(_: float) -> None:
+            dev._expected_disconnect = True
+
+        with (
+            patch.object(
+                dev,
+                "_ensure_connected",
+                side_effect=BleakError("test"),
+            ),
+            patch("asyncio.sleep", side_effect=set_disconnect_during_backoff),
+            patch("asyncio.create_task", side_effect=_close_task) as mock_task,
+        ):
+            await dev._reconnect()
+        mock_task.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # protocol_mixin.py coverage helpers

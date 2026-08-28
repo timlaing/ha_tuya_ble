@@ -242,6 +242,23 @@ class TestCoordinator:
             coord._async_handle_disconnect()
         assert not acl.called
 
+    async def test_async_shutdown_cancels_pending_timer(
+        self, hass: HomeAssistant
+    ) -> None:
+        """async_shutdown unsubscribes a pending disconnect timer."""
+        coord, _ = self._make_coord(hass)
+        cleaner = MagicMock()
+        coord._unsub_disconnect = cleaner
+        await coord.async_shutdown()
+        cleaner.assert_called_once()
+        assert coord._unsub_disconnect is None
+
+    async def test_async_shutdown_without_timer(self, hass: HomeAssistant) -> None:
+        """async_shutdown completes cleanly when no timer is pending."""
+        coord, _ = self._make_coord(hass)
+        coord._unsub_disconnect = None
+        await coord.async_shutdown()
+
     async def test_handle_update_fires_fingerbot_event(
         self, hass: HomeAssistant
     ) -> None:

@@ -270,6 +270,35 @@ class TestConnection:
         assert dev._client is None
         assert dev._current_seq_num == 1
 
+    async def test_stop_cancels_background_tasks(self) -> None:
+        """Verify stop() cancels in-flight background tasks."""
+        dev = make_device()
+        client = FakeBleakClient(is_connected=True)
+        dev._client = client  # type: ignore[assignment]
+        dev._is_paired = True
+        dev._reconnect_task = asyncio.create_task(asyncio.sleep(60))
+        dev._resend_task = asyncio.create_task(asyncio.sleep(60))
+        dev._send_response_tasks.add(asyncio.create_task(asyncio.sleep(60)))
+        await dev.stop()
+        assert dev._reconnect_task is not None
+        assert dev._reconnect_task.cancelled()
+        assert dev._resend_task is not None
+        assert dev._resend_task.cancelled()
+        assert all(task.cancelled() for task in dev._send_response_tasks)
+
+    async def test_stop_with_done_tasks(self) -> None:
+        """Verify stop() completes cleanly when background tasks are already done."""
+        dev = make_device()
+        client = FakeBleakClient(is_connected=True)
+        dev._client = client  # type: ignore[assignment]
+        dev._is_paired = True
+        done = asyncio.create_task(asyncio.sleep(0))
+        await done
+        dev._reconnect_task = done
+        dev._resend_task = done
+        await dev.stop()
+        assert dev._client is None
+
     async def test_start_noop(self) -> None:
         """Verify start is a no-op."""
         dev = make_device()
@@ -430,16 +459,6 @@ class TestConnection:
         ):
             dev._disconnected(client)  # type: ignore[arg-type]
             await asyncio.sleep(0.1)
-
-    async def test_execute_timed_disconnect(self) -> None:
-        """Verify a timed disconnect clears the client."""
-        dev = make_device()
-        client = FakeBleakClient(is_connected=True)
-        dev._client = client  # type: ignore[assignment]
-        dev._is_paired = True
-        dev._disconnect()
-        await asyncio.sleep(0.1)
-        assert dev._client is None
 
 
 class TestInitializeWithCredentials:

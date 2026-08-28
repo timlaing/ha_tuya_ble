@@ -587,3 +587,27 @@ class TestParseTimestamp:
         h = ProtocolHarness()
         with pytest.raises(TuyaBLEDataLengthError):
             h.device._parse_timestamp(b"\x00", 0)
+
+
+class TestSendResponseTracking:
+    """Tests for _track_send_response_task and the tracked send-response set."""
+
+    async def test_handler_tracks_task(self) -> None:
+        """A time1 request handler tracks its send-response task."""
+        h = ProtocolHarness()
+        h.device._send_response_tasks = set()
+        h.device._handle_time1_request(1)
+        assert len(h.device._send_response_tasks) == 1
+        for task in list(h.device._send_response_tasks):
+            await task
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert len(h.device._send_response_tasks) == 0
+
+    async def test_stop_cancels_tracked_response_tasks(self) -> None:
+        """stop() cancels all outstanding send-response tasks."""
+        h = ProtocolHarness()
+        h.device._client = None
+        h.device._send_response_tasks.add(asyncio.create_task(asyncio.sleep(60)))
+        await h.device.stop()
+        assert all(task.cancelled() for task in h.device._send_response_tasks)

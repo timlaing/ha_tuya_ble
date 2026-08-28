@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
 import hashlib
 import json
@@ -113,10 +114,9 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         self._function: dict[str, TuyaBLEDeviceFunction] = {}
         self._status_range: dict[str, TuyaBLEDeviceFunction] = {}
 
-        self._disconnect_task: asyncio.Task[None] | None = None
         self._reconnect_task: asyncio.Task[None] | None = None
         self._resend_task: asyncio.Task[None] | None = None
-        self._send_response_task: asyncio.Task[None] | None = None
+        self._send_response_tasks: set[asyncio.Task[None]] = set()
 
     def set_ble_device_and_advertisement_data(
         self, ble_device: BLEDevice, advertisement_data: AdvertisementData
@@ -403,9 +403,21 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         _LOGGER.debug("%s: Starting...", self.address)
 
     async def stop(self) -> None:
-        """Stop the TuyaBLE."""
+        """Stop the TuyaBLE and cancel any in-flight background tasks."""
         _LOGGER.debug("%s: Stop", self.address)
+        tasks = (
+            self._reconnect_task,
+            self._resend_task,
+            *self._send_response_tasks,
+        )
+        for task in tasks:
+            if task is not None and not task.done():
+                task.cancel()
         await self._execute_disconnect()
+        for task in tasks:
+            if task is not None and not task.done():
+                with suppress(asyncio.CancelledError, Exception):
+                    await task
 
     def _disconnected(self, client: BleakClientWithServiceCache) -> None:
         """Handle BLE disconnection: fire callbacks and reconnect."""
@@ -432,18 +444,6 @@ class TuyaBLEDevice(TuyaBLEProtocol):
                 self.rssi,
             )
             self._reconnect_task = asyncio.create_task(self._reconnect())
-
-    def _disconnect(self) -> None:
-        """Disconnect from device."""
-        self._disconnect_task = asyncio.create_task(self._execute_timed_disconnect())
-
-    async def _execute_timed_disconnect(self) -> None:
-        """Execute timed disconnection."""
-        _LOGGER.debug(
-            "%s: Disconnecting",
-            self.address,
-        )
-        await self._execute_disconnect()
 
     async def _execute_disconnect(self) -> None:
         """Execute disconnection."""
@@ -647,5 +647,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
                 exc_info=True,
             )
             await asyncio.sleep(BLEAK_BACKOFF_TIME)
+            if self._expected_disconnect:
+                return
             _LOGGER.debug("%s: Reconnecting again", self.address)
             self._reconnect_task = asyncio.create_task(self._reconnect())
