@@ -17,6 +17,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .devices import TuyaBLECoordinator, TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
+from .fingerbot import (
+    get_fingerbot_program_repeat_forever,
+    is_fingerbot_in_program_mode,
+    is_fingerbot_in_switch_mode,
+    set_fingerbot_program_repeat_forever,
+)
 from .tuya_ble import TuyaBLEDataPoint, TuyaBLEDataPointType, TuyaBLEDevice
 
 ICON_REPEAT = "mdi:repeat"
@@ -44,56 +50,6 @@ class TuyaBLESwitchMapping:
     is_available: TuyaBLESwitchIsAvailable = None
     getter: TuyaBLESwitchGetter = None
     setter: TuyaBLESwitchSetter = None
-
-
-def is_fingerbot_in_program_mode(
-    self: TuyaBLESwitch, product: TuyaBLEProductInfo
-) -> bool:
-    """Return True if the fingerbot is in program mode."""
-    result: bool = True
-    if product.fingerbot:
-        datapoint = self.device.datapoints[product.fingerbot.mode]
-        if datapoint:
-            result = datapoint.value == 2
-    return result
-
-
-def is_fingerbot_in_switch_mode(
-    self: TuyaBLESwitch, product: TuyaBLEProductInfo
-) -> bool:
-    """Return True if the fingerbot is in switch mode."""
-    result: bool = True
-    if product.fingerbot:
-        datapoint = self.device.datapoints[product.fingerbot.mode]
-        if datapoint:
-            result = datapoint.value == 1
-    return result
-
-
-def get_fingerbot_program_repeat_forever(
-    self: TuyaBLESwitch, product: TuyaBLEProductInfo
-) -> bool | None:
-    """Return whether the fingerbot program repeats forever."""
-    result: bool | None = None
-    if product.fingerbot and product.fingerbot.program:
-        datapoint = self.device.datapoints[product.fingerbot.program]
-        if datapoint and isinstance(datapoint.value, bytes):
-            repeat_count = int.from_bytes(datapoint.value[0:2], "big")
-            result = repeat_count == 0xFFFF
-    return result
-
-
-def set_fingerbot_program_repeat_forever(
-    self: TuyaBLESwitch, product: TuyaBLEProductInfo, value: bool
-) -> None:
-    """Set whether the fingerbot program repeats forever."""
-    if product.fingerbot and product.fingerbot.program:
-        datapoint = self.device.datapoints[product.fingerbot.program]
-        if datapoint and isinstance(datapoint.value, bytes):
-            new_value = (
-                int.to_bytes(0xFFFF if value else 1, 2, "big") + datapoint.value[2:]
-            )
-            self.hass.create_task(datapoint.set_value(new_value))
 
 
 def is_water_valve_in_switch_mode(

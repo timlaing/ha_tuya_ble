@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from homeassistant.components.bluetooth import (
@@ -15,7 +16,7 @@ from homeassistant.config_entries import (
     OptionsFlowWithConfigEntry,
 )
 from homeassistant.const import CONF_ADDRESS
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
 from tuya_sharing import LoginControl
 import voluptuous as vol
@@ -49,7 +50,105 @@ from .tuya_ble import SERVICE_UUID
 UNKNOWN_ERROR = "Unknown error"
 
 
-class TuyaBLEConfigFlow(ConfigFlow, domain=DOMAIN):
+class _QRCodeLoginMixin:
+    """Shared QR code login logic for config and options flows."""
+
+    # Subclasses must set these before calling mixin methods.
+    _qr_login_control: LoginControl
+    _qr_user_code: str
+    _qr_code: str
+    hass: HomeAssistant
+
+    # Proxy to the actual async_show_form method. Subclasses must implement this.
+    def async_show_form(
+        self,
+        *,
+        step_id: str | None = None,
+        data_schema: vol.Schema | None = None,
+        errors: dict[str, str] | None = None,
+        description_placeholders: Mapping[str, str] | None = None,
+        last_step: bool | None = None,
+        preview: str | None = None,
+    ) -> ConfigFlowResult:
+        """Proxy to the actual async_show_form method."""
+        raise NotImplementedError
+
+    # Subclass hook: store login data and return next step.
+    async def _async_qr_login_store_and_advance(
+        self, login_info: dict[str, Any]
+    ) -> ConfigFlowResult:
+        raise NotImplementedError
+
+    def _qr_code_form(
+        self,
+        step_id: str,
+        errors: dict[str, str] | None = None,
+        description_placeholders: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Show the QR code form."""
+        return self.async_show_form(
+            step_id=step_id,
+            data_schema=vol.Schema({
+                vol.Optional("QR"): selector.QrCodeSelector(
+                    config=selector.QrCodeSelectorConfig(
+                        data=f"tuyaSmart--qrLogin?token={self._qr_code}",
+                        scale=5,
+                        error_correction_level=(
+                            selector.QrErrorCorrectionLevel.QUARTILE
+                        ),
+                    )
+                )
+            }),
+            errors=errors,
+            description_placeholders=description_placeholders,
+        )
+
+    async def _async_fetch_qr_code(self, user_code: str) -> tuple[bool, dict[str, Any]]:
+        """Request a QR code token from the Tuya cloud for the given user code."""
+        response = await self.hass.async_add_executor_job(
+            self._qr_login_control.qr_code,
+            TUYA_CLIENT_ID,
+            TUYA_SCHEMA,
+            user_code,
+        )
+        if success := response.get(TUYA_RESPONSE_SUCCESS, False):
+            self._qr_user_code = user_code
+            self._qr_code = response[TUYA_RESPONSE_RESULT][TUYA_RESPONSE_QR_CODE]
+        return success, response
+
+    async def async_step_qr(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show QR code for scanning."""
+        if user_input is None:
+            return self._qr_code_form("qr")
+        return await self.async_step_scan()
+
+    async def async_step_scan(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Wait for QR code scan and complete login."""
+        hass = self.hass
+        ret, info = await hass.async_add_executor_job(
+            self._qr_login_control.login_result,
+            self._qr_code,
+            TUYA_CLIENT_ID,
+            self._qr_user_code,
+        )
+        if not ret:
+            await self._async_fetch_qr_code(self._qr_user_code)
+            return self._qr_code_form(
+                "qr",
+                errors={"base": "login_error"},
+                description_placeholders={
+                    TUYA_RESPONSE_MSG: info.get(TUYA_RESPONSE_MSG, UNKNOWN_ERROR),
+                    TUYA_RESPONSE_CODE: info.get(TUYA_RESPONSE_CODE, 0),
+                },
+            )
+        return await self._async_qr_login_store_and_advance(info)
+
+
+class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
     """Handle a config flow for Tuya BLE."""
 
     VERSION = 1
@@ -62,9 +161,9 @@ class TuyaBLEConfigFlow(ConfigFlow, domain=DOMAIN):
         self._data: dict[str, Any] = {}
         self._manager: HASSTuyaBLEDeviceManager | None = None
         self._get_device_info_error = False
-        self.__user_code: str = ""
-        self.__qr_code: str = ""
-        self.__login_control = LoginControl()
+        self._qr_user_code: str = ""
+        self._qr_code: str = ""
+        self._qr_login_control = LoginControl()
 
     def is_matching(self, other_flow: ConfigFlow) -> bool:
         """Return True if other_flow is matching this flow."""
@@ -92,7 +191,7 @@ class TuyaBLEConfigFlow(ConfigFlow, domain=DOMAIN):
         placeholders: dict[str, Any] = {}
 
         if user_input is not None:
-            success, response = await self.__async_get_qr_code(
+            success, response = await self._async_fetch_qr_code(
                 user_input[CONF_USER_CODE]
             )
             if success:
@@ -118,75 +217,6 @@ class TuyaBLEConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders=placeholders,
         )
 
-    async def async_step_qr(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Show QR code for scanning in Tuya/Smart Life app."""
-        if user_input is None:
-            return self.async_show_form(
-                step_id="qr",
-                data_schema=vol.Schema({
-                    vol.Optional("QR"): selector.QrCodeSelector(
-                        config=selector.QrCodeSelectorConfig(
-                            data=f"tuyaSmart--qrLogin?token={self.__qr_code}",
-                            scale=5,
-                            error_correction_level=(
-                                selector.QrErrorCorrectionLevel.QUARTILE
-                            ),
-                        )
-                    )
-                }),
-            )
-
-        return await self.async_step_scan()
-
-    async def async_step_scan(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Wait for QR code scan and complete login."""
-        ret, info = await self.hass.async_add_executor_job(
-            self.__login_control.login_result,
-            self.__qr_code,
-            TUYA_CLIENT_ID,
-            self.__user_code,
-        )
-        if not ret:
-            await self.__async_get_qr_code(self.__user_code)
-            return self.async_show_form(
-                step_id="qr",
-                errors={"base": "login_error"},
-                data_schema=vol.Schema({
-                    vol.Optional("QR"): selector.QrCodeSelector(
-                        config=selector.QrCodeSelectorConfig(
-                            data=f"tuyaSmart--qrLogin?token={self.__qr_code}",
-                            scale=5,
-                            error_correction_level=(
-                                selector.QrErrorCorrectionLevel.QUARTILE
-                            ),
-                        )
-                    )
-                }),
-                description_placeholders={
-                    TUYA_RESPONSE_MSG: info.get(TUYA_RESPONSE_MSG, UNKNOWN_ERROR),
-                    TUYA_RESPONSE_CODE: info.get(TUYA_RESPONSE_CODE, 0),
-                },
-            )
-
-        self._data[CONF_TOKEN_INFO] = {
-            "t": info["t"],
-            "uid": info["uid"],
-            "expire_time": info["expire_time"],
-            "access_token": info["access_token"],
-            "refresh_token": info["refresh_token"],
-        }
-        self._data[CONF_TERMINAL_ID] = info[CONF_TERMINAL_ID]
-        self._data[CONF_ENDPOINT] = info[CONF_ENDPOINT]
-
-        self._manager = HASSTuyaBLEDeviceManager(self.hass, self._data)
-        await self._manager.initialize()
-
-        return await self.async_step_device()
-
     async def async_step_device(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -200,7 +230,8 @@ class TuyaBLEConfigFlow(ConfigFlow, domain=DOMAIN):
                 discovery_info.address, raise_on_progress=False
             )
             self._abort_if_unique_id_configured()
-            assert self._manager is not None
+            if self._manager is None:
+                return self.async_abort(reason="unknown")
             credentials = await self._manager.get_device_credentials(
                 discovery_info.address, self._get_device_info_error, True
             )
@@ -270,18 +301,24 @@ class TuyaBLEConfigFlow(ConfigFlow, domain=DOMAIN):
                 continue
             self._discovered_devices[discovery.address] = discovery
 
-    async def __async_get_qr_code(self, user_code: str) -> tuple[bool, dict[str, Any]]:
-        """Request a QR code token from the Tuya cloud for the given user code."""
-        response = await self.hass.async_add_executor_job(
-            self.__login_control.qr_code,
-            TUYA_CLIENT_ID,
-            TUYA_SCHEMA,
-            user_code,
-        )
-        if success := response.get(TUYA_RESPONSE_SUCCESS, False):
-            self.__user_code = user_code
-            self.__qr_code = response[TUYA_RESPONSE_RESULT][TUYA_RESPONSE_QR_CODE]
-        return success, response
+    async def _async_qr_login_store_and_advance(
+        self, login_info: dict[str, Any]
+    ) -> ConfigFlowResult:
+        """Store login data and initialise the device manager."""
+        self._data[CONF_TOKEN_INFO] = {
+            "t": login_info["t"],
+            "uid": login_info["uid"],
+            "expire_time": login_info["expire_time"],
+            "access_token": login_info["access_token"],
+            "refresh_token": login_info["refresh_token"],
+        }
+        self._data[CONF_TERMINAL_ID] = login_info[CONF_TERMINAL_ID]
+        self._data[CONF_ENDPOINT] = login_info[CONF_ENDPOINT]
+
+        self._manager = HASSTuyaBLEDeviceManager(self.hass, self._data)
+        await self._manager.initialize()
+
+        return await self.async_step_device()
 
     @staticmethod
     @callback
@@ -292,15 +329,15 @@ class TuyaBLEConfigFlow(ConfigFlow, domain=DOMAIN):
         return TuyaBLEOptionsFlow(config_entry)
 
 
-class TuyaBLEOptionsFlow(OptionsFlowWithConfigEntry):
+class TuyaBLEOptionsFlow(OptionsFlowWithConfigEntry, _QRCodeLoginMixin):
     """Handle a Tuya BLE options flow."""
 
     def __init__(self, config_entry: ConfigEntry) -> None:
         """Set up mutable state for the re-authentication QR-code flow."""
         super().__init__(config_entry)
-        self.__user_code: str = ""
-        self.__qr_code: str = ""
-        self.__login_control = LoginControl()
+        self._qr_user_code: str = ""
+        self._qr_code: str = ""
+        self._qr_login_control = LoginControl()
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -316,7 +353,7 @@ class TuyaBLEOptionsFlow(OptionsFlowWithConfigEntry):
         placeholders: dict[str, Any] = {}
 
         if user_input is not None:
-            success, response = await self.__async_get_qr_code(
+            success, response = await self._async_fetch_qr_code(
                 user_input[CONF_USER_CODE]
             )
             if success:
@@ -344,85 +381,23 @@ class TuyaBLEOptionsFlow(OptionsFlowWithConfigEntry):
             description_placeholders=placeholders,
         )
 
-    async def async_step_qr(
-        self, user_input: dict[str, Any] | None = None
+    async def _async_qr_login_store_and_advance(
+        self, login_info: dict[str, Any]
     ) -> ConfigFlowResult:
-        """Show QR code for scanning."""
-        if user_input is None:
-            return self.async_show_form(
-                step_id="qr",
-                data_schema=vol.Schema({
-                    vol.Optional("QR"): selector.QrCodeSelector(
-                        config=selector.QrCodeSelectorConfig(
-                            data=f"tuyaSmart--qrLogin?token={self.__qr_code}",
-                            scale=5,
-                            error_correction_level=(
-                                selector.QrErrorCorrectionLevel.QUARTILE
-                            ),
-                        )
-                    )
-                }),
-            )
-        return await self.async_step_scan()
-
-    async def async_step_scan(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Wait for QR code scan and complete login."""
-        ret, info = await self.hass.async_add_executor_job(
-            self.__login_control.login_result,
-            self.__qr_code,
-            TUYA_CLIENT_ID,
-            self.__user_code,
-        )
-        if not ret:
-            await self.__async_get_qr_code(self.__user_code)
-            return self.async_show_form(
-                step_id="qr",
-                errors={"base": "login_error"},
-                data_schema=vol.Schema({
-                    vol.Optional("QR"): selector.QrCodeSelector(
-                        config=selector.QrCodeSelectorConfig(
-                            data=f"tuyaSmart--qrLogin?token={self.__qr_code}",
-                            scale=5,
-                            error_correction_level=(
-                                selector.QrErrorCorrectionLevel.QUARTILE
-                            ),
-                        )
-                    )
-                }),
-                description_placeholders={
-                    TUYA_RESPONSE_MSG: info.get(TUYA_RESPONSE_MSG, UNKNOWN_ERROR),
-                    TUYA_RESPONSE_CODE: info.get(TUYA_RESPONSE_CODE, 0),
-                },
-            )
-
+        """Store login data as an options update."""
         new_data = dict(self.config_entry.options)
-        new_data[CONF_USER_CODE] = self.__user_code
+        new_data[CONF_USER_CODE] = self._qr_user_code
         new_data[CONF_TOKEN_INFO] = {
-            "t": info["t"],
-            "uid": info["uid"],
-            "expire_time": info["expire_time"],
-            "access_token": info["access_token"],
-            "refresh_token": info["refresh_token"],
+            "t": login_info["t"],
+            "uid": login_info["uid"],
+            "expire_time": login_info["expire_time"],
+            "access_token": login_info["access_token"],
+            "refresh_token": login_info["refresh_token"],
         }
-        new_data[CONF_TERMINAL_ID] = info[CONF_TERMINAL_ID]
-        new_data[CONF_ENDPOINT] = info[CONF_ENDPOINT]
+        new_data[CONF_TERMINAL_ID] = login_info[CONF_TERMINAL_ID]
+        new_data[CONF_ENDPOINT] = login_info[CONF_ENDPOINT]
 
         return self.async_create_entry(
             title="",
             data=new_data,
         )
-
-    async def __async_get_qr_code(self, user_code: str) -> tuple[bool, dict[str, Any]]:
-        """Request a QR code token from the Tuya cloud for the given user code."""
-        response = await self.hass.async_add_executor_job(
-            self.__login_control.qr_code,
-            TUYA_CLIENT_ID,
-            TUYA_SCHEMA,
-            user_code,
-        )
-        if success := response.get(TUYA_RESPONSE_SUCCESS, False):
-            self.__user_code = user_code
-            self.__qr_code = response[TUYA_RESPONSE_RESULT][TUYA_RESPONSE_QR_CODE]
-        return success, response

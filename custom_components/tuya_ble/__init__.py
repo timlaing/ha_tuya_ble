@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from bleak_retry_connector import get_device
 from homeassistant.components import bluetooth
-from homeassistant.components.bluetooth.match import ADDRESS, BluetoothCallbackMatcher
+from homeassistant.components.bluetooth.match import BluetoothCallbackMatcher
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONF_ADDRESS,
@@ -101,7 +101,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await device.initialize_with_credentials(credentials)
 
     product_info = get_device_product_info(device)
-    assert product_info is not None
+    if product_info is None:
+        raise ConfigEntryNotReady(f"Unknown device: {device.product_id}")
 
     coordinator = TuyaBLECoordinator(hass, device)
 
@@ -121,7 +122,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         bluetooth.async_register_callback(
             hass,
             _async_update_ble,
-            BluetoothCallbackMatcher({ADDRESS: address}),
+            BluetoothCallbackMatcher({"address": address}),
             bluetooth.BluetoothScanningMode.ACTIVE,
         )
     )

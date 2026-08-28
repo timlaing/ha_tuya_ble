@@ -17,6 +17,12 @@ from custom_components.tuya_ble.devices import (
     TuyaBLEProductInfo,
     TuyaBLEWaterValveInfo,
 )
+from custom_components.tuya_ble.fingerbot import (
+    get_fingerbot_program_repeat_forever,
+    is_fingerbot_in_program_mode,
+    is_fingerbot_in_switch_mode,
+    set_fingerbot_program_repeat_forever,
+)
 from custom_components.tuya_ble.switch import TuyaBLESwitch
 from custom_components.tuya_ble.tuya_ble import (
     TuyaBLEDataPointType,
@@ -208,7 +214,7 @@ async def test_fingerbot_in_program_mode_no_fingerbot(
         device,
         coordinator,
         product,
-        is_available=switch.is_fingerbot_in_program_mode,
+        is_available=is_fingerbot_in_program_mode,
     )
     await connect(coordinator)
     assert entity.available is True
@@ -224,7 +230,7 @@ async def test_fingerbot_in_switch_mode_no_fingerbot(
         device,
         coordinator,
         product,
-        is_available=switch.is_fingerbot_in_switch_mode,
+        is_available=is_fingerbot_in_switch_mode,
     )
     await connect(coordinator)
     assert entity.available is True
@@ -249,7 +255,7 @@ async def test_fingerbot_in_switch_mode_no_datapoint(
         device,
         coordinator,
         product,
-        is_available=switch.is_fingerbot_in_switch_mode,
+        is_available=is_fingerbot_in_switch_mode,
     )
     await connect(coordinator)
     assert entity.available is True
@@ -265,7 +271,7 @@ async def test_set_fingerbot_program_repeat_forever_no_fingerbot(
         device,
         coordinator,
         product,
-        setter=switch.set_fingerbot_program_repeat_forever,
+        setter=set_fingerbot_program_repeat_forever,
     )
     entity.turn_on()
     entity.turn_off()
@@ -291,7 +297,7 @@ async def test_is_fingerbot_in_program_mode_with_fingerbot(
         device,
         coordinator,
         product,
-        is_available=switch.is_fingerbot_in_program_mode,
+        is_available=is_fingerbot_in_program_mode,
     )
     # No mode datapoint -> returns True (default)
     await connect(coordinator)
@@ -322,7 +328,7 @@ async def test_is_fingerbot_in_switch_mode_with_mode_datapoint(
         device,
         coordinator,
         product,
-        is_available=switch.is_fingerbot_in_switch_mode,
+        is_available=is_fingerbot_in_switch_mode,
     )
     await connect(coordinator)
     # Add mode datapoint with value 1 (switch mode) -> returns True
@@ -352,7 +358,7 @@ async def test_get_fingerbot_program_repeat_forever(
         device,
         coordinator,
         product,
-        getter=switch.get_fingerbot_program_repeat_forever,
+        getter=get_fingerbot_program_repeat_forever,
     )
     # No program datapoint -> returns None
     assert entity.is_on is False
@@ -385,7 +391,7 @@ async def test_get_fingerbot_program_repeat_forever_program_zero(
         device,
         coordinator,
         product,
-        getter=switch.get_fingerbot_program_repeat_forever,
+        getter=get_fingerbot_program_repeat_forever,
     )
     # program=0 means the if condition is False, returns None
     assert entity.is_on is False
@@ -410,7 +416,7 @@ async def test_set_fingerbot_program_repeat_forever(
         device,
         coordinator,
         product,
-        setter=switch.set_fingerbot_program_repeat_forever,
+        setter=set_fingerbot_program_repeat_forever,
     )
     # Add program datapoint
     program_data = (1).to_bytes(2, "big") + b"\x00\x01"
@@ -446,7 +452,7 @@ async def test_set_fingerbot_program_no_program_dp(
         device,
         coordinator,
         product,
-        setter=switch.set_fingerbot_program_repeat_forever,
+        setter=set_fingerbot_program_repeat_forever,
     )
     # No program datapoint -> should not raise
     entity.turn_on()

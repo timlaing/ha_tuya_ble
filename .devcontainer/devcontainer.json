@@ -1,9 +1,7 @@
 {
   "containerEnv": {
     "WORKSPACE_DIRECTORY": "${containerWorkspaceFolder}",
-    "DEVCONTAINER": "1",
-    "HTTPS_PROXY": "http://192.168.150.149:8118",
-    "HTTP_PROXY": "http://192.168.150.149:8118"
+    "DEVCONTAINER": "1"
   },
   "customizations": {
     "vscode": {

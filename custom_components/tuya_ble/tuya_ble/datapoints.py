@@ -7,7 +7,7 @@ import time
 from typing import TYPE_CHECKING
 
 from .const import TuyaBLEDataPointType
-from .exceptions import TuyaBLEEnumValueError
+from .exceptions import TuyaBLEDataFormatError, TuyaBLEEnumValueError
 
 if TYPE_CHECKING:
     from .base import TuyaBLEDevice
@@ -50,15 +50,18 @@ class TuyaBLEDataPoint:
         result = b""
         match self._type:
             case TuyaBLEDataPointType.DT_RAW | TuyaBLEDataPointType.DT_BITMAP:
-                assert isinstance(self._value, bytes)
+                if not isinstance(self._value, bytes):
+                    raise TuyaBLEDataFormatError()
                 result = self._value
             case TuyaBLEDataPointType.DT_BOOL:
                 result = pack(">B", 1 if self._value else 0)
             case TuyaBLEDataPointType.DT_VALUE:
-                assert isinstance(self._value, int)
+                if not isinstance(self._value, int):
+                    raise TuyaBLEDataFormatError()
                 result = pack(">i", self._value)
             case TuyaBLEDataPointType.DT_ENUM:
-                assert isinstance(self._value, int)
+                if not isinstance(self._value, int):
+                    raise TuyaBLEDataFormatError()
                 if self._value > 0xFFFF:
                     result = pack(">I", self._value)
                 elif self._value > 0xFF:
@@ -66,7 +69,8 @@ class TuyaBLEDataPoint:
                 else:
                     result = pack(">B", self._value)
             case TuyaBLEDataPointType.DT_STRING:
-                assert isinstance(self._value, str)
+                if not isinstance(self._value, str):
+                    raise TuyaBLEDataFormatError()
                 result = self._value.encode()
         return result
 
@@ -100,8 +104,8 @@ class TuyaBLEDataPoint:
         """Return whether the value was changed by the device."""
         return self._changed_by_device
 
-    async def set_value(self, value: bytes | bool | int | str) -> None:
-        """Set the data point value and send the update to the device."""
+    def set_value_no_notify(self, value: bytes | bool | int | str) -> None:
+        """Set the value without sending an update to the device."""
         match self._type:
             case TuyaBLEDataPointType.DT_RAW | TuyaBLEDataPointType.DT_BITMAP:
                 self._value = (
@@ -115,8 +119,11 @@ class TuyaBLEDataPoint:
                 self._set_enum_value(value)
             case TuyaBLEDataPointType.DT_STRING:
                 self._value = str(value)
-
         self._changed_by_device = False
+
+    async def set_value(self, value: bytes | bool | int | str) -> None:
+        """Set the data point value and send the update to the device."""
+        self.set_value_no_notify(value)
         await self._owner.update_from_user(self._id)
 
     def _set_enum_value(self, value: bytes | bool | int | str) -> None:

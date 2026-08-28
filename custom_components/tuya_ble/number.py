@@ -24,6 +24,16 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .devices import TuyaBLECoordinator, TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
+from .fingerbot import (
+    get_fingerbot_program_position,
+    get_fingerbot_program_repeat_count,
+    is_fingerbot_in_program_mode,
+    is_fingerbot_in_push_mode,
+    is_fingerbot_not_in_program_mode,
+    is_fingerbot_repeat_count_available,
+    set_fingerbot_program_position,
+    set_fingerbot_program_repeat_count,
+)
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
 ICON_TIMER = "mdi:timer"
@@ -54,120 +64,6 @@ class TuyaBLENumberMapping:
     getter: TuyaBLENumberGetter = None
     setter: TuyaBLENumberSetter = None
     mode: NumberMode = NumberMode.BOX
-
-
-def is_fingerbot_in_program_mode(
-    self: TuyaBLENumber,
-    product: TuyaBLEProductInfo,
-) -> bool:
-    """Return whether the fingerbot is in program mode."""
-    result: bool = True
-    if product.fingerbot:
-        datapoint = self.device.datapoints[product.fingerbot.mode]
-        if datapoint:
-            result = datapoint.value == 2
-    return result
-
-
-def is_fingerbot_not_in_program_mode(
-    self: TuyaBLENumber,
-    product: TuyaBLEProductInfo,
-) -> bool:
-    """Return whether the fingerbot is not in program mode."""
-    result: bool = True
-    if product.fingerbot:
-        datapoint = self.device.datapoints[product.fingerbot.mode]
-        if datapoint:
-            result = datapoint.value != 2
-    return result
-
-
-def is_fingerbot_in_push_mode(
-    self: TuyaBLENumber,
-    product: TuyaBLEProductInfo,
-) -> bool:
-    """Return whether the fingerbot is in push mode."""
-    result: bool = True
-    if product.fingerbot:
-        datapoint = self.device.datapoints[product.fingerbot.mode]
-        if datapoint:
-            result = datapoint.value == 0
-    return result
-
-
-def is_fingerbot_repeat_count_available(
-    self: TuyaBLENumber,
-    product: TuyaBLEProductInfo,
-) -> bool:
-    """Return whether the fingerbot program repeat count is available."""
-    result: bool = True
-    if product.fingerbot and product.fingerbot.program:
-        datapoint = self.device.datapoints[product.fingerbot.mode]
-        if datapoint:
-            result = datapoint.value == 2
-        if result:
-            datapoint = self.device.datapoints[product.fingerbot.program]
-            if datapoint and isinstance(datapoint.value, bytes):
-                repeat_count = int.from_bytes(datapoint.value[0:2], "big")
-                result = repeat_count != 0xFFFF
-
-    return result
-
-
-def get_fingerbot_program_repeat_count(
-    self: TuyaBLENumber,
-    product: TuyaBLEProductInfo,
-) -> float | None:
-    """Get the repeat count from the fingerbot program data point."""
-    result: float | None = None
-    if product.fingerbot and product.fingerbot.program:
-        datapoint = self.device.datapoints[product.fingerbot.program]
-        if datapoint and isinstance(datapoint.value, bytes):
-            repeat_count = int.from_bytes(datapoint.value[0:2], "big")
-            result = repeat_count * 1.0
-
-    return result
-
-
-def set_fingerbot_program_repeat_count(
-    self: TuyaBLENumber,
-    product: TuyaBLEProductInfo,
-    value: float,
-) -> None:
-    """Set the repeat count in the fingerbot program data point."""
-    if product.fingerbot and product.fingerbot.program:
-        datapoint = self.device.datapoints[product.fingerbot.program]
-        if datapoint and isinstance(datapoint.value, bytes):
-            new_value = int.to_bytes(int(value), 2, "big") + datapoint.value[2:]
-            self.hass.create_task(datapoint.set_value(new_value))
-
-
-def get_fingerbot_program_position(
-    self: TuyaBLENumber,
-    product: TuyaBLEProductInfo,
-) -> float | None:
-    """Get the position from the fingerbot program data point."""
-    result: float | None = None
-    if product.fingerbot and product.fingerbot.program:
-        datapoint = self.device.datapoints[product.fingerbot.program]
-        if datapoint and isinstance(datapoint.value, bytes):
-            result = datapoint.value[2] * 1.0
-
-    return result
-
-
-def set_fingerbot_program_position(
-    self: TuyaBLENumber,
-    product: TuyaBLEProductInfo,
-    value: float,
-) -> None:
-    """Set the position in the fingerbot program data point."""
-    if product.fingerbot and product.fingerbot.program:
-        datapoint = self.device.datapoints[product.fingerbot.program]
-        if datapoint and isinstance(datapoint.value, bytes):
-            new_value = bytearray(datapoint.value)
-            new_value[2] = int(value)
-            self.hass.create_task(datapoint.set_value(bytes(new_value)))
 
 
 class TuyaBLEDownPositionDescription(NumberEntityDescription):

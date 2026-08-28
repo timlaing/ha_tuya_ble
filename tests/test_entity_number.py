@@ -14,16 +14,17 @@ from custom_components.tuya_ble.devices import (
     TuyaBLEFingerbotInfo,
     TuyaBLEProductInfo,
 )
-from custom_components.tuya_ble.number import (
-    TuyaBLENumber,
+from custom_components.tuya_ble.fingerbot import (
     get_fingerbot_program_position,
     get_fingerbot_program_repeat_count,
+    is_fingerbot_in_program_mode,
     is_fingerbot_in_push_mode,
     is_fingerbot_not_in_program_mode,
     is_fingerbot_repeat_count_available,
     set_fingerbot_program_position,
     set_fingerbot_program_repeat_count,
 )
+from custom_components.tuya_ble.number import TuyaBLENumber
 from custom_components.tuya_ble.tuya_ble import (
     TuyaBLEDataPointType,
     TuyaBLEDevice,
@@ -160,7 +161,7 @@ async def test_fingerbot_in_program_mode_no_fingerbot(
         device,
         coordinator,
         product,
-        is_available=number.is_fingerbot_in_program_mode,
+        is_available=is_fingerbot_in_program_mode,
     )
     await connect(coordinator)
     assert entity.available is True
@@ -186,7 +187,7 @@ async def test_fingerbot_in_program_mode_no_datapoint(
         device,
         coordinator,
         product,
-        is_available=number.is_fingerbot_in_program_mode,
+        is_available=is_fingerbot_in_program_mode,
     )
     await connect(coordinator)
     assert entity.available is True
@@ -202,7 +203,7 @@ async def test_fingerbot_not_in_program_mode_no_fingerbot(
         device,
         coordinator,
         product,
-        is_available=number.is_fingerbot_not_in_program_mode,
+        is_available=is_fingerbot_not_in_program_mode,
     )
     await connect(coordinator)
     assert entity.available is True
@@ -218,7 +219,7 @@ async def test_fingerbot_in_push_mode_no_fingerbot(
         device,
         coordinator,
         product,
-        is_available=number.is_fingerbot_in_push_mode,
+        is_available=is_fingerbot_in_push_mode,
     )
     await connect(coordinator)
     assert entity.available is True
@@ -234,7 +235,7 @@ async def test_fingerbot_repeat_count_available_no_fingerbot(
         device,
         coordinator,
         product,
-        is_available=number.is_fingerbot_repeat_count_available,
+        is_available=is_fingerbot_repeat_count_available,
     )
     await connect(coordinator)
     assert entity.available is True
@@ -250,7 +251,7 @@ async def test_get_fingerbot_program_repeat_count_no_fingerbot(
         device,
         coordinator,
         product,
-        getter=number.get_fingerbot_program_repeat_count,
+        getter=get_fingerbot_program_repeat_count,
     )
     assert entity.native_value is None
 
@@ -265,7 +266,7 @@ async def test_get_fingerbot_program_position_no_fingerbot(
         device,
         coordinator,
         product,
-        getter=number.get_fingerbot_program_position,
+        getter=get_fingerbot_program_position,
     )
     assert entity.native_value is None
 
@@ -280,7 +281,7 @@ async def test_set_fingerbot_program_repeat_count_no_fingerbot(
         device,
         coordinator,
         product,
-        setter=number.set_fingerbot_program_repeat_count,
+        setter=set_fingerbot_program_repeat_count,
     )
     entity.set_native_value(5)
 
@@ -295,7 +296,7 @@ async def test_set_fingerbot_program_position_no_fingerbot(
         device,
         coordinator,
         product,
-        setter=number.set_fingerbot_program_position,
+        setter=set_fingerbot_program_position,
     )
     entity.set_native_value(50)
 

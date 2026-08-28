@@ -7,6 +7,7 @@ from typing import Any
 
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from tuya_sharing import CustomerDevice, Manager, SharingTokenListener
 
 from .const import (
@@ -43,7 +44,8 @@ class HASSTuyaBLEDeviceManager(AbstractTuyaBLEDeviceManager):
     """Cloud connected manager of the Tuya BLE devices credentials."""
 
     def __init__(self, hass: HomeAssistant, data: dict[str, Any]) -> None:
-        assert hass is not None
+        if hass is None:
+            raise ValueError("hass must not be None")
         self._hass = hass
         self._data = data
         self._manager: Manager | None = None
@@ -77,7 +79,8 @@ class HASSTuyaBLEDeviceManager(AbstractTuyaBLEDeviceManager):
         if self._manager is None:
             await self.initialize()
 
-        assert self._manager is not None
+        if self._manager is None:
+            raise ConfigEntryNotReady("Failed to initialize Tuya cloud manager")
 
         if force_update:
             await self._hass.async_add_executor_job(self._manager.update_device_cache)
@@ -98,7 +101,8 @@ class HASSTuyaBLEDeviceManager(AbstractTuyaBLEDeviceManager):
         address: str,
     ) -> TuyaBLEDeviceCredentials | None:
         """Build a device's credentials if its factory MAC matches the address."""
-        assert self._manager is not None
+        if self._manager is None:
+            raise ConfigEntryNotReady("Cloud manager not initialized")
 
         response = await self._hass.async_add_executor_job(
             self._manager.customer_api.get,

@@ -1,13 +1,14 @@
 aiousbwatcher
-homeassistant>=2026.8.0
+homeassistant==2026.8.3
+homeassistant-stubs==2026.8.3
 mypy
-prek>=0.4.0,<0.5.0
+prek>=0.4.14,<0.5.0
 pycryptodome
 pylint
 pytest
 pytest-asyncio
 pytest-cov
-pytest-homeassistant-custom-component
+pytest-homeassistant-custom-component==0.13.357
 ruff
 serialx
 tuya-device-handlers

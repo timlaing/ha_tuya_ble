@@ -19,6 +19,7 @@ from .const import (
     DOMAIN,
 )
 from .devices import TuyaBLECoordinator, TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
+from .fingerbot import is_fingerbot_in_program_mode
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
 SIGNAL_STRENGTH_DP_ID = -1
@@ -30,19 +31,6 @@ TuyaBLETextIsAvailable = Callable[["TuyaBLEText", TuyaBLEProductInfo], bool] | N
 
 
 TuyaBLETextSetter = Callable[["TuyaBLEText", TuyaBLEProductInfo, str], None] | None
-
-
-def is_fingerbot_in_program_mode(
-    self: TuyaBLEText,
-    product: TuyaBLEProductInfo,
-) -> bool:
-    """Check if the fingerbot is currently in program mode."""
-    result: bool = True
-    if product.fingerbot:
-        datapoint = self.device.datapoints[product.fingerbot.mode]
-        if datapoint:
-            result = datapoint.value == 2
-    return result
 
 
 def get_fingerbot_program(

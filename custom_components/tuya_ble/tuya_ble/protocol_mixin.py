@@ -69,6 +69,10 @@ class TuyaBLEProtocol(Protocol):
     _datapoints: TuyaBLEDataPoints
     _callbacks: list[Callable[[list[TuyaBLEDataPoint]], None]]
 
+    _reconnect_task: asyncio.Task[None] | None
+    _resend_task: asyncio.Task[None] | None
+    _send_response_task: asyncio.Task[None] | None
+
     @property
     def address(self) -> str:
         """Return the BLE address."""
@@ -98,7 +102,7 @@ class TuyaBLEProtocol(Protocol):
         else:
             raise TuyaBLEDeviceError(0)
 
-    async def set_multiple_values(  # pylint: disable=protected-access
+    async def set_multiple_values(
         self, dp_updates: dict[int, bytes | bool | int | str]
     ) -> None:
         """Set multiple datapoint values in a single atomic BLE payload."""
@@ -108,21 +112,7 @@ class TuyaBLEProtocol(Protocol):
             if dp is None:
                 continue
 
-            if dp.dp_type in (
-                TuyaBLEDataPointType.DT_RAW,
-                TuyaBLEDataPointType.DT_BITMAP,
-            ):
-                dp._value = bytes(value)  # type: ignore[arg-type]
-            elif dp.dp_type == TuyaBLEDataPointType.DT_BOOL:
-                dp._value = bool(value)
-            elif dp.dp_type in (
-                TuyaBLEDataPointType.DT_VALUE,
-                TuyaBLEDataPointType.DT_ENUM,
-            ):
-                dp._value = int(value)
-            elif dp.dp_type == TuyaBLEDataPointType.DT_STRING:
-                dp._value = str(value)
-            dp._changed_by_device = False
+            dp.set_value_no_notify(value)
             sent_ids.append(dp_id)
 
         if sent_ids:
@@ -133,7 +123,8 @@ class TuyaBLEProtocol(Protocol):
         data = bytearray()
         for dp_id in datapoint_ids:
             dp = self._datapoints[dp_id]
-            assert dp is not None
+            if dp is None:
+                raise TuyaBLEDeviceError(0)
             value = dp.get_value()
             _LOGGER.debug(
                 "%s: Sending datapoint update, id: %s, type: %s: value: %s",
@@ -207,9 +198,11 @@ class TuyaBLEProtocol(Protocol):
     def _select_encryption_key(self, code: TuyaBLECode) -> tuple[bytes, bytes]:
         """Select the encryption key and security flag for the given code."""
         if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO:
-            assert self._login_key is not None
+            if self._login_key is None:
+                raise TuyaBLEDeviceError(0)
             return self._login_key, b"\x04"
-        assert self._session_key is not None
+        if self._session_key is None:
+            raise TuyaBLEDeviceError(0)
         return self._session_key, b"\x05"
 
     def _encrypt_payload(
@@ -392,9 +385,9 @@ class TuyaBLEProtocol(Protocol):
                 ex,
             )
             if self._is_paired:
-                asyncio.create_task(self._resend_packets(packets))
+                self._resend_task = asyncio.create_task(self._resend_packets(packets))
             else:
-                asyncio.create_task(self._reconnect())
+                self._reconnect_task = asyncio.create_task(self._reconnect())
             raise BleakError from ex
         except BleakError as ex:
             # Disconnect so we can reset state and try again
@@ -405,9 +398,9 @@ class TuyaBLEProtocol(Protocol):
                 ex,
             )
             if self._is_paired:
-                asyncio.create_task(self._resend_packets(packets))
+                self._resend_task = asyncio.create_task(self._resend_packets(packets))
             else:
-                asyncio.create_task(self._reconnect())
+                self._reconnect_task = asyncio.create_task(self._reconnect())
             raise
 
     async def _int_send_packets_locked(self, packets: list[bytes]) -> None:
@@ -440,13 +433,16 @@ class TuyaBLEProtocol(Protocol):
     def _get_key(self, security_flag: int) -> bytes:
         """Return the encryption key for the given security flag."""
         if security_flag == 1:
-            assert self._auth_key is not None
+            if self._auth_key is None:
+                raise TuyaBLEDeviceError(0)
             return self._auth_key
         if security_flag == 4:
-            assert self._login_key is not None
+            if self._login_key is None:
+                raise TuyaBLEDeviceError(0)
             return self._login_key
         if security_flag == 5:
-            assert self._session_key is not None
+            if self._session_key is None:
+                raise TuyaBLEDeviceError(0)
             return self._session_key
         raise TuyaBLEDataFormatError()
 
@@ -521,7 +517,8 @@ class TuyaBLEProtocol(Protocol):
             )
             self._datapoints.update_from_device(dp_id, timestamp, flags, dp_type, value)
             dp = self._datapoints[dp_id]
-            assert dp is not None
+            if dp is None:
+                raise TuyaBLEDeviceError(0)
             datapoints.append(dp)
             pos = next_pos
 
@@ -572,7 +569,8 @@ class TuyaBLEProtocol(Protocol):
         self._is_bound = data[5] != 0
 
         srand = data[6:12]
-        assert self._local_key is not None
+        if self._local_key is None:
+            raise TuyaBLEDeviceError(0)
         self._session_key = hashlib.md5(self._local_key + srand).digest()  # noqa: S4790
         self._auth_key = data[14:46]
 
@@ -601,7 +599,7 @@ class TuyaBLEProtocol(Protocol):
         timestamp = int(time.time_ns() / 1000000)
         timezone = -int(time.timezone / 36)
         data = str(timestamp).encode() + pack(">h", timezone)
-        asyncio.create_task(
+        self._send_response_task = asyncio.create_task(
             self._send_response(TuyaBLECode.FUN_RECEIVE_TIME1_REQ, data, seq_num)
         )
 
@@ -620,14 +618,14 @@ class TuyaBLEProtocol(Protocol):
             time_str.tm_wday,
             timezone,
         )
-        asyncio.create_task(
+        self._send_response_task = asyncio.create_task(
             self._send_response(TuyaBLECode.FUN_RECEIVE_TIME2_REQ, data, seq_num)
         )
 
     def _handle_receive_dp(self, seq_num: int, data: bytes) -> None:
         """Handle FUN_RECEIVE_DP: parse datapoints and send ack."""
         self._parse_datapoints_v3(time.time(), 0, data, 0)
-        asyncio.create_task(
+        self._send_response_task = asyncio.create_task(
             self._send_response(TuyaBLECode.FUN_RECEIVE_DP, bytes(0), seq_num)
         )
 
@@ -637,7 +635,7 @@ class TuyaBLEProtocol(Protocol):
         flags = data[2]
         self._parse_datapoints_v3(time.time(), flags, data, 2)
         response = pack(">HBB", dp_seq_num, flags, 0)
-        asyncio.create_task(
+        self._send_response_task = asyncio.create_task(
             self._send_response(TuyaBLECode.FUN_RECEIVE_SIGN_DP, response, seq_num)
         )
 
@@ -647,7 +645,7 @@ class TuyaBLEProtocol(Protocol):
         dp_pos: int
         ts, dp_pos = self._parse_timestamp(data, 0)
         self._parse_datapoints_v3(ts, 0, data, dp_pos)
-        asyncio.create_task(
+        self._send_response_task = asyncio.create_task(
             self._send_response(TuyaBLECode.FUN_RECEIVE_TIME_DP, bytes(0), seq_num)
         )
 
@@ -658,7 +656,7 @@ class TuyaBLEProtocol(Protocol):
         _ts, dp_pos = self._parse_timestamp(data, 3)
         self._parse_datapoints_v3(time.time(), flags, data, dp_pos)
         response = pack(">HBB", dp_seq_num, flags, 0)
-        asyncio.create_task(
+        self._send_response_task = asyncio.create_task(
             self._send_response(TuyaBLECode.FUN_RECEIVE_SIGN_TIME_DP, response, seq_num)
         )
 
@@ -712,7 +710,8 @@ class TuyaBLEProtocol(Protocol):
 
     def _decrypt_input(self) -> bytes:
         """Decrypt the input buffer and return raw bytes."""
-        assert self._input_buffer is not None
+        if self._input_buffer is None:
+            raise TuyaBLEDataFormatError()
         security_flag = self._input_buffer[0]
         key = self._get_key(security_flag)
         iv = self._input_buffer[1:17]
@@ -779,7 +778,9 @@ class TuyaBLEProtocol(Protocol):
                 self._input_buffer = bytearray()
                 self._input_expected_length, pos = self._unpack_int(bytes(data), pos)
                 pos += 1
-            assert self._input_buffer is not None
+            if self._input_buffer is None:
+                _LOGGER.error("%s: Buffer not initialized", self.address)
+                return
             self._input_buffer += data[pos:]
             self._input_expected_packet_num += 1
         else:

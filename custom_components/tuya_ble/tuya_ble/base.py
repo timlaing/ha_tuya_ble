@@ -29,6 +29,7 @@ from .const import (
     TuyaBLEDataPointType,
 )
 from .datapoints import TuyaBLEDataPoint, TuyaBLEDataPoints
+from .exceptions import TuyaBLEDeviceError
 from .manager import AbstractTuyaBLEDeviceManager, TuyaBLEDeviceCredentials
 from .protocol_mixin import (
     BLE_CONNECTION_EXCEPTIONS,
@@ -112,6 +113,11 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         self._function: dict[str, TuyaBLEDeviceFunction] = {}
         self._status_range: dict[str, TuyaBLEDeviceFunction] = {}
 
+        self._disconnect_task: asyncio.Task[None] | None = None
+        self._reconnect_task: asyncio.Task[None] | None = None
+        self._resend_task: asyncio.Task[None] | None = None
+        self._send_response_task: asyncio.Task[None] | None = None
+
     def set_ble_device_and_advertisement_data(
         self, ble_device: BLEDevice, advertisement_data: AdvertisementData
     ) -> None:
@@ -131,6 +137,8 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         """Initialize the device with pre-built credentials (no cloud needed)."""
         _LOGGER.debug("%s: Initializing with stored credentials", self.address)
         self._device_info = credentials
+        if len(credentials.local_key) < 6:
+            raise TuyaBLEDeviceError(0)
         self._local_key = credentials.local_key[:6].encode()
         self._login_key = hashlib.md5(self._local_key).digest()  # noqa: S4790
         self.append_functions(
@@ -141,8 +149,8 @@ class TuyaBLEDevice(TuyaBLEProtocol):
 
     def _build_pairing_request(self) -> bytes:
         result = bytearray()
-        assert self._device_info is not None
-        assert self._local_key is not None
+        if self._device_info is None or self._local_key is None:
+            raise TuyaBLEDeviceError(0)
 
         result += self._device_info.uuid.encode()
         result += self._local_key
@@ -170,6 +178,8 @@ class TuyaBLEDevice(TuyaBLEProtocol):
                     self._ble_device.address, False
                 )
             if self._device_info:
+                if len(self._device_info.local_key) < 6:
+                    raise TuyaBLEDeviceError(0)
                 self._local_key = self._device_info.local_key[:6].encode()
                 self._login_key = hashlib.md5(self._local_key).digest()  # noqa: S4790
                 self.append_functions(
@@ -421,11 +431,11 @@ class TuyaBLEDevice(TuyaBLEProtocol):
                 self.address,
                 self.rssi,
             )
-            asyncio.create_task(self._reconnect())
+            self._reconnect_task = asyncio.create_task(self._reconnect())
 
     def _disconnect(self) -> None:
         """Disconnect from device."""
-        asyncio.create_task(self._execute_timed_disconnect())
+        self._disconnect_task = asyncio.create_task(self._execute_timed_disconnect())
 
     async def _execute_timed_disconnect(self) -> None:
         """Execute timed disconnection."""
@@ -638,4 +648,4 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             )
             await asyncio.sleep(BLEAK_BACKOFF_TIME)
             _LOGGER.debug("%s: Reconnecting again", self.address)
-            asyncio.create_task(self._reconnect())
+            self._reconnect_task = asyncio.create_task(self._reconnect())
