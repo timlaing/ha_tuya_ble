@@ -17,11 +17,19 @@ jobs:
           python-version: "3.14"
           cache: pip
 
-      - name: Install dependencies
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install Python dependencies
         run: |
           python -m venv .venv
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install -r requirements-dev.txt
+
+      - name: Install Prettier dependencies
+        run: npm ci
 
       - name: Run prek
         run: .venv/bin/prek run --all-files
