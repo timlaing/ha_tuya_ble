@@ -3,14 +3,17 @@ permissions:
   contents: read
 
 on:
-  workflow_dispatch:
   push:
+    branches: [main]
   pull_request:
-  repository_dispatch:
-    types: [ha-dev-test]
+    branches: [main]
+  schedule:
+    - cron: "0 0 * * *"
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: home-assistant/actions/hassfest@master

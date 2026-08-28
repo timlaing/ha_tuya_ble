@@ -471,6 +471,14 @@ class TestInitializeWithCredentials:
         dev = make_device(manager=FakeBLEManager(None))
         await dev.initialize_with_credentials(creds)
         assert dev._device_info is creds
+        assert dev.function["switch"].code == "switch"
+        assert dev.function["switch"].dp_id == 1
+        assert dev.function["switch"].type == "bool"
+        assert dev.function["switch"].values is None
+        assert dev.status_range["switch"].code == "switch"
+        assert dev.status_range["switch"].dp_id == 1
+        assert dev.status_range["switch"].type == "bool"
+        assert dev.status_range["switch"].values == {}
 
 
 class TestBuildPairingRequest:
@@ -522,7 +530,7 @@ class TestUpdateDeviceInfoCloudFallback:
 
     async def test_update_device_info_no_manager(self) -> None:
         """Verify _update_device_info returns False when no manager."""
-        dev = make_device(manager=FakeBLEManager(None))
+        dev = make_device(manager=None)
         dev._device_info = None
         ble = FakeBLEAddress("AA:BB:CC:DD:EE:FF")
         dev._ble_device = ble  # type: ignore[assignment]

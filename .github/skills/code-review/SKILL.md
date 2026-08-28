@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: Use when reviewing code changes, PRs, or commits in the ha_tuya_ble integration. Covers architecture, typing, HA conventions, linting, test coverage, and SonarQube quality rules. Trigger keywords: review, pr, code review, linting, typing, coverage, sonarqube, prek.
+description: "Use when reviewing code changes, PRs, or commits in the ha_tuya_ble integration. Covers architecture, typing, HA conventions, linting, test coverage, and SonarQube quality rules. Trigger keywords: review, pr, code review, linting, typing, coverage, sonarqube, prek."
 ---
 
 # Code Review Skill — ha_tuya_ble
@@ -92,7 +92,7 @@ This command reports coverage but does not enforce per-file thresholds. Inspect 
 - Use `.venv/bin/prek run --all-files` for the full default-stage check set. Do not use `pre-commit` directly.
 - All applicable hooks configured in `.pre-commit-config.yaml` must pass. Manual and `commit-msg` hooks are not part of the default all-files run.
 - Some hooks apply fixes. A review-only request does not authorize worktree edits: record `git status --short` first and use non-mutating tool modes where practical. If a required check modifies files, disclose exactly what changed and do not silently include those edits in the review.
-- cspell words in `.vscode/cSpell.json` must be **lowercase and sorted alphabetically**.
+- cspell words in `.vscode/cspell.json` must be **lowercase and sorted alphabetically**.
 - `# noqa` suppressions in source: only acceptable for S7503 (HA platform setup), S4790 (MD5 protocol), S5542 (AES-CBC protocol), S2583 (async flag false positive).
 - `# pylint: disable` in source: only acceptable for `too-many-lines` (sensor.py), `abstract-method` (number.py), `unexpected-keyword-arg` (valve.py).
 - Do not suppress SonarQube issues that can be fixed with code changes.
@@ -110,9 +110,9 @@ This command reports coverage but does not enforce per-file thresholds. Inspect 
 
 ## 10. CI & Workflows
 
-- `lint.yml`: runs `prek run --all-files` only.
-- `test.yml`: runs tests with coverage, uploads to SonarQube.
-- `sonarqube.yml`: runs SonarQube Cloud analysis.
+- `lint.yml`: installs its dependencies and runs `.venv/bin/prek run --all-files`.
+- `test.yml`: runs tests with coverage and uploads `coverage.xml` as the `coverage-report` artifact.
+- `sonarqube.yml`: downloads `coverage-report` and runs SonarQube Cloud analysis.
 - All workflows must create `.venv` **before** upgrading pip inside it:
   ```yaml
   python -m venv .venv
