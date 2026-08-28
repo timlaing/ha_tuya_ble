@@ -3,10 +3,10 @@
 
 from __future__ import annotations
 
-from homeassistant.components.light import (  # type: ignore[attr-defined]
-    ColorMode,
+from homeassistant.components.light import (
     LightEntityDescription,
 )
+from homeassistant.components.light.const import ColorMode
 from homeassistant.core import HomeAssistant
 
 from custom_components.tuya_ble import light

@@ -13,10 +13,12 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .base import EnumTypeData, IntegerTypeData
 from .const import (
+    DEVICE_DEF_MANUFACTURER,
+    DOMAIN,
     DPCode,
     DPType,
 )
-from .products import get_product_info_by_ids, get_short_address, TuyaBLEProductInfo
+from .products import TuyaBLEProductInfo, get_product_info_by_ids, get_short_address
 from .tuya_ble import (
     TuyaBLEDataPointType,
     TuyaBLEDevice,
@@ -30,8 +32,6 @@ if TYPE_CHECKING:
 
 def get_device_info(device: TuyaBLEDevice) -> DeviceInfo | None:
     """Get Home Assistant device registry info for a Tuya BLE device."""
-    from .const import DEVICE_DEF_MANUFACTURER, DOMAIN
-
     product_info = None
     if device.category and device.product_id:
         product_info = get_product_info_by_ids(device.category, device.product_id)
@@ -161,6 +161,7 @@ class TuyaBLEEntity(CoordinatorEntity["TuyaBLECoordinator"]):
         dptype: DPType | None,
     ) -> DPCode | EnumTypeData | IntegerTypeData | None:
         """Check a single dpcode against ordered device attribute dicts."""
+        parsed: DPCode | EnumTypeData | IntegerTypeData | None = None
         for key in order:
             attrs = getattr(self.device, key)
             if dpcode not in attrs:
@@ -169,16 +170,14 @@ class TuyaBLEEntity(CoordinatorEntity["TuyaBLECoordinator"]):
             if dptype == DPType.ENUM and entry.type == DPType.ENUM:
                 parsed = EnumTypeData.from_json(dpcode, entry.values)
                 if parsed is not None:
-                    return parsed
+                    break
             elif dptype == DPType.INTEGER and entry.type == DPType.INTEGER:
-                parsed = IntegerTypeData.from_json(  # type: ignore[assignment]
-                    dpcode, entry.values
-                )
+                parsed = IntegerTypeData.from_json(dpcode, entry.values)
                 if parsed is not None:
-                    return parsed
+                    break
             elif dptype not in (DPType.ENUM, DPType.INTEGER):
-                return dpcode
-        return None
+                parsed = dpcode
+        return parsed
 
     def get_dptype(
         self, dpcode: DPCode | None, prefer_function: bool = False

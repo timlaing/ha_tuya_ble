@@ -17,6 +17,7 @@ from custom_components.tuya_ble.tuya_ble.const import (
     TuyaBLECode,
     TuyaBLEDataPointType,
 )
+from custom_components.tuya_ble.tuya_ble.exceptions import TuyaBLEDeviceError
 from custom_components.tuya_ble.tuya_ble.manager import TuyaBLEDeviceCredentials
 from tests.conftest import (
     FakeAdvertisementData,
@@ -438,4 +439,128 @@ class TestConnection:
         dev._is_paired = True
         dev._disconnect()
         await asyncio.sleep(0.1)
+        assert dev._client is None
+
+
+class TestInitializeWithCredentials:
+    """Tests for the initialize_with_credentials public method."""
+
+    async def test_initialize_with_credentials(self) -> None:
+        """Verify initialize_with_credentials loads credentials and derives keys."""
+        creds = make_credentials()
+        dev = make_device(manager=FakeBLEManager(None))
+        await dev.initialize_with_credentials(creds)
+        assert dev._device_info is creds
+        assert dev._local_key == creds.local_key[:6].encode()
+        assert dev._login_key is not None
+
+    async def test_initialize_with_credentials_short_key_raises(self) -> None:
+        """Verify initialize_with_credentials raises for short local_key."""
+        creds = make_credentials(local_key="abc")
+        dev = make_device(manager=FakeBLEManager(None))
+        with pytest.raises(TuyaBLEDeviceError):
+            await dev.initialize_with_credentials(creds)
+
+    async def test_initialize_with_credentials_with_functions(self) -> None:
+        """Verify initialize_with_credentials processes functions and status_range."""
+        creds = make_credentials()
+        creds.functions = [{"code": "switch", "dp_id": 1, "type": "bool"}]
+        creds.status_range = [
+            {"code": "switch", "dp_id": 1, "type": "bool", "values": {}}
+        ]
+        dev = make_device(manager=FakeBLEManager(None))
+        await dev.initialize_with_credentials(creds)
+        assert dev._device_info is creds
+
+
+class TestBuildPairingRequest:
+    """Tests for _build_pairing_request guard."""
+
+    def test_build_pairing_request_no_device_info_raises(self) -> None:
+        """Verify _build_pairing_request raises when _device_info is None."""
+        dev = make_device()
+        dev._device_info = None
+        dev._local_key = b"abcdef"
+        with pytest.raises(TuyaBLEDeviceError):
+            dev._build_pairing_request()
+
+    def test_build_pairing_request_no_local_key_raises(self) -> None:
+        """Verify _build_pairing_request raises when _local_key is None."""
+        dev = make_device()
+        dev._device_info = make_credentials()
+        dev._local_key = None
+        with pytest.raises(TuyaBLEDeviceError):
+            dev._build_pairing_request()
+
+
+class TestUpdateDeviceInfoCloudFallback:
+    """Tests for _update_device_info cloud fallback path."""
+
+    async def test_update_device_info_fetches_from_manager(self) -> None:
+        """Verify _update_device_info fetches credentials from device_manager."""
+        creds = make_credentials()
+        manager = FakeBLEManager(creds)
+        dev = make_device(manager=manager)
+        dev._device_info = None
+        ble = FakeBLEAddress("AA:BB:CC:DD:EE:FF")
+        dev._ble_device = ble  # type: ignore[assignment]
+        result = await dev._update_device_info()
+        assert result is True
+        assert dev._device_info is creds
+        assert manager.address == "AA:BB:CC:DD:EE:FF"
+
+    async def test_update_device_info_short_key_raises(self) -> None:
+        """Verify _update_device_info raises for short local_key from manager."""
+        creds = make_credentials(local_key="abc")
+        manager = FakeBLEManager(creds)
+        dev = make_device(manager=manager)
+        dev._device_info = None
+        ble = FakeBLEAddress("AA:BB:CC:DD:EE:FF")
+        dev._ble_device = ble  # type: ignore[assignment]
+        with pytest.raises(TuyaBLEDeviceError):
+            await dev._update_device_info()
+
+    async def test_update_device_info_no_manager(self) -> None:
+        """Verify _update_device_info returns False when no manager."""
+        dev = make_device(manager=FakeBLEManager(None))
+        dev._device_info = None
+        ble = FakeBLEAddress("AA:BB:CC:DD:EE:FF")
+        dev._ble_device = ble  # type: ignore[assignment]
+        result = await dev._update_device_info()
+        assert result is False
+
+
+class TestDecodeAdvertisement:
+    """Tests for _decode_advertisement_data edge cases."""
+
+    def test_decode_advertisement_empty_product_id(self) -> None:
+        """Verify _decode skips decryption when raw_product_id is empty."""
+        dev = make_device()
+        adv = FakeAdvertisementData(
+            manufacturer_data={
+                MANUFACTURER_DATA_ID: b"\x80\x02" + b"\x00" * 4 + b"\x00" * 16
+            }
+        )
+        dev._advertisement_data = adv  # type: ignore[assignment]
+
+        def _no_product_id() -> None:
+            return None
+
+        dev._parse_product_id_from_service_data = (  # type: ignore[method-assign]
+            _no_product_id
+        )
+        dev._decode_advertisement_data()
+        assert dev._is_bound is True
+
+
+class TestOnDisconnectedNotPaired:
+    """Tests for _disconnected when device was not paired."""
+
+    def test_on_disconnected_not_paired(self) -> None:
+        """Verify _disconnected does not reconnect when not paired."""
+        dev = make_device()
+        dev._is_paired = False
+        client = FakeBleakClient()
+        dev._client = client  # type: ignore[assignment]
+        dev._disconnected(client)  # type: ignore[arg-type]
         assert dev._client is None

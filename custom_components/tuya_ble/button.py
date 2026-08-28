@@ -16,6 +16,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .devices import TuyaBLECoordinator, TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
+from .fingerbot import is_fingerbot_in_push_mode
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
 TuyaBLEButtonIsAvailable = Callable[["TuyaBLEButton", TuyaBLEProductInfo], bool] | None
@@ -30,16 +31,6 @@ class TuyaBLEButtonMapping:
     force_add: bool = True
     dp_type: TuyaBLEDataPointType | None = None
     is_available: TuyaBLEButtonIsAvailable = None
-
-
-def is_fingerbot_in_push_mode(self: TuyaBLEButton, product: TuyaBLEProductInfo) -> bool:
-    """Check if the fingerbot is currently in push mode."""
-    result: bool = True
-    if product.fingerbot:
-        datapoint = self.device.datapoints[product.fingerbot.mode]
-        if datapoint:
-            result = datapoint.value == 0
-    return result
 
 
 @dataclass

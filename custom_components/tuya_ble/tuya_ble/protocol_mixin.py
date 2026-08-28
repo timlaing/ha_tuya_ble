@@ -98,7 +98,7 @@ class TuyaBLEProtocol(Protocol):
         else:
             raise TuyaBLEDeviceError(0)
 
-    async def set_multiple_values(  # pylint: disable=protected-access
+    async def set_multiple_values(
         self, dp_updates: dict[int, bytes | bool | int | str]
     ) -> None:
         """Set multiple datapoint values in a single atomic BLE payload."""
@@ -108,21 +108,7 @@ class TuyaBLEProtocol(Protocol):
             if dp is None:
                 continue
 
-            if dp.dp_type in (
-                TuyaBLEDataPointType.DT_RAW,
-                TuyaBLEDataPointType.DT_BITMAP,
-            ):
-                dp._value = bytes(value)  # type: ignore[arg-type]
-            elif dp.dp_type == TuyaBLEDataPointType.DT_BOOL:
-                dp._value = bool(value)
-            elif dp.dp_type in (
-                TuyaBLEDataPointType.DT_VALUE,
-                TuyaBLEDataPointType.DT_ENUM,
-            ):
-                dp._value = int(value)
-            elif dp.dp_type == TuyaBLEDataPointType.DT_STRING:
-                dp._value = str(value)
-            dp._changed_by_device = False
+            dp.set_value_no_notify(value)
             sent_ids.append(dp_id)
 
         if sent_ids:

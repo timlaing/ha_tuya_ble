@@ -359,8 +359,9 @@ class TuyaBLEClimate(TuyaBLEEntity, ClimateEntity):
                     TuyaBLEDataPointType.DT_BOOL,
                     bool_value,
                 )
+        assert datapoint is not None
         self.hass.create_task(
-            datapoint.set_value(bool_value),  # type: ignore[union-attr]
+            datapoint.set_value(bool_value),
         )
 
     def set_temperature(self, **kwargs: Any) -> None:
