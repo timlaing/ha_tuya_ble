@@ -79,6 +79,12 @@ If a file falls below the threshold, add tests until it passes before committing
 
 Use `.venv/bin/prek run --all-files` for the full check set (trim, ruff, ruff-format, cspell, yamllint, prettier, mypy, pylint). Do **not** use `pre-commit` directly — this repo drives the same hook config through `prek` from the virtual environment. Run prek on new/changed test files too.
 
+Pytest is also available as a manual `prek` hook, including branch coverage. Run the complete suite with:
+
+```sh
+.venv/bin/prek run --hook-stage manual pytest --all-files
+```
+
 The `mypy` and `pylint` hooks pull `additional_dependencies` from the requirements files via generated blocks (marked `# BEGIN GENERATED REQUIREMENTS` / `# END GENERATED REQUIREMENTS`) in `.pre-commit-config.yaml`. These are managed by `scripts/sync_prek_deps.py`; the `check-prek-deps` prek hook fails if they drift. After changing `requirements*.txt`, regenerate with:
 
 ```sh
