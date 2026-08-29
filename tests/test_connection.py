@@ -236,14 +236,14 @@ async def test_returns_false_on_start_notify_error() -> None:
     assert dev._client is None
 
 
-async def test_returns_false_when_no_client_2() -> None:
+async def test_send_device_info_no_client_returns_false() -> None:
     """Return False when _client is None."""
     dev = make_device()
     dev._client = None
     assert await dev._try_send_device_info() is False
 
 
-async def test_returns_false_when_disconnected_2() -> None:
+async def test_send_device_info_disconnected_returns_false() -> None:
     """Return False when client is disconnected."""
     dev = make_device()
     dev._client = FakeBleakClient(is_connected=False)  # type: ignore[assignment]
@@ -274,7 +274,7 @@ async def test_returns_false_on_bleak_error() -> None:
         assert dev._client is None
 
 
-async def test_returns_false_when_no_client_3() -> None:
+async def test_send_pairing_no_client_returns_false() -> None:
     """Return False when _client is None."""
     dev = make_device()
     dev._client = None
@@ -283,7 +283,7 @@ async def test_returns_false_when_no_client_3() -> None:
     assert await dev._try_send_pairing() is False
 
 
-async def test_returns_false_when_disconnected_3() -> None:
+async def test_send_pairing_disconnected_returns_false() -> None:
     """Return False when client is disconnected."""
     dev = make_device()
     dev._client = FakeBleakClient(is_connected=False)  # type: ignore[assignment]
@@ -292,7 +292,7 @@ async def test_returns_false_when_disconnected_3() -> None:
     assert await dev._try_send_pairing() is False
 
 
-async def test_returns_false_when_send_fails_2() -> None:
+async def test_send_pairing_send_fails_returns_false() -> None:
     """Return False and clear client when send fails."""
     dev = make_device()
     dev._client = FakeBleakClient(is_connected=True)  # type: ignore[assignment]
@@ -304,7 +304,7 @@ async def test_returns_false_when_send_fails_2() -> None:
         assert dev._client is None
 
 
-async def test_returns_false_on_bleak_error_2() -> None:
+async def test_send_pairing_bleak_error_returns_false() -> None:
     """Return False and clear client on BLE_CONNECTION_EXCEPTIONS."""
     dev = make_device()
     dev._client = FakeBleakClient(is_connected=True)  # type: ignore[assignment]
@@ -401,7 +401,7 @@ async def test_returns_false_when_manager_returns_none() -> None:
     assert dev._device_info is None
 
 
-def test_expected_disconnect_returns_early_2() -> None:
+def test_disconnected_returns_early_when_expected_disconnect() -> None:
     """Expected disconnect returns without scheduling reconnect."""
     dev = make_device()
     dev._expected_disconnect = True
@@ -638,7 +638,7 @@ async def test_write_exception_clears_client() -> None:
     mock_disc.assert_called_once_with(client)
 
 
-async def test_expected_disconnect_returns_early_3() -> None:
+async def test_resend_packets_returns_early_when_expected_disconnect() -> None:
     """Return early when expected_disconnect is True."""
     h = ProtocolHarness()
     h.device._expected_disconnect = True
@@ -676,7 +676,7 @@ def session_key(h: ProtocolHarness) -> bytes:
     return h.device._session_key
 
 
-async def test_expected_disconnect_returns_early_4() -> None:
+async def test_send_packet_returns_early_when_expected_disconnect() -> None:
     """Return early when expected_disconnect is True."""
     h = ProtocolHarness()
     h.device._expected_disconnect = True
@@ -822,7 +822,7 @@ async def test_client_becomes_none_during_send() -> None:
 # --- protocol_mixin.py additional coverage ---
 
 
-async def test_expected_disconnect_after_ensure_2() -> None:
+async def test_resend_packets_expected_disconnect_during_ensure() -> None:
     """Return early when expected_disconnect becomes True during ensure."""
     h = ProtocolHarness()
 

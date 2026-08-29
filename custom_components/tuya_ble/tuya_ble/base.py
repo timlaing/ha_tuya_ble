@@ -415,7 +415,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
                 task.cancel()
         await self._execute_disconnect()
         for task in tasks:
-            if task is not None and not task.done():
+            if task is not None:
                 with suppress(asyncio.CancelledError, Exception):
                     await task
 

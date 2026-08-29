@@ -463,7 +463,7 @@ async def test_disconnect_unexpected_schedules_reconnect() -> None:
         await asyncio.sleep(0.1)
 
 
-async def test_initialize_with_credentials_2() -> None:
+async def test_initialize_with_credentials_direct_derives_keys() -> None:
     """Verify initialize_with_credentials loads credentials and derives keys."""
     creds = make_credentials()
     dev = make_device(manager=FakeBLEManager(None))

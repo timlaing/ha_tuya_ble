@@ -365,14 +365,14 @@ def test_fingerbot_in_program_mode() -> None:
     assert _not_in_prog(ent, product) is False  # type: ignore[arg-type]
 
 
-def test_no_fingerbot_returns_true_2() -> None:
+def test_in_push_no_fingerbot_returns_true() -> None:
     """Return True when product has no fingerbot."""
     ent = _make_number({})
     product = _make_product()
     assert _in_push(ent, product) is True  # type: ignore[arg-type]
 
 
-def test_fingerbot_no_mode_dp_returns_true_2() -> None:
+def test_in_push_fingerbot_no_mode_dp_returns_true() -> None:
     """Return True when fingerbot mode datapoint is missing."""
     ent = _make_number({})
     product = _make_product(mode_dp=1)
@@ -393,7 +393,7 @@ def test_fingerbot_mode_not_push() -> None:
     assert _in_push(ent, product) is False  # type: ignore[arg-type]
 
 
-def test_no_fingerbot_returns_true_3() -> None:
+def test_repeat_avail_no_fingerbot_returns_true() -> None:
     """Return True when product has no fingerbot."""
     ent = _make_number({})
     product = _make_product()
@@ -487,14 +487,14 @@ def test_program_dp_bytes_sets_count() -> None:
     _set_repeat(ent, product, 10.0)  # type: ignore[arg-type]
 
 
-def test_no_fingerbot_returns_none_2() -> None:
+def test_get_position_no_fingerbot_returns_none() -> None:
     """Return None when product has no fingerbot."""
     ent = _make_number({})
     product = _make_product()
     assert _get_pos(ent, product) is None  # type: ignore[arg-type]
 
 
-def test_program_dp_not_bytes_returns_none_2() -> None:
+def test_get_position_program_not_bytes_returns_none() -> None:
     """Return None when program datapoint is not bytes."""
     ent = _make_number({2: _make_dp(2, 42)})
     product = _make_product(program_dp=2)
@@ -509,14 +509,14 @@ def test_program_dp_bytes_returns_position() -> None:
     assert _get_pos(ent, product) == 50.0  # type: ignore[arg-type]
 
 
-def test_no_fingerbot_noop_2() -> None:
+def test_set_position_no_fingerbot_noop() -> None:
     """No-op when product has no fingerbot."""
     ent = _make_number({})
     product = _make_product()
     _set_pos(ent, product, 50.0)  # type: ignore[arg-type]
 
 
-def test_program_dp_not_bytes_noop_2() -> None:
+def test_set_position_program_not_bytes_noop() -> None:
     """No-op when program datapoint is not bytes."""
     ent = _make_number({2: _make_dp(2, 42)})
     product = _make_product(program_dp=2)

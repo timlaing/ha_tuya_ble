@@ -236,7 +236,7 @@ def test_set_fingerbot_program() -> None:
     fingerbot.set_fingerbot_program(self_, product, "5/5000;10")
 
 
-def test_is_fingerbot_in_program_mode_2() -> None:
+def test_is_fingerbot_in_program_mode_self_helper_returns_true() -> None:
     """Verify the fingerbot program-mode text helper."""
     self_ = make_self([make_dp(value=2, dp_id=8)])
     assert fingerbot.is_fingerbot_in_program_mode(self_, make_product(mode=8)) is True
