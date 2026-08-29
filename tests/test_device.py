@@ -277,6 +277,22 @@ def test_decode_advertisement_no_data() -> None:
     dev._decode_advertisement_data()  # no-op
 
 
+def test_decode_advertisement_without_service_data_updates_flags_only() -> None:
+    """Update bound/protocol from manufacturer data even without service data."""
+    dev = make_device()
+    dev._advertisement_data = FakeAdvertisementData(
+        rssi=-40,
+        service_data={},
+        manufacturer_data={
+            MANUFACTURER_DATA_ID: b"\x80\x03" + b"\x00" * 4 + (b"\x00" * 16)
+        },
+    )
+    dev._decode_advertisement_data()
+    assert dev._is_bound is True
+    assert dev._protocol_version == 3
+    assert dev._uuid == ""
+
+
 def test_register_callbacks() -> None:
     """Verify callbacks fire and can be unregistered."""
     dev = make_device()

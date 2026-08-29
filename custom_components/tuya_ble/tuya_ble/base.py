@@ -111,7 +111,7 @@ class TuyaBLEDeviceFunction:
                 parsed = json.loads(value)
                 if parsed:
                     value = parsed
-            except json.JSONDecodeError, TypeError:
+            except (json.JSONDecodeError, TypeError):
                 pass
         super().__setattr__(name, value)
 
@@ -247,9 +247,14 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         if not self._advertisement_data:
             return
 
+        if manufacturer_data := self._advertisement_data.manufacturer_data.get(
+            MANUFACTURER_DATA_ID
+        ):
+            if len(manufacturer_data) > 6:
+                self._is_bound = (manufacturer_data[0] & 0x80) != 0
+                self._protocol_version = manufacturer_data[1]
+
         if advert := decode_tuya_ble_advertisement(self._advertisement_data):
-            self._is_bound = advert.is_bound
-            self._protocol_version = advert.protocol_version
             self._uuid = advert.uuid
 
     @property

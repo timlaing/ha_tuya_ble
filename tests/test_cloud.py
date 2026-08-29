@@ -123,10 +123,17 @@ async def test_no_match_returns_none() -> None:
     """Assert that a non-matching advertised UUID yields no credentials."""
     device = make_device()
     mgr = _manager(devices=[device])
-    result = await mgr.get_device_credentials(
-        "AA:BB:CC:DD:EE:FF", uuid="other", product_id="pid"
-    )
+    with patch("custom_components.tuya_ble.cloud._LOGGER.warning") as warning:
+        result = await mgr.get_device_credentials(
+            "AA:BB:CC:DD:EE:FF", uuid="other", product_id="pid"
+        )
     assert result is None
+    warning.assert_called_once_with(
+        "No Tuya credentials found for address %s (uuid=%s, product_id=%s)",
+        "AA:BB:CC:DD:EE:FF",
+        "other",
+        "pid",
+    )
 
 
 async def test_product_id_mismatch_returns_none() -> None:
@@ -212,11 +219,20 @@ async def test_get_device_credentials_lazy_init() -> None:
     fake_manager = MagicMock()
     fake_manager.update_device_cache = MagicMock()
     fake_manager.device_map = {}
-    with patch("custom_components.tuya_ble.cloud.Manager", return_value=fake_manager):
+    with (
+        patch("custom_components.tuya_ble.cloud.Manager", return_value=fake_manager),
+        patch("custom_components.tuya_ble.cloud._LOGGER.warning") as warning,
+    ):
         result = await mgr.get_device_credentials("AA:BB:CC:DD:EE:FF")
     assert result is None
     assert mgr._manager is fake_manager  # pylint: disable=protected-access
     fake_manager.update_device_cache.assert_called_once()
+    warning.assert_called_once_with(
+        "No Tuya BLE identity decoded for address %s (uuid=%s, product_id=%s)",
+        "AA:BB:CC:DD:EE:FF",
+        None,
+        None,
+    )
 
 
 async def test_get_device_credentials_no_manager_raises() -> None:

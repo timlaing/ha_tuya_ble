@@ -86,7 +86,12 @@ class HASSTuyaBLEDeviceManager(AbstractTuyaBLEDeviceManager):
             await self._hass.async_add_executor_job(self._manager.update_device_cache)
 
         if not uuid:
-            _LOGGER.warning("No Tuya BLE identity decoded for MAC %s", address)
+            _LOGGER.warning(
+                "No Tuya BLE identity decoded for address %s (uuid=%s, product_id=%s)",
+                address,
+                uuid,
+                product_id,
+            )
             return None
 
         for device in self._manager.device_map.values():
@@ -99,7 +104,12 @@ class HASSTuyaBLEDeviceManager(AbstractTuyaBLEDeviceManager):
                 self._data[CONF_ADDRESS] = address
             return _build_credentials(device)
 
-        _LOGGER.warning("No Tuya credentials found for MAC %s", address)
+        _LOGGER.warning(
+            "No Tuya credentials found for address %s (uuid=%s, product_id=%s)",
+            address,
+            uuid,
+            product_id,
+        )
         return None
 
     @property
