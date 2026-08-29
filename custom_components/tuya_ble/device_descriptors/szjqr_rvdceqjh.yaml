@@ -1,0 +1,76 @@
+category: szjqr
+product_id: rvdceqjh
+entities:
+  sensor:
+    - dp_id: 12
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+      kind: battery
+  button:
+    - dp_id: 2
+      translation_key: push
+      handlers:
+        when: fingerbot.mode.in_push_mode
+      kind: fingerbot_mode
+  number:
+    - dp_id: 9
+      translation_key: down_position
+      mode: box
+      handlers:
+        when: fingerbot.mode.not_in_program_mode
+      min_value: 51
+      max_value: 100
+      step: 1
+      icon: mdi:arrow-down-bold
+      unit: "%"
+      entity_category: config
+    - dp_id: 10
+      translation_key: hold_time
+      coefficient: 10.0
+      mode: box
+      handlers:
+        when: fingerbot.mode.in_push_mode
+      min_value: 0
+      max_value: 10
+      step: 0.1
+      icon: mdi:timer
+      unit: s
+      entity_category: config
+    - dp_id: 15
+      translation_key: up_position
+      mode: box
+      handlers:
+        when: fingerbot.mode.not_in_program_mode
+      min_value: 0
+      max_value: 50
+      step: 1
+      icon: mdi:arrow-up-bold
+      unit: "%"
+      entity_category: config
+  select:
+    - dp_id: 8
+      translation_key: fingerbot_mode
+      entity_category: config
+      options:
+        - push
+        - switch
+        - program
+      kind: fingerbot_mode
+  switch:
+    - dp_id: 2
+      translation_key: switch
+      handlers:
+        when: fingerbot.mode.in_switch_mode
+      kind: TuyaBLEFingerbotSwitchMapping
+    - dp_id: 11
+      translation_key: reverse_positions
+      icon: mdi:arrow-up-down-bold
+      entity_category: config
+      handlers:
+        when: fingerbot.mode.in_switch_mode
+      kind: TuyaBLEReversePositionsMapping
+device_name: Fingerbot
+model_name: rvdceqjh

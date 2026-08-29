@@ -8,6 +8,7 @@ from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant
 
 from custom_components.tuya_ble import sensor
+from custom_components.tuya_ble.device_descriptors.handlers import battery, co2, rssi
 from custom_components.tuya_ble.devices import (
     TuyaBLECoordinator,
     TuyaBLEProductInfo,
@@ -122,7 +123,7 @@ async def test_getter(hass: HomeAssistant) -> None:
     mapping = sensor.TuyaBLESensorMapping(
         dp_id=104,
         description=SensorEntityDescription(key="battery"),
-        getter=sensor.battery_enum_getter,
+        getter=battery.battery_enum,
     )
     add_dp(device, 104, TuyaBLEDataPointType.DT_VALUE, 3)
     entity = _make_entity(hass, device, coordinator, product, mapping)
@@ -138,7 +139,7 @@ async def test_available_with_is_available(hass: HomeAssistant) -> None:
     mapping = sensor.TuyaBLESensorMapping(
         dp_id=13,
         description=SensorEntityDescription(key="co2"),
-        is_available=sensor.is_co2_alarm_enabled,
+        is_available=co2.alarm_enabled,
     )
     add_dp(device, 13, TuyaBLEDataPointType.DT_ENUM, 1)
     entity = _make_entity(hass, device, coordinator, product, mapping)
@@ -148,12 +149,12 @@ async def test_available_with_is_available(hass: HomeAssistant) -> None:
 
 
 async def test_is_co2_alarm_enabled_no_datapoint(hass: HomeAssistant) -> None:
-    """Verify is_co2_alarm_enabled returns True when datapoint is absent."""
+    """Verify co2.alarm_enabled returns True when datapoint is absent."""
     device, coordinator, product = build_context(hass)
     mapping = sensor.TuyaBLESensorMapping(
         dp_id=13,
         description=SensorEntityDescription(key="co2"),
-        is_available=sensor.is_co2_alarm_enabled,
+        is_available=co2.alarm_enabled,
     )
     entity = _make_entity(hass, device, coordinator, product, mapping)
     await connect(coordinator)
@@ -161,12 +162,12 @@ async def test_is_co2_alarm_enabled_no_datapoint(hass: HomeAssistant) -> None:
 
 
 async def test_battery_enum_getter_no_datapoint(hass: HomeAssistant) -> None:
-    """Verify battery_enum_getter with absent datapoint does not set value."""
+    """Verify battery.battery_enum with absent datapoint does not set value."""
     device, coordinator, product = build_context(hass)
     mapping = sensor.TuyaBLESensorMapping(
         dp_id=104,
         description=SensorEntityDescription(key="battery"),
-        getter=sensor.battery_enum_getter,
+        getter=battery.battery_enum,
     )
     entity = _make_entity(hass, device, coordinator, product, mapping)
     await entity.async_added_to_hass()
@@ -223,12 +224,12 @@ async def test_sensor_enum_with_icons(hass: HomeAssistant) -> None:
 
 
 async def test_rssi_getter(hass: HomeAssistant) -> None:
-    """Verify rssi_getter reads device.rssi into native_value."""
+    """Verify rssi.rssi reads device.rssi into native_value."""
     device, coordinator, product = build_context(hass)
     mapping = sensor.TuyaBLESensorMapping(
         dp_id=-1,
         description=SensorEntityDescription(key="signal_strength"),
-        getter=sensor.rssi_getter,
+        getter=rssi.rssi,
     )
     entity = _make_entity(hass, device, coordinator, product, mapping)
     await entity.async_added_to_hass()

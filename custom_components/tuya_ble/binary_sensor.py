@@ -6,18 +6,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from homeassistant.components.binary_sensor import (
-    BinarySensorDeviceClass,
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import (
-    DOMAIN,
-)
+from .const import DOMAIN
+from .device_registry import EntityDescriptor, get_registry
 from .devices import TuyaBLECoordinator, TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
@@ -49,43 +46,53 @@ class TuyaBLECategoryBinarySensorMapping:
     mapping: list[TuyaBLEBinarySensorMapping] | None = None
 
 
-mapping: dict[str, TuyaBLECategoryBinarySensorMapping] = {
-    "wk": TuyaBLECategoryBinarySensorMapping(
-        products={
-            "drlajpqc": [  # Thermostatic Radiator Valve
-                TuyaBLEBinarySensorMapping(
-                    dp_id=105,
-                    description=BinarySensorEntityDescription(
-                        key="battery",
-                        device_class=BinarySensorDeviceClass.BATTERY,
-                        entity_category=EntityCategory.DIAGNOSTIC,
-                    ),
-                ),
-            ],
-        },
-    ),
-    "sfkzq": TuyaBLECategoryBinarySensorMapping(
-        products={
-            **{
-                k: [
-                    TuyaBLEBinarySensorMapping(
-                        dp_id=4,
-                        description=BinarySensorEntityDescription(
-                            key="fault_code",
-                            device_class=BinarySensorDeviceClass.PROBLEM,
-                            entity_category=EntityCategory.DIAGNOSTIC,
-                        ),
-                    )
-                ]
-                for k in [
-                    "nxquc5lb",
-                    "c8800fd30884068f",
-                    "so5ybnw9",
-                ]  # Smart water timer - SOP10 / Water timer valve
-            },
-        },
-    ),
-}
+def _binary_sensor_description(
+    desc: EntityDescriptor,
+) -> BinarySensorEntityDescription:
+    """Build a BinarySensorEntityDescription from a descriptor."""
+    return BinarySensorEntityDescription(
+        key=desc.translation_key or str(desc.dp_id),
+        icon=desc.icon,
+        device_class=desc.device_class,  # type: ignore[arg-type]
+        entity_category=desc.resolved_entity_category(),
+    )
+
+
+def _build_binary_sensor_mapping(
+    desc: EntityDescriptor,
+) -> TuyaBLEBinarySensorMapping:
+    """Construct a binary sensor mapping from a registry descriptor."""
+    return TuyaBLEBinarySensorMapping(
+        dp_id=desc.dp_id,
+        description=_binary_sensor_description(desc),
+        force_add=desc.force_add,
+        dp_type=(
+            TuyaBLEDataPointType(desc.dp_type) if desc.dp_type is not None else None
+        ),
+        getter=desc.resolved_handler("read"),
+        is_available=desc.resolved_handler("when"),
+    )
+
+
+def _build_mapping() -> dict[str, TuyaBLECategoryBinarySensorMapping]:
+    """Build the binary sensor mappings dict from the device registry."""
+    result: dict[str, TuyaBLECategoryBinarySensorMapping] = {}
+    for device_entities in get_registry().products.values():
+        descriptors = device_entities.get("binary_sensor")
+        if not descriptors:
+            continue
+        category_mapping = result.setdefault(
+            device_entities.category,
+            TuyaBLECategoryBinarySensorMapping(products={}),
+        )
+        assert category_mapping.products is not None
+        category_mapping.products[device_entities.product_id] = [
+            _build_binary_sensor_mapping(desc) for desc in descriptors
+        ]
+    return result
+
+
+mapping: dict[str, TuyaBLECategoryBinarySensorMapping] = _build_mapping()
 
 
 def get_mapping_by_device(device: TuyaBLEDevice) -> list[TuyaBLEBinarySensorMapping]:

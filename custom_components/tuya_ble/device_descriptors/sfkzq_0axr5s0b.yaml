@@ -1,0 +1,34 @@
+category: sfkzq
+product_id: 0axr5s0b
+entities:
+  sensor:
+    - dp_id: 7
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+      kind: battery
+    - dp_id: 11
+      translation_key: time_left
+      device_class: duration
+      unit: s
+      state_class: measurement
+  number:
+    - dp_id: 11
+      translation_key: countdown_duration
+      icon: mdi:timer
+      unit: s
+      mode: box
+      min_value: 1
+      max_value: 86400
+      step: 1
+  switch:
+    - dp_id: 1
+      translation_key: water_valve
+  valve:
+    - dp_id: 1
+      translation_key: valve
+      device_class: water
+device_name: Valve controller
+model_name: 0axr5s0b

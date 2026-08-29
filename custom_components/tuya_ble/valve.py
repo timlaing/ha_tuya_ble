@@ -5,13 +5,14 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from homeassistant.components.valve.const import ValveDeviceClass, ValveEntityFeature
+from homeassistant.components.valve.const import ValveEntityFeature
 from homeassistant.components.valve.entity import ValveEntity, ValveEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
+from .device_registry import EntityDescriptor, get_registry
 from .devices import (
     TuyaBLECoordinator,
     TuyaBLEData,
@@ -50,82 +51,49 @@ class TuyaBLECategoryValveMapping:
     mapping: list[TuyaBLEValveMapping] | None = None
 
 
-# pylint: disable=unexpected-keyword-arg
-# ValveEntityDescription accepts key and entity_registry_enabled_default,
-# but pylint cannot resolve the constructor through the FrozenOrThawed wrapper.
-mapping: dict[str, TuyaBLECategoryValveMapping] = {
-    "ggq": TuyaBLECategoryValveMapping(
-        products={
-            **{
-                k: [
-                    TuyaBLEValveMapping(
-                        dp_id=1,
-                        description=ValveEntityDescription(
-                            key="water_valve",
-                            device_class=ValveDeviceClass.WATER,
-                            entity_registry_enabled_default=True,
-                        ),
-                    )
-                ]
-                for k in ["6pahkcau", "hfgdqhho"]
-            },
-            **{
-                k: [
-                    TuyaBLEValveMapping(
-                        dp_id=105,
-                        description=ValveEntityDescription(
-                            key="valve_zone1",
-                            device_class=ValveDeviceClass.WATER,
-                            entity_registry_enabled_default=True,
-                        ),
-                    ),
-                    TuyaBLEValveMapping(
-                        dp_id=104,
-                        description=ValveEntityDescription(
-                            key="valve_zone2",
-                            device_class=ValveDeviceClass.WATER,
-                            entity_registry_enabled_default=True,
-                        ),
-                    ),
-                ]
-                for k in [
-                    "qycalacn",
-                    "fnlw6npo",
-                    "jjqi2syk",
-                    "fdrbxxbg",
-                    "jntxv3q4",
-                ]  # shared ggq dual-outlet valve mapping
-            },
-        },
-    ),
-    "sfkzq": TuyaBLECategoryValveMapping(
-        products={
-            **{
-                k: [
-                    TuyaBLEValveMapping(
-                        dp_id=1,
-                        description=ValveEntityDescription(
-                            key="valve",
-                            device_class=ValveDeviceClass.WATER,
-                            entity_registry_enabled_default=True,
-                        ),
-                    )
-                ]
-                for k in [
-                    "nxquc5lb",
-                    "c8800fd30884068f",
-                    "so5ybnw9",
-                    "16wgjvck",
-                    "0axr5s0b",
-                    "svhikeyq",
-                    "46zia2nz",
-                    "1fcnd8xk",
-                    "ldcdnigc",
-                ]
-            },
-        },
-    ),
-}
+def _valve_description(desc: EntityDescriptor) -> ValveEntityDescription:
+    """Build a ValveEntityDescription from a descriptor."""
+    # pylint: disable-next=unexpected-keyword-arg
+    return ValveEntityDescription(
+        key=desc.translation_key or str(desc.dp_id),
+        device_class=desc.device_class,  # type: ignore[arg-type]
+    )
+
+
+def _build_valve_mapping(desc: EntityDescriptor) -> TuyaBLEValveMapping:
+    """Construct a valve mapping from a registry descriptor."""
+    return TuyaBLEValveMapping(
+        dp_id=desc.dp_id,
+        description=_valve_description(desc),
+        force_add=desc.force_add,
+        dp_type=(
+            TuyaBLEDataPointType(desc.dp_type) if desc.dp_type is not None else None
+        ),
+        is_available=desc.resolved_handler("when"),
+        getter=desc.resolved_handler("read"),
+        setter=desc.resolved_handler("write"),
+    )
+
+
+def _build_mapping() -> dict[str, TuyaBLECategoryValveMapping]:
+    """Build the valve mappings dict from the device registry."""
+    result: dict[str, TuyaBLECategoryValveMapping] = {}
+    for device_entities in get_registry().products.values():
+        descriptors = device_entities.get("valve")
+        if not descriptors:
+            continue
+        category_mapping = result.setdefault(
+            device_entities.category,
+            TuyaBLECategoryValveMapping(products={}),
+        )
+        assert category_mapping.products is not None
+        category_mapping.products[device_entities.product_id] = [
+            _build_valve_mapping(desc) for desc in descriptors
+        ]
+    return result
+
+
+mapping: dict[str, TuyaBLECategoryValveMapping] = _build_mapping()
 
 
 def get_mapping_by_device(device: TuyaBLEDevice) -> list[TuyaBLEValveMapping]:

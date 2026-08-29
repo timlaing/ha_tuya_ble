@@ -1,0 +1,64 @@
+category: sfkzq
+product_id: 16wgjvck
+entities:
+  sensor:
+    - dp_id: 7
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+      kind: battery
+    - dp_id: 8
+      translation_key: battery_state
+      device_class: enum
+      entity_category: diagnostic
+      options:
+        - low
+        - middle
+        - high
+      dp_type: 4
+    - dp_id: 104
+      translation_key: battery_percentage_alt
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+      dp_type: 2
+  number:
+    - dp_id: 2
+      translation_key: valve_opening_percentage
+      icon: mdi:valve
+      unit: "%"
+      mode: box
+      min_value: 0
+      max_value: 100
+      step: 1
+    - dp_id: 11
+      translation_key: countdown
+      icon: mdi:timer
+      unit: s
+      mode: box
+      min_value: 0
+      max_value: 86400
+      step: 1
+    - dp_id: 15
+      translation_key: use_time
+      icon: mdi:timer
+      unit: s
+      mode: box
+      min_value: 0
+      max_value: 86400
+      step: 1
+  switch:
+    - dp_id: 1
+      translation_key: water_valve
+      icon: mdi:valve
+      handlers:
+        write: water_valve.set_16wgjvck_water_valve
+  valve:
+    - dp_id: 1
+      translation_key: valve
+      device_class: water
+device_name: Aldi/Ferrex Smart Water Valve
+model_name: 16wgjvck

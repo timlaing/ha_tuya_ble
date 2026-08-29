@@ -1,0 +1,62 @@
+category: wk
+product_id: drlajpqc
+entities:
+  binary_sensor:
+    - dp_id: 105
+      translation_key: battery
+      device_class: battery
+      entity_category: diagnostic
+  number:
+    - dp_id: 27
+      translation_key: temperature_calibration
+      icon: mdi:thermometer-lines
+      unit: °C
+      entity_category: config
+      mode: box
+      min_value: -6
+      max_value: 6
+      step: 1
+  switch:
+    - dp_id: 8
+      translation_key: window_check
+      icon: mdi:window-closed
+      entity_category: config
+    - dp_id: 10
+      translation_key: antifreeze
+      icon: mdi:snowflake-off
+      entity_category: config
+    - dp_id: 40
+      translation_key: child_lock
+      icon: mdi:account-lock
+      entity_category: config
+    - dp_id: 130
+      translation_key: water_scale_proof
+      icon: mdi:water-check
+      entity_category: config
+    - dp_id: 107
+      translation_key: programming_mode
+      icon: mdi:calendar-edit
+      entity_category: config
+    - dp_id: 108
+      translation_key: programming_switch
+      icon: mdi:calendar-clock
+      entity_category: config
+  climate:
+    - translation_key: thermostatic_radiator_valve
+      hvac_switch_dp_id: 101
+      hvac_switch_mode: heat
+      hvac_modes:
+        - "off"
+        - heat
+      preset_mode_dp_ids:
+        away: 106
+        none: 106
+      current_temperature_dp_id: 102
+      current_temperature_coefficient: 10.0
+      target_temperature_coefficient: 10.0
+      target_temperature_step: 0.5
+      target_temperature_dp_id: 103
+      target_temperature_min: 5.0
+      target_temperature_max: 30.0
+device_name: Thermostatic Radiator Valve
+model_name: drlajpqc

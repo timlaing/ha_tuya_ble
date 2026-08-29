@@ -10,7 +10,7 @@ from homeassistant.components.select import (
     SelectEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory, UnitOfTemperature
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -20,10 +20,9 @@ from .const import (
     FINGERBOT_MODE_PUSH,
     FINGERBOT_MODE_SWITCH,
 )
+from .device_registry import EntityDescriptor, get_registry
 from .devices import TuyaBLECoordinator, TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
-
-ICON_WEATHER_PARTLY_CLOUDY = "mdi:weather-partly-cloudy"
 
 
 @dataclass
@@ -71,197 +70,59 @@ class TuyaBLECategorySelectMapping:
     mapping: list[TuyaBLESelectMapping] | None = None
 
 
-mapping: dict[str, TuyaBLECategorySelectMapping] = {
-    "co2bj": TuyaBLECategorySelectMapping(
-        products={
-            "59s19z5m":  # CO2 Detector
-            [
-                TuyaBLESelectMapping(
-                    dp_id=101,
-                    description=TemperatureUnitDescription(
-                        key="temperature_unit",
-                        options=[
-                            UnitOfTemperature.CELSIUS,
-                            UnitOfTemperature.FAHRENHEIT,
-                        ],
-                    ),
-                ),
-            ],
-        },
-    ),
-    "ms": TuyaBLECategorySelectMapping(
-        products={
-            k: [
-                TuyaBLESelectMapping(
-                    dp_id=31,
-                    description=SelectEntityDescription(
-                        key="beep_volume",
-                        options=[
-                            "mute",
-                            "low",
-                            "normal",
-                            "high",
-                        ],
-                        entity_category=EntityCategory.CONFIG,
-                    ),
-                ),
-            ]
-            for k in ["ludzroix", "isk2p555"]
-        }
-    ),
-    "szjqr": TuyaBLECategorySelectMapping(
-        products={
-            k: [
-                cast(TuyaBLESelectMapping, TuyaBLEFingerbotModeMapping(dp_id=2)),
-            ]
-            for k in ["3yqdo5yt", "xhf790if"]
-        }
-        | {
-            k: [
-                cast(TuyaBLESelectMapping, TuyaBLEFingerbotModeMapping(dp_id=8)),
-            ]
-            for k in [
-                "blliqpsj",
-                "ndvkgsrm",
-                "yiihr7zh",
-                "neq16kgd",
-            ]
-        }
-        | {
-            k: [
-                cast(TuyaBLESelectMapping, TuyaBLEFingerbotModeMapping(dp_id=8)),
-            ]
-            for k in [
-                "ltak7e1p",
-                "y6kttvd6",
-                "yrnk7mnn",
-                "nvr2rocq",
-                "bnt7wajf",
-                "rvdceqjh",
-                "5xhbk964",
-            ]
-        },
-    ),
-    "wsdcg": TuyaBLECategorySelectMapping(
-        products={
-            "ojzlzzsw":  # Soil moisture sensor
-            [
-                TuyaBLESelectMapping(
-                    dp_id=9,
-                    description=TemperatureUnitDescription(
-                        key="temperature_unit",
-                        options=[
-                            UnitOfTemperature.CELSIUS,
-                            UnitOfTemperature.FAHRENHEIT,
-                        ],
-                        entity_registry_enabled_default=False,
-                    ),
-                ),
-            ],
-        },
-    ),
-    "znhsb": TuyaBLECategorySelectMapping(
-        products={
-            "cdlandip":  # Smart water bottle
-            [
-                TuyaBLESelectMapping(
-                    dp_id=106,
-                    description=TemperatureUnitDescription(
-                        key="temperature_unit",
-                        options=[
-                            UnitOfTemperature.CELSIUS,
-                            UnitOfTemperature.FAHRENHEIT,
-                        ],
-                    ),
-                ),
-                TuyaBLESelectMapping(
-                    dp_id=107,
-                    description=SelectEntityDescription(
-                        key="reminder_mode",
-                        options=[
-                            "interval_reminder",
-                            "alarm_reminder",
-                        ],
-                        entity_category=EntityCategory.CONFIG,
-                    ),
-                ),
-            ],
-        },
-    ),
-    "ggq": TuyaBLECategorySelectMapping(
-        products={
-            **{
-                k: [  # Dual water timer (Diivoo WT-05 family)
-                    TuyaBLESelectMapping(
-                        dp_id=117,
-                        description=SelectEntityDescription(
-                            key="weather_delay_zone1",
-                            icon=ICON_WEATHER_PARTLY_CLOUDY,
-                            options=[
-                                "Off",
-                                "1 day",
-                                "2 days",
-                                "3 days",
-                                "4 days",
-                                "5 days",
-                                "6 days",
-                                "7 days",
-                            ],
-                            entity_category=EntityCategory.CONFIG,
-                        ),
-                        values=["OFF", "1", "2", "3", "4", "5", "6", "7"],
-                        dp_type=TuyaBLEDataPointType.DT_STRING,
-                    ),
-                    TuyaBLESelectMapping(
-                        dp_id=114,
-                        description=SelectEntityDescription(
-                            key="weather_delay_zone2",
-                            icon=ICON_WEATHER_PARTLY_CLOUDY,
-                            options=[
-                                "Off",
-                                "1 day",
-                                "2 days",
-                                "3 days",
-                                "4 days",
-                                "5 days",
-                                "6 days",
-                                "7 days",
-                            ],
-                            entity_category=EntityCategory.CONFIG,
-                        ),
-                        values=["OFF", "1", "2", "3", "4", "5", "6", "7"],
-                        dp_type=TuyaBLEDataPointType.DT_STRING,
-                    ),
-                ]
-                for k in ["fdrbxxbg", "jntxv3q4", "qycalacn"]
-            },
-        },
-    ),
-    "sfkzq": TuyaBLECategorySelectMapping(
-        products={
-            **{
-                k: [
-                    TuyaBLESelectMapping(
-                        dp_id=10,
-                        description=SelectEntityDescription(
-                            key="weather_delay",
-                            icon=ICON_WEATHER_PARTLY_CLOUDY,
-                            options=["cancel", "24h", "48h", "72h"],
-                            entity_category=EntityCategory.CONFIG,
-                        ),
-                        values=["cancel", "24h", "48h", "72h"],
-                        dp_type=TuyaBLEDataPointType.DT_STRING,
-                    )
-                ]
-                for k in [
-                    "nxquc5lb",
-                    "c8800fd30884068f",
-                    "so5ybnw9",
-                ]  # SOP10 water timer / Water timer valve
-            },
-        },
-    ),
-}
+def _select_description(desc: EntityDescriptor) -> SelectEntityDescription:
+    """Build a SelectEntityDescription from a descriptor."""
+    description_class: type[SelectEntityDescription] = SelectEntityDescription
+    if desc.translation_key == "temperature_unit":
+        description_class = TemperatureUnitDescription
+    kwargs: dict[str, object] = {
+        "key": desc.translation_key or str(desc.dp_id),
+    }
+    if desc.icon is not None:
+        kwargs["icon"] = desc.icon
+    if desc.entity_category is not None:
+        kwargs["entity_category"] = desc.resolved_entity_category()
+    if desc.options is not None:
+        kwargs["options"] = desc.options
+    if desc.enabled_by_default is False:
+        kwargs["entity_registry_enabled_default"] = False
+    return description_class(**kwargs)  # type: ignore[arg-type]
+
+
+def _build_select_mapping(desc: EntityDescriptor) -> TuyaBLESelectMapping:
+    """Construct a select mapping from a registry descriptor."""
+    if desc.kind == "fingerbot_mode":
+        return cast(TuyaBLESelectMapping, TuyaBLEFingerbotModeMapping(dp_id=desc.dp_id))
+    return TuyaBLESelectMapping(
+        dp_id=desc.dp_id,
+        description=_select_description(desc),
+        force_add=desc.force_add,
+        dp_type=(
+            TuyaBLEDataPointType(desc.dp_type) if desc.dp_type is not None else None
+        ),
+        values=desc.values,
+    )
+
+
+def _build_mapping() -> dict[str, TuyaBLECategorySelectMapping]:
+    """Build the select mappings dict from the device registry."""
+    result: dict[str, TuyaBLECategorySelectMapping] = {}
+    for device_entities in get_registry().products.values():
+        descriptors = device_entities.get("select")
+        if not descriptors:
+            continue
+        category_mapping = result.setdefault(
+            device_entities.category,
+            TuyaBLECategorySelectMapping(products={}),
+        )
+        assert category_mapping.products is not None
+        category_mapping.products[device_entities.product_id] = [
+            _build_select_mapping(desc) for desc in descriptors
+        ]
+    return result
+
+
+mapping: dict[str, TuyaBLECategorySelectMapping] = _build_mapping()
 
 
 def get_mapping_by_device(device: TuyaBLEDevice) -> list[TuyaBLESelectMapping]:

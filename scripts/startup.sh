@@ -11,3 +11,5 @@ uv pip install \
   -r requirements-dev.txt \
   --upgrade \
   --config-settings editable_mode=compat
+
+npm install

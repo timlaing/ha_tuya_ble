@@ -10,19 +10,12 @@ from homeassistant.components.text import (
     TextEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import (
-    DOMAIN,
-)
+from .const import DOMAIN
+from .device_registry import EntityDescriptor, get_registry
 from .devices import TuyaBLECoordinator, TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
-from .fingerbot import (
-    get_fingerbot_program,
-    is_fingerbot_in_program_mode,
-    set_fingerbot_program,
-)
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
 SIGNAL_STRENGTH_DP_ID = -1
@@ -58,35 +51,51 @@ class TuyaBLECategoryTextMapping:
     mapping: list[TuyaBLETextMapping] | None = None
 
 
-mapping: dict[str, TuyaBLECategoryTextMapping] = {
-    "szjqr": TuyaBLECategoryTextMapping(
-        products={
-            k: [
-                TuyaBLETextMapping(
-                    dp_id=121,
-                    description=TextEntityDescription(
-                        key="program",
-                        icon="mdi:repeat",
-                        pattern=(
-                            r"^((\d{1,2}|100)(\/\d{1,2})?)"
-                            r"(;((\d{1,2}|100)(\/\d{1,2})?))+$"
-                        ),
-                        entity_category=EntityCategory.CONFIG,
-                    ),
-                    is_available=is_fingerbot_in_program_mode,
-                    getter=get_fingerbot_program,
-                    setter=set_fingerbot_program,
-                ),
-            ]
-            for k in [
-                "blliqpsj",
-                "ndvkgsrm",
-                "yiihr7zh",
-                "neq16kgd",
-            ]
-        },
-    ),
-}
+def _text_description(desc: EntityDescriptor) -> TextEntityDescription:
+    """Build a TextEntityDescription from a descriptor."""
+    return TextEntityDescription(
+        key=desc.translation_key or str(desc.dp_id),
+        icon=desc.icon,
+        pattern=desc.pattern,
+        entity_category=desc.resolved_entity_category(),
+    )
+
+
+def _build_text_mapping(desc: EntityDescriptor) -> TuyaBLETextMapping:
+    """Construct a text mapping from a registry descriptor."""
+    return TuyaBLETextMapping(
+        dp_id=desc.dp_id,
+        description=_text_description(desc),
+        force_add=desc.force_add,
+        dp_type=(
+            TuyaBLEDataPointType(desc.dp_type) if desc.dp_type is not None else None
+        ),
+        default_value=None,
+        is_available=desc.resolved_handler("when"),
+        getter=desc.resolved_handler("read"),
+        setter=desc.resolved_handler("write"),
+    )
+
+
+def _build_mapping() -> dict[str, TuyaBLECategoryTextMapping]:
+    """Build the text mappings dict from the device registry."""
+    result: dict[str, TuyaBLECategoryTextMapping] = {}
+    for device_entities in get_registry().products.values():
+        descriptors = device_entities.get("text")
+        if not descriptors:
+            continue
+        category_mapping = result.setdefault(
+            device_entities.category,
+            TuyaBLECategoryTextMapping(products={}),
+        )
+        assert category_mapping.products is not None
+        category_mapping.products[device_entities.product_id] = [
+            _build_text_mapping(desc) for desc in descriptors
+        ]
+    return result
+
+
+mapping: dict[str, TuyaBLECategoryTextMapping] = _build_mapping()
 
 
 def get_mapping_by_device(device: TuyaBLEDevice) -> list[TuyaBLETextMapping]:

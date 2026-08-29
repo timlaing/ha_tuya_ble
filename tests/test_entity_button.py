@@ -5,7 +5,10 @@ from __future__ import annotations
 from homeassistant.components.button import ButtonEntityDescription
 from homeassistant.core import HomeAssistant
 
-from custom_components.tuya_ble import button, fingerbot
+from custom_components.tuya_ble import button
+from custom_components.tuya_ble.device_descriptors.handlers.fingerbot.mode import (
+    in_push_mode,
+)
 from custom_components.tuya_ble.devices import (
     TuyaBLECoordinator,
     TuyaBLEFingerbotInfo,
@@ -80,7 +83,7 @@ async def test_fingerbot_in_push_mode_no_fingerbot(hass: HomeAssistant) -> None:
     mapping = button.TuyaBLEButtonMapping(
         dp_id=2,
         description=_btn_desc(),
-        is_available=fingerbot.is_fingerbot_in_push_mode,
+        is_available=in_push_mode,
     )
     entity = button.TuyaBLEButton(hass, coordinator, device, product, mapping)
     entity.hass = hass
@@ -103,7 +106,7 @@ async def test_fingerbot_in_push_mode_no_datapoint(hass: HomeAssistant) -> None:
     mapping = button.TuyaBLEButtonMapping(
         dp_id=2,
         description=_btn_desc(),
-        is_available=fingerbot.is_fingerbot_in_push_mode,
+        is_available=in_push_mode,
     )
     entity = button.TuyaBLEButton(hass, coordinator, device, product, mapping)
     entity.hass = hass

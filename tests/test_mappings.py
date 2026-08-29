@@ -8,13 +8,15 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, cast
 
+from homeassistant.components.number.const import NumberMode
 import pytest
 
 from custom_components.tuya_ble import (
     binary_sensor,
     button,
     climate,
-    fingerbot,
+    cover,
+    light,
     number,
     select,
     sensor,
@@ -22,9 +24,19 @@ from custom_components.tuya_ble import (
     text,
     valve,
 )
-from custom_components.tuya_ble.devices import TuyaBLEFingerbotInfo, TuyaBLEProductInfo
+from custom_components.tuya_ble.device_descriptors.handlers.co2 import alarm_enabled
+from custom_components.tuya_ble.device_descriptors.handlers.fingerbot import (
+    get_position,
+    in_program_mode,
+    set_position,
+)
+from custom_components.tuya_ble.device_descriptors.handlers.water_valve import (
+    is_water_valve_in_switch_mode,
+)
+from custom_components.tuya_ble.device_registry import EntityDescriptor
+from custom_components.tuya_ble.devices import TuyaBLEFingerbotInfo
 from custom_components.tuya_ble.products import devices_database
-from custom_components.tuya_ble.tuya_ble import TuyaBLEDevice
+from custom_components.tuya_ble.tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
 PLATFORMS = {
     "binary_sensor": binary_sensor,
@@ -98,14 +110,6 @@ def test_known_category_unknown_product_falls_back(name: str) -> None:
 # --- Pure helpers ----------------------------------------------------------
 
 
-def make_self(datapoints: list[Any], hass: Any = None) -> Any:
-    """Build a fake entity self namespace from the given data points."""
-    return SimpleNamespace(
-        device=SimpleNamespace(datapoints={dp.dp_id: dp for dp in datapoints}),
-        hass=SimpleNamespace(create_task=lambda coro: coro),
-    )
-
-
 def make_dp(value: Any, dp_id: int = 1) -> Any:
     """Build a fake data point with a recorded set_value history."""
 
@@ -124,261 +128,392 @@ def make_dp(value: Any, dp_id: int = 1) -> Any:
     return _DP(value, dp_id)
 
 
-def make_product(mode: int | None = None, program: int | None = None) -> Any:
-    """Build a fake product with the given fingerbot mode and program."""
-    return SimpleNamespace(
-        fingerbot=TuyaBLEFingerbotInfo(
-            switch=1,
-            mode=mode or 0,
-            up_position=5,
-            down_position=6,
-            hold_time=3,
-            reverse_positions=4,
-            manual_control=7,
-            program=program or 0,
+def test_build_sensor_mapping_enabled_by_default_false() -> None:
+    """A disabled-by-default descriptor yields a disabled description."""
+
+    desc = EntityDescriptor(
+        platform="sensor",
+        dp_id=21,
+        translation_key="low_battery_alarm",
+        enabled_by_default=False,
+    )
+    built = sensor._build_sensor_mapping(desc)  # noqa: SLF001
+    assert built.dp_id == 21
+    assert built.description.key == "low_battery_alarm"
+    assert built.description.entity_registry_enabled_default is False
+
+
+def test_build_sensor_mapping_kind_battery_and_temperature() -> None:
+    """Battery/temperature kinds select the specialized mapping classes."""
+
+    battery = sensor._build_sensor_mapping(  # noqa: SLF001
+        EntityDescriptor(
+            platform="sensor",
+            dp_id=15,
+            kind="battery",
+            translation_key="battery",
+            icon="mdi:battery",
         )
     )
+    assert isinstance(battery, sensor.TuyaBLEBatteryMapping)
+    assert battery.description.key == "battery"
 
-
-def test_is_fingerbot_in_program_mode_true() -> None:
-    """Verify program mode is detected when the mode datapoint is 2."""
-    product = make_product(mode=8)
-    self_ = make_self([make_dp(value=2, dp_id=8)])
-    assert fingerbot.is_fingerbot_in_program_mode(self_, product) is True
-
-
-def test_is_fingerbot_in_program_mode_false() -> None:
-    """Verify program mode is not detected when the mode datapoint is not 2."""
-    product = make_product(mode=8)
-    self_ = make_self([make_dp(value=1, dp_id=8)])
-    assert fingerbot.is_fingerbot_in_program_mode(self_, product) is False
-
-
-def test_is_fingerbot_in_program_mode_falsy_datapoint() -> None:
-    """Verify a falsy mode datapoint is treated as program mode."""
-    self_: Any = SimpleNamespace(
-        device=SimpleNamespace(datapoints={8: None}),
-        hass=SimpleNamespace(create_task=lambda coro: coro),
+    temperature = sensor._build_sensor_mapping(  # noqa: SLF001
+        EntityDescriptor(
+            platform="sensor",
+            dp_id=18,
+            kind="temperature",
+            translation_key="temperature",
+        )
     )
-    assert fingerbot.is_fingerbot_in_program_mode(self_, make_product(mode=8)) is True
-
-
-def test_is_fingerbot_in_switch_mode_true() -> None:
-    """Verify switch mode is detected when the mode datapoint is 1."""
-    product = make_product(mode=2)
-    self_ = make_self([make_dp(value=1, dp_id=2)])
-    assert fingerbot.is_fingerbot_in_switch_mode(self_, product) is True
-
-
-def test_get_repeat_forever_true() -> None:
-    """Verify repeat-forever is detected from a 0xffff repeat count."""
-    product = make_product(program=121)
-    self_ = make_self([make_dp(value=b"\xff\xff\x01\x02\x03", dp_id=121)])
-    assert fingerbot.get_fingerbot_program_repeat_forever(self_, product) is True
-
-
-def test_get_repeat_forever_false() -> None:
-    """Verify repeat-forever is not detected from a non-0xffff repeat count."""
-    product = make_product(program=121)
-    self_ = make_self([make_dp(value=b"\x00\x01\x01\x02\x03", dp_id=121)])
-    assert fingerbot.get_fingerbot_program_repeat_forever(self_, product) is False
-
-
-def test_get_repeat_forever_non_bytes() -> None:
-    """Verify repeat-forever returns None for a non-bytes datapoint."""
-    product = make_product(program=121)
-    self_ = make_self([make_dp(value=5, dp_id=121)])
-    assert fingerbot.get_fingerbot_program_repeat_forever(self_, product) is None
-
-
-def test_get_repeat_forever_no_program() -> None:
-    """Verify repeat-forever returns None when no program datapoint exists."""
-    self_ = make_self([])
-    assert fingerbot.get_fingerbot_program_repeat_forever(self_, make_product()) is None
-
-
-def test_set_repeat_forever_true_and_false() -> None:
-    """Verify setting repeat-forever to true and false records calls."""
-    product = make_product(program=121)
-    self_ = make_self([make_dp(value=b"\x00\x01\x02\x03", dp_id=121)])
-    fingerbot.set_fingerbot_program_repeat_forever(self_, product, True)
-    fingerbot.set_fingerbot_program_repeat_forever(self_, product, False)
-
-
-def test_is_fingerbot_in_program_mode() -> None:
-    """Verify the fingerbot program-mode text helper."""
-    self_ = make_self([make_dp(value=2, dp_id=2)])
-    assert fingerbot.is_fingerbot_in_program_mode(self_, make_product(mode=2)) is True
-
-
-def test_get_fingerbot_program() -> None:
-    """Verify formatting a fingerbot program datapoint into a string."""
-    # header(3) + step_count(1) + steps(3 each)
-    value = b"\x00\x01\x02" + b"\x02" + b"\x05\x00\x07" + b"\x0a\x13\x88"
-    product = make_product(program=121)
-    self_ = make_self([make_dp(value=value, dp_id=121)])
-    result = fingerbot.get_fingerbot_program(self_, product)
-    assert result is not None
-    assert result.startswith("5/7")
-
-
-def test_get_fingerbot_program_no_datapoint() -> None:
-    """Verify get_fingerbot_program returns None when no datapoint exists."""
-    product = make_product(program=121)
-    self_ = make_self([make_dp(value=5, dp_id=121)])
-    assert fingerbot.get_fingerbot_program(self_, product) is None
-
-
-def test_format_program_step() -> None:
-    """Verify a single program step is formatted correctly."""
-    data = b"\x00\x00\x00\x01" + b"\x05\x13\x88"
-    assert fingerbot._format_program_step(data, 0) == "5/5000"
-    data2 = b"\x00\x00\x00\x01" + b"\x05\x00\x00"
-    assert fingerbot._format_program_step(data2, 0) == "5"
-
-
-def test_set_fingerbot_program() -> None:
-    """Verify setting a fingerbot program records the expected call."""
-    value = b"\x00\x01\x02" + b"\x01" + b"\x05\x13\x88"
-    product = make_product(program=121)
-    self_ = make_self([make_dp(value=value, dp_id=121)])
-    fingerbot.set_fingerbot_program(self_, product, "5/5000;10")
-
-
-def test_is_fingerbot_in_program_mode_self_helper_returns_true() -> None:
-    """Verify the fingerbot program-mode text helper."""
-    self_ = make_self([make_dp(value=2, dp_id=8)])
-    assert fingerbot.is_fingerbot_in_program_mode(self_, make_product(mode=8)) is True
-
-
-def test_is_fingerbot_not_in_program_mode() -> None:
-    """Verify not-in-program-mode is detected when mode is not 2."""
-    self_ = make_self([make_dp(value=1, dp_id=8)])
-    assert (
-        fingerbot.is_fingerbot_not_in_program_mode(self_, make_product(mode=8)) is True
-    )
-
-
-def test_is_fingerbot_in_push_mode() -> None:
-    """Verify push mode is detected when the mode datapoint is 0."""
-    self_ = make_self([make_dp(value=0, dp_id=8)])
-    assert fingerbot.is_fingerbot_in_push_mode(self_, make_product(mode=8)) is True
-
-
-def test_repeat_count_available_false_when_forever() -> None:
-    """Verify repeat count is unavailable when set to repeat forever."""
-    product = make_product(mode=8, program=121)
-    self_ = make_self([
-        make_dp(value=2, dp_id=8),
-        make_dp(value=b"\xff\xff\x00", dp_id=121),
-    ])
-    assert fingerbot.is_fingerbot_repeat_count_available(self_, product) is False
-
-
-def test_repeat_count_available_true() -> None:
-    """Verify repeat count is available for a finite repeat count."""
-    product = make_product(mode=8, program=121)
-    self_ = make_self([
-        make_dp(value=2, dp_id=8),
-        make_dp(value=b"\x00\x05\x00", dp_id=121),
-    ])
-    assert fingerbot.is_fingerbot_repeat_count_available(self_, product) is True
-
-
-def test_repeat_count_available_no_program() -> None:
-    """Verify repeat count is available when no program datapoint exists."""
-    self_ = make_self([make_dp(value=2, dp_id=8)])
-    assert (
-        fingerbot.is_fingerbot_repeat_count_available(self_, make_product(mode=8))
-        is True
-    )
-
-
-def test_get_repeat_count() -> None:
-    """Verify the repeat count is read from the program datapoint."""
-    product = make_product(program=121)
-    self_ = make_self([make_dp(value=b"\x00\x05\x00", dp_id=121)])
-    assert fingerbot.get_fingerbot_program_repeat_count(self_, product) == 5.0
-
-
-def test_get_repeat_count_none() -> None:
-    """Verify repeat count returns None when no datapoint exists."""
-    self_ = make_self([])
-    assert fingerbot.get_fingerbot_program_repeat_count(self_, make_product()) is None
-
-
-def test_set_repeat_count() -> None:
-    """Verify setting the repeat count records the expected call."""
-    product = make_product(program=121)
-    self_ = make_self([make_dp(value=b"\x00\x05\x00", dp_id=121)])
-    fingerbot.set_fingerbot_program_repeat_count(self_, product, 3.0)
-
-
-def test_get_position() -> None:
-    """Verify the program position is read from the datapoint."""
-    product = make_product(program=121)
-    self_ = make_self([make_dp(value=b"\x00\x05\x07\x00", dp_id=121)])
-    assert fingerbot.get_fingerbot_program_position(self_, product) == 7.0
-
-
-def test_set_position() -> None:
-    """Verify setting the program position records the expected call."""
-    product = make_product(program=121)
-    self_ = make_self([make_dp(value=b"\x00\x05\x07\x00", dp_id=121)])
-    fingerbot.set_fingerbot_program_position(self_, product, 9.0)
-
-
-def test_battery_enum_getter() -> None:
-    """Verify the battery enum getter converts the datapoint to a percentage."""
-    self_: Any = SimpleNamespace(
-        device=SimpleNamespace(datapoints={104: make_dp(value=3, dp_id=104)}),
-        _attr_native_value=None,
-        set_native_value=lambda v: setattr(self_, "_attr_native_value", v),
-    )
-    sensor.battery_enum_getter(self_)
-    assert self_._attr_native_value == 60.0
-
-
-def test_rssi_getter() -> None:
-    """Verify the RSSI getter propagates the device signal strength."""
-    self_: Any = SimpleNamespace(
-        device=SimpleNamespace(rssi=-70),
-        _attr_native_value=None,
-        set_native_value=lambda v: setattr(self_, "_attr_native_value", v),
-    )
-    sensor.rssi_getter(self_)
-    assert self_._attr_native_value == -70
-
-
-def test_is_co2_alarm_enabled() -> None:
-    """Verify the CO2 alarm-enabled helper reads datapoint 13."""
-    self_: Any = SimpleNamespace(
-        device=SimpleNamespace(datapoints={13: make_dp(value=1, dp_id=13)})
-    )
-    assert (
-        sensor.is_co2_alarm_enabled(self_, cast(TuyaBLEProductInfo, SimpleNamespace()))
-        is True
-    )
-
-
-def test_is_fingerbot_in_push_mode_true() -> None:
-    """Verify push mode is detected when the mode datapoint is 0."""
-    product = make_product(mode=2)
-    self_ = make_self([make_dp(value=0, dp_id=2)])
-    assert fingerbot.is_fingerbot_in_push_mode(self_, product) is True
-
-
-def test_is_fingerbot_in_push_mode_false() -> None:
-    """Verify push mode is not detected when the mode datapoint is not 0."""
-    product = make_product(mode=2)
-    self_ = make_self([make_dp(value=1, dp_id=2)])
-    assert fingerbot.is_fingerbot_in_push_mode(self_, product) is False
+    assert isinstance(temperature, sensor.TuyaBLETemperatureMapping)
+    assert temperature.description.key == "temperature"
 
 
 def test_temperature_unit_description() -> None:
     """Verify the temperature unit entity description is built with a key."""
     desc = select.TemperatureUnitDescription(key="temperature_unit")
     assert desc.key == "temperature_unit"
+
+
+def test_build_select_mapping_temperature_unit() -> None:
+    """A temperature_unit descriptor yields a description with the given options."""
+
+    desc = EntityDescriptor(
+        platform="select",
+        dp_id=101,
+        translation_key="temperature_unit",
+        options=["°C", "°F"],
+    )
+    built = select._build_select_mapping(desc)  # noqa: SLF001
+    assert built.dp_id == 101
+    assert built.description.key == "temperature_unit"
+    assert built.description.options == ["°C", "°F"]
+
+
+def test_build_select_mapping_no_options() -> None:
+    """A descriptor without options yields a description missing options."""
+
+    desc = EntityDescriptor(
+        platform="select",
+        dp_id=5,
+        translation_key="work_state",
+    )
+    built = select._build_select_mapping(desc)  # noqa: SLF001
+    assert isinstance(built, select.TuyaBLESelectMapping)
+    assert built.description.key == "work_state"
+    assert built.description.options is None
+
+
+def test_build_select_mapping_fingerbot_mode() -> None:
+    """A fingerbot_mode descriptor yields the dedicated mapping class."""
+
+    desc = EntityDescriptor(
+        platform="select",
+        dp_id=8,
+        translation_key="fingerbot_mode",
+        kind="fingerbot_mode",
+    )
+    built = select._build_select_mapping(desc)  # noqa: SLF001
+    assert isinstance(built, select.TuyaBLEFingerbotModeMapping)
+    assert built.dp_id == 8
+
+
+@pytest.mark.parametrize(
+    ("kind", "mapping_class"),
+    [
+        ("TuyaBLEFingerbotSwitchMapping", "TuyaBLEFingerbotSwitchMapping"),
+        ("TuyaBLEReversePositionsMapping", "TuyaBLEReversePositionsMapping"),
+        ("TuyaLockMotorStateMapping", "TuyaLockMotorStateMapping"),
+        ("TuyaBLEWaterValveSwitchMapping", "TuyaBLEWaterValveSwitchMapping"),
+        (
+            "TuyaBLEWaterValveWeatherSwitchMapping",
+            "TuyaBLEWaterValveWeatherSwitchMapping",
+        ),
+    ],
+)
+def test_build_switch_mapping_kinds(kind: str, mapping_class: str) -> None:
+    """Each switch kind selects its dedicated mapping class."""
+
+    desc = EntityDescriptor(
+        platform="switch",
+        dp_id=1,
+        translation_key="switch",
+        kind=kind,
+    )
+    built = switch._build_switch_mapping(desc)  # noqa: SLF001
+    assert isinstance(built, getattr(switch, mapping_class))
+    assert built.dp_id == 1
+
+
+def test_build_switch_mapping_kind_preserves_class_default_availability() -> None:
+    """Kinds keep their class-default availability when no 'when' handler exists."""
+
+    desc = EntityDescriptor(
+        platform="switch",
+        dp_id=1,
+        translation_key="water_valve",
+        kind="TuyaBLEWaterValveSwitchMapping",
+    )
+    built = switch._build_switch_mapping(desc)  # noqa: SLF001
+    assert built.is_available is is_water_valve_in_switch_mode
+
+
+def test_build_switch_mapping_unknown_kind() -> None:
+    """An unknown kind falls back to the base switch mapping class."""
+
+    desc = EntityDescriptor(
+        platform="switch",
+        dp_id=1,
+        translation_key="water_valve",
+        kind="TuyaBLEBogusMapping",
+    )
+    built = switch._build_switch_mapping(desc)  # noqa: SLF001
+    assert isinstance(built, switch.TuyaBLESwitchMapping)
+
+
+def test_build_switch_mapping_bitmap_mask_and_handlers() -> None:
+    """Co2 bitmap masks and resolved handlers are carried into the mapping."""
+
+    desc = EntityDescriptor(
+        platform="switch",
+        dp_id=11,
+        translation_key="carbon_dioxide_severely_exceed_alarm",
+        icon="mdi:molecule-co2",
+        entity_category="config",
+        enabled_by_default=False,
+        handlers={"when": "co2.alarm_enabled", "read": "rssi.rssi"},
+        extra={"bitmap_mask": b"\x01"},
+    )
+    built = switch._build_switch_mapping(desc)  # noqa: SLF001
+    assert isinstance(built, switch.TuyaBLESwitchMapping)
+    assert built.dp_id == 11
+    assert built.bitmap_mask == b"\x01"
+    assert built.description.key == "carbon_dioxide_severely_exceed_alarm"
+    assert built.description.entity_registry_enabled_default is False
+    assert built.is_available is cast(Any, alarm_enabled)
+    assert built.getter is not None
+    assert built.setter is None
+
+
+def test_build_switch_mapping_dp_type() -> None:
+    """A descriptor with an explicit dp_type sets it on the mapping."""
+
+    desc = EntityDescriptor(
+        platform="switch",
+        dp_id=1,
+        translation_key="water_valve",
+        dp_type=4,  # type: ignore[arg-type]
+    )
+    built = switch._build_switch_mapping(desc)  # noqa: SLF001
+    assert built.dp_type == TuyaBLEDataPointType.DT_ENUM
+
+
+def test_build_number_mapping_ranges_and_coefficient() -> None:
+    """Number builder carries ranges, step, mode, and coefficient into the mapping."""
+
+    desc = EntityDescriptor(
+        platform="number",
+        dp_id=17,
+        translation_key="reporting_period",
+        unit="min",
+        entity_category="config",
+        min_value=1,
+        max_value=120,
+        step=1,
+        mode="slider",
+        coefficient=10.0,
+    )
+    built = number._build_number_mapping(desc)  # noqa: SLF001
+    assert built.dp_id == 17
+    assert built.coefficient == 10.0
+    assert built.mode is NumberMode.SLIDER
+    assert built.description.key == "reporting_period"
+    assert built.description.native_min_value == 1
+    assert built.description.native_max_value == 120
+    assert built.description.native_step == 1
+    assert built.description.native_unit_of_measurement == "min"
+
+
+def test_build_number_mapping_name_and_box_default() -> None:
+    """The optional name field is carried and an absent mode defaults to box."""
+
+    desc = EntityDescriptor(
+        platform="number",
+        dp_id=106,
+        translation_key="countdown_duration_z1",
+        name="CH1 Countdown",
+    )
+    built = number._build_number_mapping(desc)  # noqa: SLF001
+    assert built.mode is NumberMode.BOX
+    assert built.description.name == "CH1 Countdown"
+    assert built.description.native_min_value is None
+
+
+def test_build_number_mapping_dp_type_and_handlers() -> None:
+    """Number builder resolves dp_type and read/write/when handlers."""
+
+    desc = EntityDescriptor(
+        platform="number",
+        dp_id=121,
+        translation_key="program_idle_position",
+        dp_type=4,  # type: ignore[arg-type]
+        handlers={
+            "read": "fingerbot.program.get_position",
+            "write": "fingerbot.program.set_position",
+            "when": "fingerbot.mode.in_program_mode",
+        },
+    )
+    built = number._build_number_mapping(desc)  # noqa: SLF001
+    assert built.dp_type == TuyaBLEDataPointType.DT_ENUM
+    assert built.getter is get_position
+    assert built.setter is set_position
+    assert built.is_available is in_program_mode
+
+
+def test_get_mapping_by_device_category_default() -> None:
+    """Category-level default mappings apply for an unknown product id."""
+    original = switch.mapping
+    try:
+        switch.mapping = {
+            "test_cat": switch.TuyaBLECategorySwitchMapping(
+                products={
+                    "known": [
+                        switch.TuyaBLESwitchMapping(
+                            dp_id=1,
+                            description=cast(Any, SimpleNamespace(key="known")),
+                        )
+                    ]
+                },
+                mapping=[
+                    switch.TuyaBLESwitchMapping(
+                        dp_id=1,
+                        description=cast(Any, SimpleNamespace(key="default")),
+                    )
+                ],
+            ),
+        }
+        result = switch.get_mapping_by_device(
+            cast(Any, FakeDevice("test_cat", "unknown"))
+        )
+        assert [m.description.key for m in result] == ["default"]
+        assert (
+            switch.get_mapping_by_device(cast(Any, FakeDevice("test_cat", "known")))[
+                0
+            ].description.key
+            == "known"
+        )
+    finally:
+        switch.mapping = original
+
+
+def test_build_climate_mapping_full_fields() -> None:
+    """Climate builder carries humidity, hvac mode, preset, and icon fields."""
+
+    desc = EntityDescriptor(
+        platform="climate",
+        dp_id=0,
+        translation_key="thermostat",
+        icon="mdi:thermostat",
+        extra={
+            "hvac_mode_dp_id": 5,
+            "hvac_modes": ["off", "heat"],
+            "current_humidity_dp_id": 6,
+            "current_humidity_coefficient": 2.0,
+            "target_humidity_dp_id": 7,
+            "target_humidity_coefficient": 2.0,
+            "target_humidity_max": 80.0,
+            "target_humidity_min": 20.0,
+            "preset_mode_dp_ids": {"away": 8, "none": 8},
+            "temperature_unit": "°C",
+        },
+    )
+    built = climate._build_climate_mapping(desc)  # noqa: SLF001
+    assert built.description.key == "thermostat"
+    assert built.description.icon == "mdi:thermostat"
+    assert built.hvac_mode_dp_id == 5
+    assert built.hvac_modes == ["off", "heat"]
+    assert built.current_humidity_dp_id == 6
+    assert built.current_humidity_coefficient == 2.0
+    assert built.target_humidity_dp_id == 7
+    assert built.target_humidity_max == 80.0
+    assert built.target_humidity_min == 20.0
+    assert built.preset_mode_dp_ids == {"away": 8, "none": 8}
+    assert built.temperature_unit == "°C"
+
+
+def test_build_climate_mapping_defaults() -> None:
+    """A descriptor with no extra fields yields the class defaults."""
+
+    desc = EntityDescriptor(platform="climate", dp_id=0, translation_key="thermostat")
+    built = climate._build_climate_mapping(desc)  # noqa: SLF001
+    assert built.hvac_mode_dp_id == 0
+    assert built.target_temperature_max == 30.0
+    assert built.target_temperature_min == 5
+    assert built.preset_mode_dp_ids is None
+
+
+def test_build_cover_mapping() -> None:
+    """Cover builder reads extra dp ids and icon."""
+
+    desc = EntityDescriptor(
+        platform="cover",
+        dp_id=0,
+        translation_key="ble_cover",
+        icon="mdi:curtains",
+        extra={
+            "state_dp_id": 1,
+            "position_set_dp_id": 2,
+            "position_dp_id": 3,
+            "tilt_dp_id": 101,
+            "battery_dp_id": 13,
+            "speed_dp_id": 105,
+        },
+    )
+    built = cover._build_cover_mapping(desc)  # noqa: SLF001
+    assert built.description.key == "ble_cover"
+    assert built.description.icon == "mdi:curtains"
+    assert built.state_dp_id == 1
+    assert built.position_set_dp_id == 2
+    assert built.position_dp_id == 3
+    assert built.tilt_dp_id == 101
+    assert built.battery_dp_id == 13
+    assert built.speed_dp_id == 105
+
+
+def test_build_light_mapping() -> None:
+    """Light builder reads extra dp ids and icon."""
+
+    desc = EntityDescriptor(
+        platform="light",
+        dp_id=0,
+        translation_key="switch_led",
+        icon="mdi:lightbulb",
+        extra={
+            "switch_dp_id": 1,
+            "color_mode_dp_id": 2,
+            "brightness_dp_id": 3,
+            "color_temp_dp_id": 4,
+            "color_data_dp_id": 5,
+            "brightness_min": 0,
+            "brightness_max": 1000,
+            "color_temp_min": 10,
+            "color_temp_max": 90,
+        },
+    )
+    built = light._build_light_mapping(desc)  # noqa: SLF001
+    assert built.description.key == "switch_led"
+    assert built.description.name is None
+    assert built.description.icon == "mdi:lightbulb"
+    assert built.switch_dp_id == 1
+    assert built.color_mode_dp_id == 2
+    assert built.brightness_dp_id == 3
+    assert built.color_temp_dp_id == 4
+    assert built.color_data_dp_id == 5
+    assert built.brightness_min == 0
+    assert built.brightness_max == 1000
+    assert built.color_temp_min == 10
+    assert built.color_temp_max == 90
 
 
 def test_fingerbot_info_defaults() -> None:

@@ -1,0 +1,50 @@
+category: znhsb
+product_id: cdlandip
+entities:
+  sensor:
+    - dp_id: 101
+      translation_key: temperature
+      device_class: temperature
+      unit: °C
+      state_class: measurement
+      kind: temperature
+    - dp_id: 102
+      translation_key: water_intake
+      device_class: water
+      unit: mL
+      state_class: measurement
+    - dp_id: 104
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+      handlers:
+        read: battery.battery_enum
+  button:
+    - dp_id: 109
+      translation_key: bright_lid_screen
+  number:
+    - dp_id: 103
+      translation_key: recommended_water_intake
+      device_class: water
+      unit: mL
+      entity_category: config
+      mode: box
+      min_value: 0
+      max_value: 5000
+      step: 1
+  select:
+    - dp_id: 106
+      translation_key: temperature_unit
+      options:
+        - °C
+        - °F
+    - dp_id: 107
+      translation_key: reminder_mode
+      entity_category: config
+      options:
+        - interval_reminder
+        - alarm_reminder
+device_name: Smart water bottle
+model_name: cdlandip

@@ -1,0 +1,30 @@
+category: ms
+product_id: a6nttc41
+entities:
+  sensor:
+    - dp_id: 8
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+      kind: battery
+    - dp_id: 19
+      translation_key: unlock_ble
+      icon: mdi:bluetooth
+      entity_category: diagnostic
+      suggested_display_precision: 0
+    - dp_id: 12
+      translation_key: unlock_fingerprint
+      icon: mdi:fingerprint
+      entity_category: diagnostic
+      suggested_display_precision: 0
+  switch:
+    - dp_id: 33
+      translation_key: lock_motor_state
+      kind: TuyaLockMotorStateMapping
+  lock:
+    - dp_id: 33
+      translation_key: lock
+device_name: Smart Lock
+model_name: a6nttc41

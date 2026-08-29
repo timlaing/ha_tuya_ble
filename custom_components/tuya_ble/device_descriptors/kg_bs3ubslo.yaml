@@ -1,0 +1,35 @@
+category: kg
+product_id: bs3ubslo
+entities:
+  switch:
+    - dp_id: 1
+      translation_key: switch
+      handlers:
+        when: fingerbot.mode.in_switch_mode
+      kind: TuyaBLEFingerbotSwitchMapping
+    - dp_id: 104
+      translation_key: reverse_positions
+      icon: mdi:arrow-up-down-bold
+      entity_category: config
+      handlers:
+        when: fingerbot.mode.in_switch_mode
+      kind: TuyaBLEReversePositionsMapping
+    - dp_id: 107
+      translation_key: manual_control
+      icon: mdi:gesture-tap-box
+      entity_category: config
+    - dp_id: 1
+      translation_key: program
+      icon: mdi:repeat
+      handlers:
+        when: fingerbot.mode.in_program_mode
+    - dp_id: 109
+      translation_key: program_repeat_forever
+      icon: mdi:repeat
+      entity_category: config
+      handlers:
+        read: fingerbot.program.get_repeat_forever
+        write: fingerbot.program.set_repeat_forever
+        when: fingerbot.mode.in_program_mode
+device_name: Fingerbot Plus
+model_name: bs3ubslo

@@ -58,10 +58,12 @@ If a file falls below the threshold, add tests until it passes before committing
 | `tests/test_cloud.py`                                                      | `cloud.py`                                                                                        |
 | `tests/test_devices.py`                                                    | pure devices.py functions                                                                         |
 | `tests/test_mappings.py`                                                   | per-platform `get_mapping_by_device` + pure Fingerbot/sensor helpers                              |
+| `tests/test_device_registry.py`                                            | `device_registry.py` (load/validate/resolve, `EntityDescriptor`)                                  |
+| `tests/test_handlers.py`                                                   | YAML descriptor handler callables (`battery`, `co2`, `rssi`, `water_valve`, Fingerbot)            |
 | `tests/test_entity_binary_sensor.py`                                       | binary_sensor entity methods                                                                      |
 | `tests/test_entity_button.py`                                              | button entity methods                                                                             |
 | `tests/test_entity_climate.py`                                             | climate entity methods                                                                            |
-| `tests/test_entity_number.py`                                              | number entity methods + fingerbot helper functions                                                |
+| `tests/test_entity_number.py`                                              | number entity methods (incl. fingerbot number handler aliases)                                    |
 | `tests/test_entity_select.py`                                              | select entity methods                                                                             |
 | `tests/test_entity_sensor.py`                                              | sensor entity methods                                                                             |
 | `tests/test_entity_switch.py`                                              | switch entity methods                                                                             |
@@ -119,34 +121,34 @@ Tuya BLE Device <-> Home Assistant (ha_tuya_ble)
 
 All public BLE symbols — `TuyaBLEDevice`, `TuyaBLEDataPoint`, `TuyaBLEDataPointType`, `TuyaBLEDataPoints`, `BLE_CONNECTION_EXCEPTIONS`, `BLEAK_EXCEPTIONS`, `SERVICE_UUID`, `AbstractTuyaBLEDeviceManager`, `TuyaBLEDeviceCredentials` — are re-exported from `tuya_ble/__init__.py`. Platform files and `cloud.py`/`devices.py` import them from the package (`from .tuya_ble import ...`), never from the internal defining module. After the split of `tuya_ble.py`, `TuyaBLEDataPoint` lives in `datapoints.py` and protocol logic in `protocol_mixin.py`, but you must still import them via the package.
 
-`devices.py` is a **pure re-export shim** — all of its former contents now live in `products.py` (dataclasses, `devices_database`, helper functions), `entity.py` (`TuyaBLEEntity`, `get_device_info`), `coordinator.py` (`TuyaBLECoordinator`), and `fingerbot.py` (shared Fingerbot helpers). Don't add new code to `devices.py`; import these symbols from their defining modules.
+`devices.py` is a **pure re-export shim** — all of its former contents now live in `products.py` (dataclasses, `devices_database`, helper functions), `entity.py` (`TuyaBLEEntity`, `get_device_info`), and `coordinator.py` (`TuyaBLECoordinator`). Don't add new code to `devices.py`; import these symbols from their defining modules.
 
 ## Key files
 
-| File                         | Purpose                                                                                                                     |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `config_flow.py`             | QR code login flow (user code → scan → device selection)                                                                    |
-| `cloud.py`                   | `tuya_sharing.Manager` wrapper, MAC-based device credential lookup                                                          |
-| `const.py`                   | Constants — imports shared names from `homeassistant.components.tuya.const`; re-exports `DPType` from `tuya_ble.const`      |
-| `products.py`                | Dataclasses (`TuyaBLECategoryInfo`, …), `devices_database` registry, product lookup helpers                                 |
-| `entity.py`                  | `TuyaBLEEntity` base class, `get_device_info`                                                                               |
-| `coordinator.py`             | `TuyaBLECoordinator` (DataUpdateCoordinator subclass)                                                                       |
-| `fingerbot.py`               | Shared Fingerbot helpers (`is_fingerbot_in_program_mode`, `get/set_fingerbot_program`, repeat/maintenance helpers)          |
-| `devices.py`                 | **Re-export shim** — imports from the split modules above; don't add code here                                              |
-| `tuya_ble/`                  | Vendored BLE protocol library (encryption, pairing) — no cloud dependency                                                   |
-| `tuya_ble/__init__.py`       | **Re-exports** all public BLE symbols — import from here, not the internal modules                                          |
-| `tuya_ble/manager.py`        | `AbstractTuyaBLEDeviceManager` interface + `TuyaBLEDeviceCredentials` that `cloud.py` implements                            |
-| `tuya_ble/tuya_ble.py`       | `TuyaBLEDevice(TuyaBLEProtocol)` — BLE connection management, device state                                                  |
-| `tuya_ble/protocol_mixin.py` | `TuyaBLEProtocol` mixin — packet building/sending/parsing, AES encryption (`BLEAK_EXCEPTIONS`, `BLE_CONNECTION_EXCEPTIONS`) |
-| `tuya_ble/datapoints.py`     | `TuyaBLEDataPoint`, `TuyaBLEDataPoints`                                                                                     |
-| `tuya_ble/const.py`          | `TuyaBLECode`, `TuyaBLEDataPointType`, `DPType`, UUIDs                                                                      |
-| `strings.json`               | UI strings for config flow and entity translations                                                                          |
+| File                                     | Purpose                                                                                                                      |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `config_flow.py`                         | QR code login flow (user code → scan → device selection)                                                                     |
+| `cloud.py`                               | `tuya_sharing.Manager` wrapper, MAC-based device credential lookup                                                           |
+| `const.py`                               | Constants — imports shared names from `homeassistant.components.tuya.const`; re-exports `DPType` from `tuya_ble.const`       |
+| `products.py`                            | Dataclasses (`TuyaBLECategoryInfo`, …), `devices_database` registry, product lookup helpers                                  |
+| `entity.py`                              | `TuyaBLEEntity` base class, `get_device_info`                                                                                |
+| `coordinator.py`                         | `TuyaBLECoordinator` (DataUpdateCoordinator subclass)                                                                        |
+| `device_descriptors/handlers/fingerbot/` | Shared Fingerbot handlers (`in_program_mode`, `get/set_program`, repeat/maintenance helpers, etc.) in `mode.py`/`program.py` |
+| `devices.py`                             | **Re-export shim** — imports from the split modules above; don't add code here                                               |
+| `tuya_ble/`                              | Vendored BLE protocol library (encryption, pairing) — no cloud dependency                                                    |
+| `tuya_ble/__init__.py`                   | **Re-exports** all public BLE symbols — import from here, not the internal modules                                           |
+| `tuya_ble/manager.py`                    | `AbstractTuyaBLEDeviceManager` interface + `TuyaBLEDeviceCredentials` that `cloud.py` implements                             |
+| `tuya_ble/tuya_ble.py`                   | `TuyaBLEDevice(TuyaBLEProtocol)` — BLE connection management, device state                                                   |
+| `tuya_ble/protocol_mixin.py`             | `TuyaBLEProtocol` mixin — packet building/sending/parsing, AES encryption (`BLEAK_EXCEPTIONS`, `BLE_CONNECTION_EXCEPTIONS`)  |
+| `tuya_ble/datapoints.py`                 | `TuyaBLEDataPoint`, `TuyaBLEDataPoints`                                                                                      |
+| `tuya_ble/const.py`                      | `TuyaBLECode`, `TuyaBLEDataPointType`, `DPType`, UUIDs                                                                       |
+| `strings.json`                           | UI strings for config flow and entity translations                                                                           |
 
 ## Entity platforms
 
 Each platform file (binary_sensor, button, climate, number, select, sensor, switch, text, valve) follows the same pattern: a mapping dict keyed by Tuya category ID → product ID → list of data-point mappings. To add a new device, add entries to `devices_database` in `products.py` and add data-point mappings in the relevant platform files.
 
-Some platforms carry bespoke per-device logic beyond the mapping dict — notably the shared Fingerbot helpers in `fingerbot.py`, consumed by `text.py`, `switch.py`, and `number.py` (e.g. `get_fingerbot_program`, `set_fingerbot_program`, `is_fingerbot_in_program_mode`, `set_fingerbot_program_repeat_forever`), and custom getters in `sensor.py` (`battery_enum_getter`, `rssi_getter`) and `select.py` (`TemperatureUnitDescription`). Editing a device that needs special handling means touching these helpers, not just the mappings.
+Some platforms carry bespoke per-device logic beyond the mapping dict — notably the shared Fingerbot handlers in `device_descriptors/handlers/fingerbot/`, consumed by `text.py`, `switch.py`, `number.py`, and `button.py` (e.g. `program.get_program`, `program.set_program`, `mode.in_program_mode`, `program.set_repeat_forever`), and custom getters in `sensor.py` (`battery_enum_getter`, `rssi_getter`) and `select.py` (`TemperatureUnitDescription`). Editing a device that needs special handling means touching these handlers, not just the mappings.
 
 ## Dependencies
 

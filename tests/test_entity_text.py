@@ -8,15 +8,19 @@ from homeassistant.components.text import TextEntityDescription
 from homeassistant.core import HomeAssistant
 
 from custom_components.tuya_ble import text
+from custom_components.tuya_ble.device_descriptors.handlers.fingerbot.mode import (
+    in_program_mode as is_fingerbot_in_program_mode,
+)
+from custom_components.tuya_ble.device_descriptors.handlers.fingerbot.program import (
+    get_program as get_fingerbot_program,
+)
+from custom_components.tuya_ble.device_descriptors.handlers.fingerbot.program import (
+    set_program as set_fingerbot_program,
+)
 from custom_components.tuya_ble.devices import (
     TuyaBLECoordinator,
     TuyaBLEFingerbotInfo,
     TuyaBLEProductInfo,
-)
-from custom_components.tuya_ble.fingerbot import (
-    get_fingerbot_program,
-    is_fingerbot_in_program_mode,
-    set_fingerbot_program,
 )
 from custom_components.tuya_ble.text import TuyaBLEText
 from custom_components.tuya_ble.tuya_ble import (
