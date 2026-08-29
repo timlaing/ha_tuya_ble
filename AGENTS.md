@@ -110,6 +110,7 @@ Workflow notes (from the MCP instructions):
 - Disable automatic analysis with `sonarqube_toggle_automatic_analysis` at the start of a task and re-enable it when done.
 - Do **not** verify a fix via `search_sonar_issues_in_projects` — the server lags behind local analysis.
 - Prefer fixing a SonarQube issue with a code change over suppressing it; only use `sonarqube_change_sonar_issue_status` (`accept`/`falsepositive`) when a fix isn't appropriate.
+- **Before any push** (when the MCP server is available), run `sonarqube_analyze_file_list` on all changed/created files and resolve any new issues, so problems are caught before they reach CI.
 
 ## Architecture
 

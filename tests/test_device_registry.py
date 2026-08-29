@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pytest import MonkeyPatch
+import pytest
 
 import custom_components.tuya_ble.device_registry as dr
 from custom_components.tuya_ble.device_registry import (
@@ -223,7 +223,7 @@ def test_resolved_handler_none_when_unset() -> None:
 
 
 def test_load_skips_schema_and_loads_category_defaults(
-    tmp_path: Path, monkeypatch: MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """load() skips _schema.yaml and loads _category_ prefix files."""
     monkeypatch.setattr(dr, "_DEVICES_DIR", tmp_path)
