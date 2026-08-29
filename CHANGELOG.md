@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog],
 and this project adheres to [Semantic Versioning].
 
+## [2.0.2] - 2026-08-29
+
+### Changed
+
+- **Test tooling**: added a manual `prek` pytest hook that runs the complete suite with branch coverage.
+
+### Fixed
+
+- **Tuya cloud setup**: use the supported user-permission factory-information endpoint and handle rejected API requests without crashing the Home Assistant config flow.
+
 ## [2.0.1] - 2026-08-29
 
 ### Changed
