@@ -138,7 +138,7 @@ repos:
       - id: check-prek-deps
         name: Check prek dependency sync
         language: system
-        entry: python scripts/sync_prek_deps.py --check
+        entry: python3 scripts/sync_prek_deps.py --check
         args:
           - requirements.txt
           - requirements-dev.txt
