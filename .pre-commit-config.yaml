@@ -139,9 +139,10 @@ repos:
         name: PyTest
         entry: pytest
         args:
-          - "--cov"
+          - "--cov=custom_components.tuya_ble"
           - "--cov-branch"
-        types: [python]
+          - "--cov-report=term-missing"
+          - "--cov-fail-under=90"
         language: python
         stages: [manual]
         pass_filenames: false
