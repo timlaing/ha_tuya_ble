@@ -2,7 +2,7 @@ aiousbwatcher
 homeassistant==2026.8.3
 homeassistant-stubs==2026.8.3
 mypy
-prek>=0.4.14,<0.5.0
+prek
 pycryptodome
 pylint
 pytest
