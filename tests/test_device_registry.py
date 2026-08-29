@@ -33,19 +33,17 @@ def _descriptor() -> EntityDescriptor:
 
 def _load_product(registry: DeviceRegistry, entities: dict[str, object]) -> None:
     """Load a single product with a fixed category/pid and given entities."""
-    registry._load_product(  # noqa: SLF001
-        {
-            "category": "ms",
-            "product_id": "foo",
-            "entities": entities,
-        }
-    )
+    registry._load_product({
+        "category": "ms",
+        "product_id": "foo",
+        "entities": entities,
+    })
 
 
 def test_registry_loads_all_real_products() -> None:
     """The cached registry loads every shipped YAML descriptor."""
     registry = get_registry()
-    assert len(registry._products) > 50  # noqa: SLF001
+    assert len(registry._products) > 50
     device = registry.get("co2bj", "59s19z5m")
     assert device is not None
     assert device.category == "co2bj"
@@ -98,7 +96,7 @@ def test_extra_fields_captured() -> None:
 def test_category_default_fallback_merge() -> None:
     """Specific platform entries win and unmapped platforms fall back."""
     registry = DeviceRegistry()
-    registry._load_category_defaults(  # noqa: SLF001
+    registry._load_category_defaults(
         "_category_ggq.yaml",
         {
             "entities": {
@@ -107,13 +105,11 @@ def test_category_default_fallback_merge() -> None:
             }
         },
     )
-    registry._load_product(  # noqa: SLF001
-        {
-            "category": "ggq",
-            "product_id": "hfgdqhho",
-            "entities": {"sensor": [{"dp_id": 7, "translation_key": "specific"}]},
-        }
-    )
+    registry._load_product({
+        "category": "ggq",
+        "product_id": "hfgdqhho",
+        "entities": {"sensor": [{"dp_id": 7, "translation_key": "specific"}]},
+    })
     device = registry.get("ggq", "hfgdqhho")
     assert device is not None
     assert [d.dp_id for d in device.get("sensor")] == [7]
@@ -147,7 +143,7 @@ def test_validate_descriptor_missing_product_id_raises() -> None:
     """A descriptor without product_id is rejected."""
     registry = DeviceRegistry()
     try:
-        registry._load_product({"category": "ms", "entities": {}})  # noqa: SLF001
+        registry._load_product({"category": "ms", "entities": {}})
     except DeviceRegistryError as exc:
         assert "product_id" in str(exc)
     else:
@@ -158,7 +154,7 @@ def test_validate_descriptor_missing_category_raises() -> None:
     """A descriptor without category is rejected."""
     registry = DeviceRegistry()
     try:
-        registry._load_product({"product_id": "foo", "entities": {}})  # noqa: SLF001
+        registry._load_product({"product_id": "foo", "entities": {}})
     except DeviceRegistryError as exc:
         assert "category" in str(exc)
     else:
@@ -169,9 +165,11 @@ def test_load_product_non_dict_entities_raises() -> None:
     """A non-mapping entities value is rejected."""
     registry = DeviceRegistry()
     try:
-        registry._load_product(  # noqa: SLF001
-            {"category": "ms", "product_id": "foo", "entities": "oops"}
-        )
+        registry._load_product({
+            "category": "ms",
+            "product_id": "foo",
+            "entities": "oops",
+        })
     except DeviceRegistryError as exc:
         assert "entities" in str(exc)
     else:
@@ -182,9 +180,7 @@ def test_load_category_defaults_non_dict_entities_raises() -> None:
     """A category-default file with non-mapping entities is rejected."""
     registry = DeviceRegistry()
     try:
-        registry._load_category_defaults(  # noqa: SLF001
-            "_category_ggq.yaml", {"entities": "oops"}
-        )
+        registry._load_category_defaults("_category_ggq.yaml", {"entities": "oops"})
     except DeviceRegistryError as exc:
         assert "entities" in str(exc)
     else:
@@ -249,7 +245,7 @@ def test_load_skips_schema_and_loads_category_defaults(
     resolved = desc.resolved_handler("when")
     assert resolved is not None
     assert resolved.__name__ == "alarm_enabled"
-    assert registry._category_defaults["ggq"]["sensor"][0].dp_id == 9  # noqa: SLF001
+    assert registry._category_defaults["ggq"]["sensor"][0].dp_id == 9
 
 
 def test_state_class_and_precision_passthrough() -> None:

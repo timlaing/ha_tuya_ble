@@ -150,7 +150,7 @@ def build_flow(
     flow.hass = hass
     flow._data = {}
     flow.context = {}
-    flow._qr_login_control = FakeLogin(qr_success, login_success)  # noqa: SLF001
+    flow._qr_login_control = FakeLogin(qr_success, login_success)
     return flow
 
 
@@ -174,7 +174,7 @@ def build_options_flow(
     flow.hass = hass
     flow.context = {}
     flow.handler = entry.entry_id
-    flow._qr_login_control = FakeLogin(qr_success, login_success)  # noqa: SLF001
+    flow._qr_login_control = FakeLogin(qr_success, login_success)
     return flow, entry
 
 
@@ -738,7 +738,7 @@ async def test_options_qr_form(hass: HomeAssistant) -> None:
 async def test_options_qr_submit(hass: HomeAssistant) -> None:
     """Test the options QR step submitting credentials."""
     flow, _ = build_options_flow(hass)
-    flow._qr_user_code = "user1"  # noqa: SLF001
+    flow._qr_user_code = "user1"
     result = await flow.async_step_qr(user_input={})
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_USER_CODE] == "user1"
@@ -747,7 +747,7 @@ async def test_options_qr_submit(hass: HomeAssistant) -> None:
 async def test_options_scan_success(hass: HomeAssistant) -> None:
     """Test the options scan step submitting credentials."""
     flow, _ = build_options_flow(hass)
-    flow._qr_user_code = "user1"  # noqa: SLF001
+    flow._qr_user_code = "user1"
     result = await flow.async_step_scan(user_input={})
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_USER_CODE] == "user1"
@@ -756,7 +756,7 @@ async def test_options_scan_success(hass: HomeAssistant) -> None:
 async def test_options_scan_error(hass: HomeAssistant) -> None:
     """Test the options scan step handling a login error."""
     flow, _ = build_options_flow(hass, login_success=False)
-    flow._qr_user_code = "user1"  # noqa: SLF001
+    flow._qr_user_code = "user1"
     result = await flow.async_step_scan(user_input={})
     assert result["step_id"] == "qr"
     assert result["errors"]["base"] == "login_error"  # type: ignore[index]

@@ -128,16 +128,16 @@ _KIND_CLASSES: dict[str, type[TuyaBLESwitchMapping]] = {
 
 def _switch_description(desc: EntityDescriptor) -> SwitchEntityDescription:
     """Build a SwitchEntityDescription from a registry descriptor."""
-    kwargs: dict[str, object] = {
-        "key": desc.translation_key or str(desc.dp_id),
-    }
-    if desc.icon is not None:
-        kwargs["icon"] = desc.icon
-    if desc.entity_category is not None:
-        kwargs["entity_category"] = desc.entity_category
-    if desc.enabled_by_default is False:
-        kwargs["entity_registry_enabled_default"] = False
-    return SwitchEntityDescription(**kwargs)  # type: ignore[arg-type]
+    return SwitchEntityDescription(
+        key=desc.translation_key or str(desc.dp_id),
+        icon=desc.icon,
+        entity_category=(
+            EntityCategory(desc.entity_category)
+            if desc.entity_category is not None
+            else None
+        ),
+        entity_registry_enabled_default=desc.enabled_by_default is not False,
+    )
 
 
 def _build_switch_mapping(desc: EntityDescriptor) -> TuyaBLESwitchMapping:

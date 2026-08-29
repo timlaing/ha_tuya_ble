@@ -56,13 +56,11 @@ class TuyaBLECategoryLightMapping:
 
 def _light_description(desc: EntityDescriptor) -> LightEntityDescription:
     """Build a LightEntityDescription from a registry descriptor."""
-    kwargs: dict[str, object] = {
-        "key": desc.translation_key or "light",
-        "name": None,
-    }
-    if desc.icon is not None:
-        kwargs["icon"] = desc.icon
-    return LightEntityDescription(**kwargs)  # type: ignore[arg-type]
+    return LightEntityDescription(
+        key=desc.translation_key or "light",
+        name=None,
+        icon=desc.icon,
+    )
 
 
 def _build_light_mapping(desc: EntityDescriptor) -> TuyaBLELightMapping:

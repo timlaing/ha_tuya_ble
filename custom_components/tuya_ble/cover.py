@@ -52,12 +52,10 @@ class TuyaBLECategoryCoverMapping:
 
 def _cover_description(desc: EntityDescriptor) -> CoverEntityDescription:
     """Build a CoverEntityDescription from a registry descriptor."""
-    kwargs: dict[str, object] = {
-        "key": desc.translation_key or "cover",
-    }
-    if desc.icon is not None:
-        kwargs["icon"] = desc.icon
-    return CoverEntityDescription(**kwargs)  # type: ignore[arg-type]
+    return CoverEntityDescription(
+        key=desc.translation_key or "cover",
+        icon=desc.icon,
+    )
 
 
 def _build_cover_mapping(desc: EntityDescriptor) -> TuyaBLECoverMapping:

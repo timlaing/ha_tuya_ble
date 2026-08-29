@@ -4,14 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypedDict
 
 from homeassistant.components.number import (
+    NumberDeviceClass,
     NumberEntity,
     NumberEntityDescription,
 )
 from homeassistant.components.number.const import NumberMode
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -64,19 +66,33 @@ class TuyaBLECategoryNumberMapping:
     mapping: list[TuyaBLENumberMapping] | None = None
 
 
+class _NumberDescriptionKwargs(TypedDict, total=False):
+    """Typed kwargs for NumberEntityDescription construction."""
+
+    key: str
+    icon: str | None
+    device_class: NumberDeviceClass | None
+    native_unit_of_measurement: str | None
+    entity_category: EntityCategory | None
+    native_min_value: float | None
+    native_max_value: float | None
+    native_step: float | None
+    name: str | None
+
+
 def _number_description(desc: EntityDescriptor) -> NumberEntityDescription:
     """Build a NumberEntityDescription from a registry descriptor."""
-    kwargs: dict[str, object] = {
+    kwargs: _NumberDescriptionKwargs = {
         "key": desc.translation_key or str(desc.dp_id),
     }
     if desc.icon is not None:
         kwargs["icon"] = desc.icon
     if desc.device_class is not None:
-        kwargs["device_class"] = desc.device_class
+        kwargs["device_class"] = NumberDeviceClass(desc.device_class)
     if desc.unit is not None:
         kwargs["native_unit_of_measurement"] = desc.unit
     if desc.entity_category is not None:
-        kwargs["entity_category"] = desc.entity_category
+        kwargs["entity_category"] = EntityCategory(desc.entity_category)
     if desc.min_value is not None:
         kwargs["native_min_value"] = desc.min_value
     if desc.max_value is not None:
@@ -85,7 +101,7 @@ def _number_description(desc: EntityDescriptor) -> NumberEntityDescription:
         kwargs["native_step"] = desc.step
     if desc.name is not None:
         kwargs["name"] = desc.name
-    return NumberEntityDescription(**kwargs)  # type: ignore[arg-type]
+    return NumberEntityDescription(**kwargs)
 
 
 def _number_mode(mode: str | None) -> NumberMode:

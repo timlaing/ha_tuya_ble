@@ -59,7 +59,7 @@ def _set_device_credentials(
     device: TuyaBLEDevice, category: str, product_id: str
 ) -> None:
     """Set device credentials for category/product_id lookups."""
-    device._device_info = TuyaBLEDeviceCredentials(  # noqa: SLF001
+    device._device_info = TuyaBLEDeviceCredentials(
         uuid="u",
         local_key="k",
         device_id="dev",

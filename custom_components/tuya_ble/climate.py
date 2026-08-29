@@ -68,12 +68,10 @@ class TuyaBLECategoryClimateMapping:
 
 def _climate_description(desc: EntityDescriptor) -> ClimateEntityDescription:
     """Build a ClimateEntityDescription from a registry descriptor."""
-    kwargs: dict[str, object] = {
-        "key": desc.translation_key or "climate",
-    }
-    if desc.icon is not None:
-        kwargs["icon"] = desc.icon
-    return ClimateEntityDescription(**kwargs)  # type: ignore[arg-type]
+    return ClimateEntityDescription(
+        key=desc.translation_key or "climate",
+        icon=desc.icon,
+    )
 
 
 def _build_climate_mapping(desc: EntityDescriptor) -> TuyaBLEClimateMapping:

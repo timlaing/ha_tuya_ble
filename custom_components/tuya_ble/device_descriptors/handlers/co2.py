@@ -12,7 +12,10 @@ if TYPE_CHECKING:
 _CO2_ALARM_DP_ID = 13
 
 
-def alarm_enabled(sensor: TuyaBLESensor, product: TuyaBLEProductInfo) -> bool:
+def alarm_enabled(
+    sensor: TuyaBLESensor,
+    product: TuyaBLEProductInfo,  # noqa: S1172
+) -> bool:
     """Return whether the CO2 alarm is enabled, reading datapoint 13."""
     result: bool = True
     datapoint = sensor.device.datapoints[_CO2_ALARM_DP_ID]

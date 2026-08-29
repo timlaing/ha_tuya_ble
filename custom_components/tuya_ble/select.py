@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import cast
+from typing import TypedDict, cast
 
 from homeassistant.components.select import (
     SelectEntity,
@@ -70,12 +70,22 @@ class TuyaBLECategorySelectMapping:
     mapping: list[TuyaBLESelectMapping] | None = None
 
 
+class _SelectDescriptionKwargs(TypedDict, total=False):
+    """Typed kwargs for SelectEntityDescription construction."""
+
+    key: str
+    icon: str | None
+    entity_category: EntityCategory | None
+    options: list[str] | None
+    entity_registry_enabled_default: bool
+
+
 def _select_description(desc: EntityDescriptor) -> SelectEntityDescription:
     """Build a SelectEntityDescription from a descriptor."""
     description_class: type[SelectEntityDescription] = SelectEntityDescription
     if desc.translation_key == "temperature_unit":
         description_class = TemperatureUnitDescription
-    kwargs: dict[str, object] = {
+    kwargs: _SelectDescriptionKwargs = {
         "key": desc.translation_key or str(desc.dp_id),
     }
     if desc.icon is not None:
@@ -86,7 +96,7 @@ def _select_description(desc: EntityDescriptor) -> SelectEntityDescription:
         kwargs["options"] = desc.options
     if desc.enabled_by_default is False:
         kwargs["entity_registry_enabled_default"] = False
-    return description_class(**kwargs)  # type: ignore[arg-type]
+    return description_class(**kwargs)
 
 
 def _build_select_mapping(desc: EntityDescriptor) -> TuyaBLESelectMapping:

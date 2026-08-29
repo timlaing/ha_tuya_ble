@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from homeassistant.components.valve.const import ValveEntityFeature
+from homeassistant.components.valve.const import ValveDeviceClass, ValveEntityFeature
 from homeassistant.components.valve.entity import ValveEntity, ValveEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -56,7 +56,11 @@ def _valve_description(desc: EntityDescriptor) -> ValveEntityDescription:
     # pylint: disable-next=unexpected-keyword-arg
     return ValveEntityDescription(
         key=desc.translation_key or str(desc.dp_id),
-        device_class=desc.device_class,  # type: ignore[arg-type]
+        device_class=(
+            ValveDeviceClass(desc.device_class)
+            if desc.device_class is not None
+            else None
+        ),
     )
 
 

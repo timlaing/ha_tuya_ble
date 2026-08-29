@@ -55,7 +55,7 @@ def _set_device_credentials(
     device: TuyaBLEDevice, category: str, product_id: str
 ) -> None:
     """Set device credentials for category/product_id lookups."""
-    device._device_info = TuyaBLEDeviceCredentials(  # noqa: SLF001
+    device._device_info = TuyaBLEDeviceCredentials(
         uuid="u",
         local_key="k",
         device_id="dev",
@@ -326,7 +326,7 @@ async def test_get_mapping_by_device_category_with_no_products(
 ) -> None:
     """Verify get_mapping_by_device returns empty when category has no products."""
     device, _coordinator, _product = build_context(hass)
-    device._device_info = None  # noqa: SLF001
+    device._device_info = None
     mappings = cover.get_mapping_by_device(device)
     assert mappings == []
 

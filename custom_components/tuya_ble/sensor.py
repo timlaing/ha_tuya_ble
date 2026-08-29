@@ -96,29 +96,29 @@ class TuyaBLECategorySensorMapping:
     mapping: list[TuyaBLESensorMapping] | None = None
 
 
-_DESCRIPTION_ATTRS = (
-    ("icon", "icon"),
-    ("device_class", "device_class"),
-    ("unit", "native_unit_of_measurement"),
-    ("state_class", "state_class"),
-    ("entity_category", "entity_category"),
-    ("options", "options"),
-    ("suggested_display_precision", "suggested_display_precision"),
-)
-
-
 def _sensor_description(desc: EntityDescriptor) -> SensorEntityDescription:
-    """Build a SensorEntityDescription from a descriptor."""
-    kwargs: dict[str, object] = {
-        "key": desc.translation_key or str(desc.dp_id),
-    }
-    for attr, key in _DESCRIPTION_ATTRS:
-        value = getattr(desc, attr)
-        if value is not None:
-            kwargs[key] = value
-    if desc.enabled_by_default is False:
-        kwargs["entity_registry_enabled_default"] = False
-    return SensorEntityDescription(**kwargs)  # type: ignore[arg-type]
+    """Build a SensorEntityDescription from a registry descriptor."""
+    return SensorEntityDescription(
+        key=desc.translation_key or str(desc.dp_id),
+        icon=desc.icon,
+        device_class=(
+            SensorDeviceClass(desc.device_class)
+            if desc.device_class is not None
+            else None
+        ),
+        native_unit_of_measurement=desc.unit,
+        state_class=(
+            SensorStateClass(desc.state_class) if desc.state_class is not None else None
+        ),
+        entity_category=(
+            EntityCategory(desc.entity_category)
+            if desc.entity_category is not None
+            else None
+        ),
+        options=desc.options,
+        suggested_display_precision=desc.suggested_display_precision,
+        entity_registry_enabled_default=desc.enabled_by_default is not False,
+    )
 
 
 _KIND_CLASSES: dict[str, type[TuyaBLESensorMapping]] = {

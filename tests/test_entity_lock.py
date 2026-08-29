@@ -45,7 +45,7 @@ def _set_device_credentials(
     device: TuyaBLEDevice, category: str, product_id: str
 ) -> None:
     """Set device credentials for category/product_id lookups."""
-    device._device_info = TuyaBLEDeviceCredentials(  # noqa: SLF001
+    device._device_info = TuyaBLEDeviceCredentials(
         uuid="u",
         local_key="k",
         device_id="dev",
@@ -267,8 +267,8 @@ def test_build_mapping_skips_category_defaults_without_lock(
 ) -> None:
     """Categories with defaults for other platforms are skipped quietly."""
     registry = DeviceRegistry()
-    registry._category_defaults["ggq"] = {  # noqa: SLF001
+    registry._category_defaults["ggq"] = {
         "sensor": [],
     }
     monkeypatch.setattr(lock, "get_registry", lambda: registry)
-    assert not lock._build_mapping()  # noqa: SLF001
+    assert not lock._build_mapping()

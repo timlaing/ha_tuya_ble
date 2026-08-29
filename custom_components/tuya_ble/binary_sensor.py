@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from homeassistant.components.binary_sensor import (
+    BinarySensorDeviceClass,
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
@@ -53,7 +54,11 @@ def _binary_sensor_description(
     return BinarySensorEntityDescription(
         key=desc.translation_key or str(desc.dp_id),
         icon=desc.icon,
-        device_class=desc.device_class,  # type: ignore[arg-type]
+        device_class=(
+            BinarySensorDeviceClass(desc.device_class)
+            if desc.device_class is not None
+            else None
+        ),
         entity_category=desc.resolved_entity_category(),
     )
 

@@ -137,7 +137,7 @@ def test_build_sensor_mapping_enabled_by_default_false() -> None:
         translation_key="low_battery_alarm",
         enabled_by_default=False,
     )
-    built = sensor._build_sensor_mapping(desc)  # noqa: SLF001
+    built = sensor._build_sensor_mapping(desc)
     assert built.dp_id == 21
     assert built.description.key == "low_battery_alarm"
     assert built.description.entity_registry_enabled_default is False
@@ -146,7 +146,7 @@ def test_build_sensor_mapping_enabled_by_default_false() -> None:
 def test_build_sensor_mapping_kind_battery_and_temperature() -> None:
     """Battery/temperature kinds select the specialized mapping classes."""
 
-    battery = sensor._build_sensor_mapping(  # noqa: SLF001
+    battery = sensor._build_sensor_mapping(
         EntityDescriptor(
             platform="sensor",
             dp_id=15,
@@ -158,7 +158,7 @@ def test_build_sensor_mapping_kind_battery_and_temperature() -> None:
     assert isinstance(battery, sensor.TuyaBLEBatteryMapping)
     assert battery.description.key == "battery"
 
-    temperature = sensor._build_sensor_mapping(  # noqa: SLF001
+    temperature = sensor._build_sensor_mapping(
         EntityDescriptor(
             platform="sensor",
             dp_id=18,
@@ -185,7 +185,7 @@ def test_build_select_mapping_temperature_unit() -> None:
         translation_key="temperature_unit",
         options=["°C", "°F"],
     )
-    built = select._build_select_mapping(desc)  # noqa: SLF001
+    built = select._build_select_mapping(desc)
     assert built.dp_id == 101
     assert built.description.key == "temperature_unit"
     assert built.description.options == ["°C", "°F"]
@@ -199,7 +199,7 @@ def test_build_select_mapping_no_options() -> None:
         dp_id=5,
         translation_key="work_state",
     )
-    built = select._build_select_mapping(desc)  # noqa: SLF001
+    built = select._build_select_mapping(desc)
     assert isinstance(built, select.TuyaBLESelectMapping)
     assert built.description.key == "work_state"
     assert built.description.options is None
@@ -214,7 +214,7 @@ def test_build_select_mapping_fingerbot_mode() -> None:
         translation_key="fingerbot_mode",
         kind="fingerbot_mode",
     )
-    built = select._build_select_mapping(desc)  # noqa: SLF001
+    built = select._build_select_mapping(desc)
     assert isinstance(built, select.TuyaBLEFingerbotModeMapping)
     assert built.dp_id == 8
 
@@ -241,7 +241,7 @@ def test_build_switch_mapping_kinds(kind: str, mapping_class: str) -> None:
         translation_key="switch",
         kind=kind,
     )
-    built = switch._build_switch_mapping(desc)  # noqa: SLF001
+    built = switch._build_switch_mapping(desc)
     assert isinstance(built, getattr(switch, mapping_class))
     assert built.dp_id == 1
 
@@ -255,7 +255,7 @@ def test_build_switch_mapping_kind_preserves_class_default_availability() -> Non
         translation_key="water_valve",
         kind="TuyaBLEWaterValveSwitchMapping",
     )
-    built = switch._build_switch_mapping(desc)  # noqa: SLF001
+    built = switch._build_switch_mapping(desc)
     assert built.is_available is is_water_valve_in_switch_mode
 
 
@@ -268,7 +268,7 @@ def test_build_switch_mapping_unknown_kind() -> None:
         translation_key="water_valve",
         kind="TuyaBLEBogusMapping",
     )
-    built = switch._build_switch_mapping(desc)  # noqa: SLF001
+    built = switch._build_switch_mapping(desc)
     assert isinstance(built, switch.TuyaBLESwitchMapping)
 
 
@@ -285,7 +285,7 @@ def test_build_switch_mapping_bitmap_mask_and_handlers() -> None:
         handlers={"when": "co2.alarm_enabled", "read": "rssi.rssi"},
         extra={"bitmap_mask": b"\x01"},
     )
-    built = switch._build_switch_mapping(desc)  # noqa: SLF001
+    built = switch._build_switch_mapping(desc)
     assert isinstance(built, switch.TuyaBLESwitchMapping)
     assert built.dp_id == 11
     assert built.bitmap_mask == b"\x01"
@@ -305,7 +305,7 @@ def test_build_switch_mapping_dp_type() -> None:
         translation_key="water_valve",
         dp_type=4,  # type: ignore[arg-type]
     )
-    built = switch._build_switch_mapping(desc)  # noqa: SLF001
+    built = switch._build_switch_mapping(desc)
     assert built.dp_type == TuyaBLEDataPointType.DT_ENUM
 
 
@@ -324,7 +324,7 @@ def test_build_number_mapping_ranges_and_coefficient() -> None:
         mode="slider",
         coefficient=10.0,
     )
-    built = number._build_number_mapping(desc)  # noqa: SLF001
+    built = number._build_number_mapping(desc)
     assert built.dp_id == 17
     assert built.coefficient == 10.0
     assert built.mode is NumberMode.SLIDER
@@ -344,7 +344,7 @@ def test_build_number_mapping_name_and_box_default() -> None:
         translation_key="countdown_duration_z1",
         name="CH1 Countdown",
     )
-    built = number._build_number_mapping(desc)  # noqa: SLF001
+    built = number._build_number_mapping(desc)
     assert built.mode is NumberMode.BOX
     assert built.description.name == "CH1 Countdown"
     assert built.description.native_min_value is None
@@ -364,7 +364,7 @@ def test_build_number_mapping_dp_type_and_handlers() -> None:
             "when": "fingerbot.mode.in_program_mode",
         },
     )
-    built = number._build_number_mapping(desc)  # noqa: SLF001
+    built = number._build_number_mapping(desc)
     assert built.dp_type == TuyaBLEDataPointType.DT_ENUM
     assert built.getter is get_position
     assert built.setter is set_position
@@ -428,7 +428,7 @@ def test_build_climate_mapping_full_fields() -> None:
             "temperature_unit": "°C",
         },
     )
-    built = climate._build_climate_mapping(desc)  # noqa: SLF001
+    built = climate._build_climate_mapping(desc)
     assert built.description.key == "thermostat"
     assert built.description.icon == "mdi:thermostat"
     assert built.hvac_mode_dp_id == 5
@@ -446,7 +446,7 @@ def test_build_climate_mapping_defaults() -> None:
     """A descriptor with no extra fields yields the class defaults."""
 
     desc = EntityDescriptor(platform="climate", dp_id=0, translation_key="thermostat")
-    built = climate._build_climate_mapping(desc)  # noqa: SLF001
+    built = climate._build_climate_mapping(desc)
     assert built.hvac_mode_dp_id == 0
     assert built.target_temperature_max == 30.0
     assert built.target_temperature_min == 5
@@ -470,7 +470,7 @@ def test_build_cover_mapping() -> None:
             "speed_dp_id": 105,
         },
     )
-    built = cover._build_cover_mapping(desc)  # noqa: SLF001
+    built = cover._build_cover_mapping(desc)
     assert built.description.key == "ble_cover"
     assert built.description.icon == "mdi:curtains"
     assert built.state_dp_id == 1
@@ -501,7 +501,7 @@ def test_build_light_mapping() -> None:
             "color_temp_max": 90,
         },
     )
-    built = light._build_light_mapping(desc)  # noqa: SLF001
+    built = light._build_light_mapping(desc)
     assert built.description.key == "switch_led"
     assert built.description.name is None
     assert built.description.icon == "mdi:lightbulb"
