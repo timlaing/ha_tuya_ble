@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog],
 and this project adheres to [Semantic Versioning].
 
+## [2.0.3] - 2026-08-29
+
+### Fixed
+
+- **Tuya cloud setup**: decode the product ID and UUID from BLE advertisements and match the UUID directly against the QR-authenticated cloud device cache, removing the unsupported factory-information API lookup.
+
 ## [2.0.2] - 2026-08-29
 
 ### Changed

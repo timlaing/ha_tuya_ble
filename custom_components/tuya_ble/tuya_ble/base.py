@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
 import hashlib
@@ -41,6 +41,56 @@ from .protocol_mixin import (
 _LOGGER = logging.getLogger(__name__)
 
 global_connect_lock = asyncio.Lock()
+
+
+@dataclass(frozen=True)
+class TuyaBLEAdvertisementInfo:
+    """Identity data decoded from a Tuya BLE advertisement."""
+
+    product_id: str
+    uuid: str
+    is_bound: bool
+    protocol_version: int
+
+
+def decode_tuya_ble_advertisement(
+    service_data: Mapping[str, bytes] | None,
+    manufacturer_data: Mapping[int, bytes] | None,
+) -> TuyaBLEAdvertisementInfo | None:
+    """Decode product and device identity from a Tuya BLE advertisement."""
+    if not service_data or not manufacturer_data:
+        return None
+    raw_product_id = service_data.get(SERVICE_UUID)
+    raw_manufacturer_data = manufacturer_data.get(MANUFACTURER_DATA_ID)
+    if (
+        not raw_product_id
+        or len(raw_product_id) <= 1
+        or raw_product_id[0] != 0
+        or not raw_manufacturer_data
+        or len(raw_manufacturer_data) <= 6
+    ):
+        return None
+
+    product_id = raw_product_id[1:]
+    encrypted_uuid = raw_manufacturer_data[6:]
+    if len(encrypted_uuid) % AES.block_size:
+        return None
+
+    try:
+        decoded_product_id = product_id.decode("utf-8")
+        key = hashlib.md5(product_id).digest()  # noqa: S4790
+        cipher = AES.new(key, AES.MODE_CBC, key)  # noqa: S5542
+        uuid = cipher.decrypt(encrypted_uuid).rstrip(b"\x00").decode("utf-8")
+    except UnicodeDecodeError, ValueError:
+        return None
+    if not uuid:
+        return None
+    return TuyaBLEAdvertisementInfo(
+        product_id=decoded_product_id,
+        uuid=uuid,
+        is_bound=(raw_manufacturer_data[0] & 0x80) != 0,
+        protocol_version=raw_manufacturer_data[1],
+    )
 
 
 @dataclass

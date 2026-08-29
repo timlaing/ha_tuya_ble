@@ -3,9 +3,11 @@
 # pylint: disable=protected-access
 from __future__ import annotations
 
+import hashlib
 from typing import Any, cast
 from unittest.mock import patch
 
+from Crypto.Cipher import AES
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
@@ -17,6 +19,7 @@ from custom_components.tuya_ble.config_flow import (
 )
 from custom_components.tuya_ble.const import CONF_USER_CODE, DOMAIN
 from custom_components.tuya_ble.tuya_ble import SERVICE_UUID, TuyaBLEDeviceCredentials
+from custom_components.tuya_ble.tuya_ble.const import MANUFACTURER_DATA_ID
 
 
 class FakeLogin:
@@ -60,7 +63,7 @@ class FakeManager:
     def __init__(self, credentials: TuyaBLEDeviceCredentials | None = None) -> None:
         self.credentials = credentials
         self.initialized = False
-        self.calls: list[tuple[Any, Any, Any]] = []
+        self.calls: list[tuple[Any, Any, Any, Any, Any]] = []
 
     async def initialize(self) -> None:
         """Mark the fake manager as initialized."""
@@ -71,9 +74,11 @@ class FakeManager:
         address: str,
         force_update: bool = False,
         save_data: bool = False,
+        uuid: str | None = None,
+        product_id: str | None = None,
     ) -> TuyaBLEDeviceCredentials | None:
         """Return the fake credentials and record the call."""
-        self.calls.append((address, force_update, save_data))
+        self.calls.append((address, force_update, save_data, uuid, product_id))
         return self.credentials
 
 
@@ -89,7 +94,14 @@ class FakeDiscovery:
         self.address = address
         self.name = name
         self.service_data: dict[str, bytes] | None = (
-            {SERVICE_UUID: b"x"} if with_service else None
+            {SERVICE_UUID: b"\x00prod"} if with_service else None
+        )
+        key = hashlib.md5(b"prod").digest()  # noqa: S324
+        encrypted_uuid = AES.new(key, AES.MODE_CBC, key).encrypt(b"1234567890abcdef")
+        self.manufacturer_data: dict[int, bytes] | None = (
+            {MANUFACTURER_DATA_ID: b"\x80\x02" + b"\x00" * 4 + encrypted_uuid}
+            if with_service
+            else None
         )
 
 
@@ -326,7 +338,7 @@ async def test_async_step_device_setup(hass: HomeAssistant) -> None:
     flow._data = {}
     result = await flow.async_step_device(user_input={CONF_ADDRESS: d.address})
     assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert manager.calls == [(d.address, False, True)]
+    assert manager.calls == [(d.address, False, True, "1234567890abcdef", "prod")]
 
 
 async def test_async_step_device_no_credentials(hass: HomeAssistant) -> None:

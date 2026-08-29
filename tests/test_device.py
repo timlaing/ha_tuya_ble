@@ -11,6 +11,7 @@ from bleak_retry_connector import BleakNotFoundError
 from Crypto.Cipher import AES
 import pytest
 
+from custom_components.tuya_ble.tuya_ble import decode_tuya_ble_advertisement
 from custom_components.tuya_ble.tuya_ble.const import (
     MANUFACTURER_DATA_ID,
     SERVICE_UUID,
@@ -173,10 +174,9 @@ def _adv(
     return adv
 
 
-def _encrypt_uuid(product_id: bytes) -> bytes:
+def _encrypt_uuid(product_id: bytes, plaintext: bytes = b"1234567890abcdef") -> bytes:
     """Encrypt the fake device uuid using the product id key."""
     key = hashlib.md5(product_id).digest()  # noqa: S324
-    plaintext = b"1234567890abcdef"
     cipher = AES.new(key, AES.MODE_CBC, key)
     return cipher.encrypt(plaintext)
 
@@ -191,6 +191,65 @@ def test_decode_advertisement_uuid() -> None:
     assert dev._is_bound is True
     assert dev._protocol_version == 2
     assert dev._uuid == "1234567890abcdef"
+
+
+def test_decode_advertisement_info() -> None:
+    """Decode all advertised identity fields without device credentials."""
+    adv = _adv(b"pid01", b"", b"pid01")
+    info = decode_tuya_ble_advertisement(
+        adv.service_data,
+        adv.manufacturer_data,
+    )
+    assert info is not None
+    assert info.product_id == "pid01"
+    assert info.uuid == "1234567890abcdef"
+    assert info.is_bound is True
+    assert info.protocol_version == 2
+
+
+@pytest.mark.parametrize(
+    ("service_data", "manufacturer_data"),
+    [
+        ({}, {MANUFACTURER_DATA_ID: b"1234567"}),
+        ({SERVICE_UUID: b"\x00pid"}, {}),
+        ({SERVICE_UUID: b""}, {MANUFACTURER_DATA_ID: b"1234567"}),
+        ({SERVICE_UUID: b"\x00"}, {MANUFACTURER_DATA_ID: b"1234567"}),
+        ({SERVICE_UUID: b"\x01pid"}, {MANUFACTURER_DATA_ID: b"1234567"}),
+        ({SERVICE_UUID: b"\x00pid"}, {MANUFACTURER_DATA_ID: b""}),
+        ({SERVICE_UUID: b"\x00pid"}, {MANUFACTURER_DATA_ID: b"123456"}),
+        ({SERVICE_UUID: b"\x00pid"}, {MANUFACTURER_DATA_ID: b"1234567"}),
+    ],
+)
+def test_decode_advertisement_rejects_invalid_layout(
+    service_data: dict[str, bytes], manufacturer_data: dict[int, bytes]
+) -> None:
+    """Reject incomplete or unsupported advertisement layouts."""
+    assert decode_tuya_ble_advertisement(service_data, manufacturer_data) is None
+
+
+@pytest.mark.parametrize(
+    ("product_id", "plaintext"),
+    [
+        (b"\xff", b"1234567890abcdef"),
+        (b"pid", b"\xff" * 16),
+        (b"pid", b"\x00" * 16),
+    ],
+)
+def test_decode_advertisement_rejects_invalid_identity(
+    product_id: bytes, plaintext: bytes
+) -> None:
+    """Reject identity fields that cannot produce non-empty UTF-8 strings."""
+    assert (
+        decode_tuya_ble_advertisement(
+            {SERVICE_UUID: b"\x00" + product_id},
+            {
+                MANUFACTURER_DATA_ID: (
+                    b"\x80\x02" + b"\x00" * 4 + _encrypt_uuid(product_id, plaintext)
+                )
+            },
+        )
+        is None
+    )
 
 
 def test_decode_advertisement_no_data() -> None:

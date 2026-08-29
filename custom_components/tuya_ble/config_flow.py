@@ -45,7 +45,7 @@ from .const import (
     TUYA_RESPONSE_SUCCESS,
     TUYA_SCHEMA,
 )
-from .tuya_ble import SERVICE_UUID
+from .tuya_ble import SERVICE_UUID, decode_tuya_ble_advertisement
 
 UNKNOWN_ERROR = "Unknown error"
 
@@ -233,8 +233,16 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             self._abort_if_unique_id_configured()
             if self._manager is None:
                 return self.async_abort(reason="unknown")
+            advertisement = decode_tuya_ble_advertisement(
+                discovery_info.service_data,
+                discovery_info.manufacturer_data,
+            )
             credentials = await self._manager.get_device_credentials(
-                discovery_info.address, self._get_device_info_error, True
+                discovery_info.address,
+                self._get_device_info_error,
+                True,
+                uuid=advertisement.uuid if advertisement else None,
+                product_id=advertisement.product_id if advertisement else None,
             )
             if credentials is None:
                 self._get_device_info_error = True
