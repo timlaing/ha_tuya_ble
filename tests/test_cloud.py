@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.exceptions import ConfigEntryNotReady
 import pytest
+from tuya_sharing.exceptions import ApiRequestException
 
 from custom_components.tuya_ble.cloud import (
     HASSTuyaBLEDeviceManager,
@@ -156,6 +157,25 @@ async def test_mac_missing_from_factory_info() -> None:
     mgr = _manager(response={"result": [{"other": 1}]}, devices=[device])
     result = await mgr.get_device_credentials("AA:BB:CC:DD:EE:FF")
     assert result is None
+
+
+async def test_factory_info_api_error_returns_none() -> None:
+    """Assert that a rejected factory-info request does not escape setup."""
+    device = make_device()
+    mgr = _manager(devices=[device])
+    mgr._manager.customer_api.get = MagicMock(  # pylint: disable=protected-access
+        side_effect=ApiRequestException(
+            error_code="2008",
+            error_message="app param is invalid",
+        )
+    )
+
+    result = await mgr.get_device_credentials("AA:BB:CC:DD:EE:FF")
+
+    assert result is None
+    mgr._manager.customer_api.get.assert_called_once_with(  # pylint: disable=protected-access
+        "/v1.0/devices/factory-infos?device_ids=deviceid"
+    )
 
 
 async def test_match_returns_credentials() -> None:

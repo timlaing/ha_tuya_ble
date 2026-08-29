@@ -54,7 +54,7 @@ CONF_PRODUCT_NAME: Final = "product_name"
 CONF_FUNCTIONS: Final = "functions"
 CONF_STATUS_RANGE: Final = "status_range"
 
-TUYA_API_FACTORY_INFO_URL: Final = "/v1.0/iot-03/devices/factory-infos?device_ids=%s"
+TUYA_API_FACTORY_INFO_URL: Final = "/v1.0/devices/factory-infos?device_ids=%s"
 TUYA_FACTORY_INFO_MAC: Final = "mac"
 
 TUYA_DOMAIN: Final = "tuya"

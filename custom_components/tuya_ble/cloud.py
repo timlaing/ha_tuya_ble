@@ -9,6 +9,7 @@ from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from tuya_sharing import CustomerDevice, Manager, SharingTokenListener
+from tuya_sharing.exceptions import ApiRequestException
 
 from .const import (
     CONF_ENDPOINT,
@@ -104,10 +105,18 @@ class HASSTuyaBLEDeviceManager(AbstractTuyaBLEDeviceManager):
         if self._manager is None:
             raise ConfigEntryNotReady("Cloud manager not initialized")
 
-        response = await self._hass.async_add_executor_job(
-            self._manager.customer_api.get,
-            TUYA_API_FACTORY_INFO_URL % device.id,
-        )
+        try:
+            response = await self._hass.async_add_executor_job(
+                self._manager.customer_api.get,
+                TUYA_API_FACTORY_INFO_URL % device.id,
+            )
+        except ApiRequestException as err:
+            _LOGGER.warning(
+                "Tuya rejected factory information for device %s: %s",
+                device.id,
+                err,
+            )
+            return None
         result = response.get("result") if response else None
         if not result:
             return None
