@@ -9,16 +9,13 @@ from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from tuya_sharing import CustomerDevice, Manager, SharingTokenListener
-from tuya_sharing.exceptions import ApiRequestException
 
 from .const import (
     CONF_ENDPOINT,
     CONF_TERMINAL_ID,
     CONF_TOKEN_INFO,
     CONF_USER_CODE,
-    TUYA_API_FACTORY_INFO_URL,
     TUYA_CLIENT_ID,
-    TUYA_FACTORY_INFO_MAC,
 )
 from .tuya_ble import (
     AbstractTuyaBLEDeviceManager,
@@ -75,8 +72,10 @@ class HASSTuyaBLEDeviceManager(AbstractTuyaBLEDeviceManager):
         address: str,
         force_update: bool = False,
         save_data: bool = False,
+        uuid: str | None = None,
+        product_id: str | None = None,
     ) -> TuyaBLEDeviceCredentials | None:
-        """Get credentials of the Tuya BLE device by MAC address."""
+        """Get credentials matching identity decoded from a BLE advertisement."""
         if self._manager is None:
             await self.initialize()
 
@@ -86,59 +85,37 @@ class HASSTuyaBLEDeviceManager(AbstractTuyaBLEDeviceManager):
         if force_update:
             await self._hass.async_add_executor_job(self._manager.update_device_cache)
 
-        for device in self._manager.device_map.values():
-            if result := await self._fetch_device_credentials(device, address):
-                _LOGGER.debug("Retrieved credentials for %s", address)
-                if save_data:
-                    self._data[CONF_ADDRESS] = address
-                return result
-
-        _LOGGER.warning("No Tuya credentials found for MAC %s", address)
-        return None
-
-    async def _fetch_device_credentials(
-        self,
-        device: CustomerDevice,
-        address: str,
-    ) -> TuyaBLEDeviceCredentials | None:
-        """Build a device's credentials if its factory MAC matches the address."""
-        if self._manager is None:
-            raise ConfigEntryNotReady("Cloud manager not initialized")
-
-        try:
-            response = await self._hass.async_add_executor_job(
-                self._manager.customer_api.get,
-                TUYA_API_FACTORY_INFO_URL % device.id,
-            )
-        except ApiRequestException as err:
+        if not uuid:
             _LOGGER.warning(
-                "Tuya rejected factory information for device %s: %s",
-                device.id,
-                err,
+                "No Tuya BLE identity decoded for address %s (uuid=%s, product_id=%s)",
+                address,
+                uuid,
+                product_id,
             )
             return None
-        result = response.get("result") if response else None
-        if not result:
-            return None
 
-        factory_info = result[0]
-        if TUYA_FACTORY_INFO_MAC not in factory_info:
-            return None
+        for device in self._manager.device_map.values():
+            if device.uuid != uuid or (
+                product_id is not None and device.product_id != product_id
+            ):
+                continue
+            _LOGGER.debug("Retrieved credentials for %s", address)
+            if save_data:
+                self._data[CONF_ADDRESS] = address
+            return _build_credentials(device)
 
-        if _normalize_mac(factory_info[TUYA_FACTORY_INFO_MAC]) != address:
-            return None
-
-        return _build_credentials(device)
+        _LOGGER.warning(
+            "No Tuya credentials found for address %s (uuid=%s, product_id=%s)",
+            address,
+            uuid,
+            product_id,
+        )
+        return None
 
     @property
     def data(self) -> dict[str, Any]:
         """Return the stored configuration data."""
         return self._data
-
-
-def _normalize_mac(mac: str) -> str:
-    """Normalize a MAC address to uppercase, colon-separated form."""
-    return ":".join(mac[i : i + 2] for i in range(0, 12, 2)).upper()
 
 
 def _extract_functions(device: CustomerDevice) -> list[dict[str, str]]:

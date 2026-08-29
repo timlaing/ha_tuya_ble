@@ -10,7 +10,6 @@ from unittest.mock import MagicMock, patch
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.exceptions import ConfigEntryNotReady
 import pytest
-from tuya_sharing.exceptions import ApiRequestException
 
 from custom_components.tuya_ble.cloud import (
     HASSTuyaBLEDeviceManager,
@@ -18,7 +17,6 @@ from custom_components.tuya_ble.cloud import (
     _build_credentials,
     _extract_functions,
     _extract_status_range,
-    _normalize_mac,
 )
 
 
@@ -51,12 +49,6 @@ def make_device(**overrides: Any) -> Any:
     }
     base.update(overrides)
     return SimpleNamespace(**base)
-
-
-def test_normalize_mac() -> None:
-    """Assert that MAC addresses are normalized to uppercase colon form."""
-    assert _normalize_mac("aabbccddeeff") == "AA:BB:CC:DD:EE:FF"
-    assert _normalize_mac("AABBCCDDEEFF") == "AA:BB:CC:DD:EE:FF"
 
 
 def test_extract_functions() -> None:
@@ -128,70 +120,53 @@ def _manager(response: Any = None, devices: Any = None) -> Any:
 
 
 async def test_no_match_returns_none() -> None:
-    """Assert that a non-matching MAC yields no credentials."""
-    device = make_device()
-    mgr = _manager(response={"result": [{"mac": "112233445566"}]}, devices=[device])
-    result = await mgr.get_device_credentials("AA:BB:CC:DD:EE:FF")
-    assert result is None
-
-
-async def test_no_response_result() -> None:
-    """Assert that a missing result in the response yields no credentials."""
-    device = make_device()
-    mgr = _manager(response={"result": None}, devices=[device])
-    result = await mgr.get_device_credentials("AA:BB:CC:DD:EE:FF")
-    assert result is None
-
-
-async def test_response_none() -> None:
-    """Assert that a None response yields no credentials."""
-    device = make_device()
-    mgr = _manager(response=None, devices=[device])
-    result = await mgr.get_device_credentials("AA:BB:CC:DD:EE:FF")
-    assert result is None
-
-
-async def test_mac_missing_from_factory_info() -> None:
-    """Assert that factory info without a MAC yields no credentials."""
-    device = make_device()
-    mgr = _manager(response={"result": [{"other": 1}]}, devices=[device])
-    result = await mgr.get_device_credentials("AA:BB:CC:DD:EE:FF")
-    assert result is None
-
-
-async def test_factory_info_api_error_returns_none() -> None:
-    """Assert that a rejected factory-info request does not escape setup."""
+    """Assert that a non-matching advertised UUID yields no credentials."""
     device = make_device()
     mgr = _manager(devices=[device])
-    mgr._manager.customer_api.get = MagicMock(  # pylint: disable=protected-access
-        side_effect=ApiRequestException(
-            error_code="2008",
-            error_message="app param is invalid",
+    with patch("custom_components.tuya_ble.cloud._LOGGER.warning") as warning:
+        result = await mgr.get_device_credentials(
+            "AA:BB:CC:DD:EE:FF", uuid="other", product_id="pid"
         )
-    )
-
-    result = await mgr.get_device_credentials("AA:BB:CC:DD:EE:FF")
-
     assert result is None
-    mgr._manager.customer_api.get.assert_called_once_with(  # pylint: disable=protected-access
-        "/v1.0/devices/factory-infos?device_ids=deviceid"
+    warning.assert_called_once_with(
+        "No Tuya credentials found for address %s (uuid=%s, product_id=%s)",
+        "AA:BB:CC:DD:EE:FF",
+        "other",
+        "pid",
     )
+
+
+async def test_product_id_mismatch_returns_none() -> None:
+    """Assert that a mismatched advertised product ID is rejected."""
+    device = make_device()
+    mgr = _manager(devices=[device])
+    result = await mgr.get_device_credentials(
+        "AA:BB:CC:DD:EE:FF", uuid="uuid", product_id="other"
+    )
+    assert result is None
 
 
 async def test_match_returns_credentials() -> None:
-    """Assert that a matching MAC yields credentials and leaves data empty."""
+    """Assert that matching advertised identity yields credentials."""
     device = make_device()
-    mgr = _manager(response={"result": [{"mac": "112233445566"}]}, devices=[device])
-    result = await mgr.get_device_credentials("11:22:33:44:55:66")
+    mgr = _manager(devices=[device])
+    result = await mgr.get_device_credentials(
+        "11:22:33:44:55:66", uuid="uuid", product_id="pid"
+    )
     assert result is not None
     assert mgr.data == {}
 
 
 async def test_match_saves_address() -> None:
-    """Assert that a matching MAC is saved to data when requested."""
+    """Assert that a matching advertised identity is saved to data when requested."""
     device = make_device()
-    mgr = _manager(response={"result": [{"mac": "112233445566"}]}, devices=[device])
-    result = await mgr.get_device_credentials("11:22:33:44:55:66", save_data=True)
+    mgr = _manager(devices=[device])
+    result = await mgr.get_device_credentials(
+        "11:22:33:44:55:66",
+        save_data=True,
+        uuid="uuid",
+        product_id="pid",
+    )
     assert result is not None
     assert mgr.data[CONF_ADDRESS] == "11:22:33:44:55:66"
 
@@ -199,8 +174,13 @@ async def test_match_saves_address() -> None:
 async def test_force_update_calls_update_cache() -> None:
     """Assert that force_update refreshes the device cache."""
     device = make_device()
-    mgr = _manager(response={"result": [{"mac": "112233445566"}]}, devices=[device])
-    result = await mgr.get_device_credentials("11:22:33:44:55:66", force_update=True)
+    mgr = _manager(devices=[device])
+    result = await mgr.get_device_credentials(
+        "11:22:33:44:55:66",
+        force_update=True,
+        uuid="uuid",
+        product_id="pid",
+    )
     assert result is not None
 
 
@@ -239,11 +219,20 @@ async def test_get_device_credentials_lazy_init() -> None:
     fake_manager = MagicMock()
     fake_manager.update_device_cache = MagicMock()
     fake_manager.device_map = {}
-    with patch("custom_components.tuya_ble.cloud.Manager", return_value=fake_manager):
+    with (
+        patch("custom_components.tuya_ble.cloud.Manager", return_value=fake_manager),
+        patch("custom_components.tuya_ble.cloud._LOGGER.warning") as warning,
+    ):
         result = await mgr.get_device_credentials("AA:BB:CC:DD:EE:FF")
     assert result is None
     assert mgr._manager is fake_manager  # pylint: disable=protected-access
     fake_manager.update_device_cache.assert_called_once()
+    warning.assert_called_once_with(
+        "No Tuya BLE identity decoded for address %s (uuid=%s, product_id=%s)",
+        "AA:BB:CC:DD:EE:FF",
+        None,
+        None,
+    )
 
 
 async def test_get_device_credentials_no_manager_raises() -> None:
@@ -259,14 +248,3 @@ async def test_get_device_credentials_no_manager_raises() -> None:
         pytest.raises(ConfigEntryNotReady),
     ):
         await mgr.get_device_credentials("AA:BB:CC:DD:EE:FF")
-
-
-async def test_fetch_device_credentials_no_manager_raises() -> None:
-    """Assert that _fetch_device_credentials requires a manager."""
-    hass = FakeHass()
-    mgr = HASSTuyaBLEDeviceManager(hass, {})  # type: ignore[arg-type]
-    device = make_device()
-    with pytest.raises(ConfigEntryNotReady):
-        await mgr._fetch_device_credentials(  # pylint: disable=protected-access
-            device, "AA:BB:CC:DD:EE:FF"
-        )

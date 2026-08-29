@@ -43,6 +43,57 @@ _LOGGER = logging.getLogger(__name__)
 global_connect_lock = asyncio.Lock()
 
 
+@dataclass(frozen=True)
+class TuyaBLEAdvertisementInfo:
+    """Identity data decoded from a Tuya BLE advertisement."""
+
+    product_id: str
+    uuid: str
+    is_bound: bool
+    protocol_version: int
+
+
+def decode_tuya_ble_advertisement(
+    advertisement_data: AdvertisementData,
+) -> TuyaBLEAdvertisementInfo | None:
+    """Decode product and device identity from a Tuya BLE advertisement."""
+    if not advertisement_data.service_data or not advertisement_data.manufacturer_data:
+        return None
+    raw_product_id = advertisement_data.service_data.get(SERVICE_UUID)
+    raw_manufacturer_data = advertisement_data.manufacturer_data.get(
+        MANUFACTURER_DATA_ID
+    )
+    if (
+        not raw_product_id
+        or len(raw_product_id) <= 1
+        or raw_product_id[0] != 0
+        or not raw_manufacturer_data
+        or len(raw_manufacturer_data) <= 6
+    ):
+        return None
+
+    product_id = raw_product_id[1:]
+    encrypted_uuid = raw_manufacturer_data[6:]
+    if len(encrypted_uuid) % AES.block_size:
+        return None
+
+    try:
+        decoded_product_id = product_id.decode("utf-8")
+        key = hashlib.md5(product_id).digest()  # noqa: S4790
+        cipher = AES.new(key, AES.MODE_CBC, key)  # noqa: S5542
+        uuid = cipher.decrypt(encrypted_uuid).rstrip(b"\x00").decode("utf-8")
+    except ValueError:
+        return None
+    if not uuid:
+        return None
+    return TuyaBLEAdvertisementInfo(
+        product_id=decoded_product_id,
+        uuid=uuid,
+        is_bound=(raw_manufacturer_data[0] & 0x80) != 0,
+        protocol_version=raw_manufacturer_data[1],
+    )
+
+
 @dataclass
 class TuyaBLEDeviceFunction:
     """Models a code, DP and values for a device data point."""
@@ -192,43 +243,20 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         return self._device_info is not None
 
     def _decode_advertisement_data(self) -> None:
+        """Decode the advertisement data from the BLE device."""
         if not self._advertisement_data:
             return
-        raw_product_id = self._parse_product_id_from_service_data()
-        self._parse_manufacturer_data(raw_product_id)
 
-    def _parse_product_id_from_service_data(self) -> bytes | None:
-        """Extract raw product ID from BLE service data."""
-        if not self._advertisement_data or not self._advertisement_data.service_data:
-            return None
-        service_data = self._advertisement_data.service_data.get(SERVICE_UUID)
-        if not service_data or len(service_data) <= 1:
-            return None
-        match service_data[0]:
-            case 0:
-                return service_data[1:]
-        return None
-
-    def _parse_manufacturer_data(self, raw_product_id: bytes | None) -> None:
-        """Extract device flags and UUID from manufacturer data."""
         if (
-            not self._advertisement_data
-            or not self._advertisement_data.manufacturer_data
-        ):
-            return
-        manufacturer_data = self._advertisement_data.manufacturer_data.get(
-            MANUFACTURER_DATA_ID
-        )
-        if not manufacturer_data or len(manufacturer_data) <= 6:
-            return
-        self._is_bound = (manufacturer_data[0] & 0x80) != 0
-        self._protocol_version = manufacturer_data[1]
-        raw_uuid = manufacturer_data[6:]
-        if raw_product_id:
-            key = hashlib.md5(raw_product_id).digest()  # noqa: S4790
-            cipher = AES.new(key, AES.MODE_CBC, key)  # noqa: S5542
-            raw_uuid = cipher.decrypt(raw_uuid)
-            self._uuid = raw_uuid.decode("utf-8")
+            manufacturer_data := self._advertisement_data.manufacturer_data.get(
+                MANUFACTURER_DATA_ID
+            )
+        ) and len(manufacturer_data) > 6:
+            self._is_bound = (manufacturer_data[0] & 0x80) != 0
+            self._protocol_version = manufacturer_data[1]
+
+        if advert := decode_tuya_ble_advertisement(self._advertisement_data):
+            self._uuid = advert.uuid
 
     @property
     def address(self) -> str:

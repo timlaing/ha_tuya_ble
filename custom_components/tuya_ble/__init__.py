@@ -62,6 +62,8 @@ class OfflineTuyaBLEDeviceManager(AbstractTuyaBLEDeviceManager):
         address: str,
         force_update: bool = False,
         save_data: bool = False,
+        uuid: str | None = None,
+        product_id: str | None = None,
     ) -> TuyaBLEDeviceCredentials | None:
         """Return the stored credentials."""
         return self._credentials
