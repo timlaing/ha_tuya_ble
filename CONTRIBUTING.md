@@ -4,7 +4,7 @@
 
 New device support requires edits in multiple files. All products are keyed by **category** and **product_id** from Tuya.
 
-### 1. Register the product in `devices.py`
+### 1. Register the product in `products.py`
 
 Add an entry to the `devices_database` dict under the correct category. The category key is the Tuya category ID (e.g. `sfkzq`, `ggq`, `ms`):
 
@@ -22,7 +22,7 @@ Add an entry to the `devices_database` dict under the correct category. The cate
 
 ### 2. Add data-point mappings in each platform file
 
-Each platform file (`sensor.py`, `switch.py`, `number.py`, `select.py`, `binary_sensor.py`, `valve.py`, `climate.py`) has a `mapping` dict keyed by category. Add entries for every data-point the device exposes:
+Each platform file (`binary_sensor.py`, `button.py`, `climate.py`, `cover.py`, `light.py`, `lock.py`, `number.py`, `select.py`, `sensor.py`, `switch.py`, `text.py`, `valve.py`) has a `mapping` dict keyed by category. Add entries for every data-point the device exposes:
 
 ```python
 "sfkzq": TuyaBLECategorySensorMapping(
@@ -46,9 +46,9 @@ Each platform file (`sensor.py`, `switch.py`, `number.py`, `select.py`, `binary_
 
 Add keys under `entity.<platform>` for any new entity keys. Use HA's `[%key:...]` references where possible to inherit standard translations.
 
-### 4. Update `README.md`
+### 4. Update `SUPPORTED_DEVICES.md`
 
-Add the device to the supported devices list at the bottom of the README.
+Add the device to the supported devices list in `SUPPORTED_DEVICES.md` (and, if it's a new category, add a row to the category summary table in `README.md`).
 
 ## Getting the data-point list
 
@@ -88,6 +88,20 @@ Before submitting a PR, run the full check suite:
 ```
 
 All prek hooks and tests must pass before submitting.
+
+### Keeping prek dependencies in sync
+
+The `mypy` and `pylint` hooks in `.pre-commit-config.yaml` use `additional_dependencies` generated from the requirements files. These blocks are marked with `# BEGIN GENERATED REQUIREMENTS` / `# END GENERATED REQUIREMENTS` and are managed by `scripts/sync_prek_deps.py`:
+
+```sh
+# Regenerate the dependency blocks
+.venv/bin/python scripts/sync_prek_deps.py requirements.txt requirements-dev.txt
+
+# Check without modifying (run automatically by the `check-prek-deps` prek hook)
+.venv/bin/python scripts/sync_prek_deps.py --check requirements.txt requirements-dev.txt
+```
+
+After changing `requirements*.txt`, re-run the sync so the generated blocks stay up to date — the `check-prek-deps` hook fails otherwise.
 
 ## PR process
 
