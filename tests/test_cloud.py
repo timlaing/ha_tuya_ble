@@ -151,7 +151,7 @@ async def test_match_returns_credentials() -> None:
 
 
 async def test_match_saves_address() -> None:
-    """Assert that a matching MAC is saved to data when requested."""
+    """Assert that a matching advertised identity is saved to data when requested."""
     device = make_device()
     mgr = _manager(devices=[device])
     result = await mgr.get_device_credentials(
