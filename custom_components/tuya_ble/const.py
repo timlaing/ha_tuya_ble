@@ -19,11 +19,14 @@ from homeassistant.components.tuya.const import (
     TUYA_SCHEMA,
 )
 
+from .tuya_ble.const import DPType
+
 __all__ = [
     "CONF_ENDPOINT",
     "CONF_TERMINAL_ID",
     "CONF_TOKEN_INFO",
     "CONF_USER_CODE",
+    "DPType",
     "TUYA_CLIENT_ID",
     "TUYA_RESPONSE_CODE",
     "TUYA_RESPONSE_MSG",
@@ -71,17 +74,6 @@ FINGERBOT_MODE_PUSH: Final = "push"
 FINGERBOT_MODE_SWITCH: Final = "switch"
 FINGERBOT_MODE_PROGRAM: Final = "program"
 FINGERBOT_BUTTON_EVENT: Final = "fingerbot_button_pressed"
-
-
-class DPType(StrEnum):
-    """Data point types (cloud spec)."""
-
-    BOOLEAN = "Boolean"
-    ENUM = "Enum"
-    INTEGER = "Integer"
-    JSON = "Json"
-    RAW = "Raw"
-    STRING = "String"
 
 
 class DPCode(StrEnum):

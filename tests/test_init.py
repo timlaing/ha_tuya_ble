@@ -164,6 +164,71 @@ async def test_async_setup_entry_device_not_found(hass: HomeAssistant) -> None:
             await async_setup_entry(hass, entry)
 
 
+async def test_async_setup_entry_unknown_product(hass: HomeAssistant) -> None:
+    """Assert setup raises ConfigEntryNotReady when the product info is unknown."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Device",
+        data=_make_entry_data(),
+        entry_id="entry2b",
+    )
+    entry.add_to_hass(hass)
+
+    deps = _patch_deps(hass, product_info=None)
+    with ExitStack() as stack:
+        for p in deps["patches"]:
+            stack.enter_context(p)
+        with pytest.raises(ConfigEntryNotReady):
+            await async_setup_entry(hass, entry)
+
+
+async def test_setup_registers_and_calls_ble_callback(hass: HomeAssistant) -> None:
+    """Assert the bluetooth callback pushes advertisement data into the device."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Device",
+        data=_make_entry_data(),
+        entry_id="entry2c",
+    )
+    entry.add_to_hass(hass)
+
+    deps = _patch_deps(hass, product_info=MagicMock())
+    captured: dict[str, Any] = {}
+
+    def register_callback(
+        hass: HomeAssistant,
+        callback: Any,
+        matcher: Any,
+        mode: Any,
+    ) -> Any:
+        captured["callback"] = callback
+        return MagicMock()
+
+    service_info = MagicMock()
+    service_info.device = MagicMock()
+    service_info.advertisement = MagicMock()
+
+    with ExitStack() as stack:
+        for p in deps["patches"]:
+            stack.enter_context(p)
+        stack.enter_context(
+            patch(
+                "custom_components.tuya_ble.bluetooth.async_register_callback",
+                side_effect=register_callback,
+            )
+        )
+        result = await async_setup_entry(hass, entry)
+
+    assert result is True
+    assert captured["callback"] is not None
+    captured["callback"](service_info, "change")
+    deps["device"].set_ble_device_and_advertisement_data.assert_called_once_with(
+        service_info.device, service_info.advertisement
+    )
+
+    await hass.async_stop()
+
+
 async def test_async_unload_entry(hass: HomeAssistant) -> None:
     """Assert unloading an entry stops the device and removes it from hass.data."""
     entry = MockConfigEntry(
@@ -189,6 +254,41 @@ async def test_async_unload_entry(hass: HomeAssistant) -> None:
     assert result is True
     device.stop.assert_awaited_once()
     assert entry.entry_id not in hass.data[DOMAIN]
+
+
+async def test_async_unload_entry_unload_fails(hass: HomeAssistant) -> None:
+    """Assert a failed platform unload leaves the device registered."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Device",
+        data=_make_entry_data(),
+        entry_id="entry3b",
+    )
+    entry.add_to_hass(hass)
+
+    device = MagicMock()
+    device.stop = AsyncMock()
+
+    hass.data[DOMAIN] = {entry.entry_id: MagicMock(device=device)}
+
+    with patch.object(
+        hass.config_entries,
+        "async_unload_platforms",
+        return_value=False,
+    ):
+        result = await async_unload_entry(hass, entry)
+
+    assert result is False
+    device.stop.assert_not_awaited()
+    assert entry.entry_id in hass.data[DOMAIN]
+
+
+async def test_offline_manager_returns_credentials() -> None:
+    """Assert the offline manager returns the stored credentials."""
+    creds = MagicMock()
+    mgr = OfflineTuyaBLEDeviceManager(creds)
+    result = await mgr.get_device_credentials("AA:BB:CC:DD:EE:FF")
+    assert result is creds
 
 
 async def test_async_update_listener_title_changed(hass: HomeAssistant) -> None:

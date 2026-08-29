@@ -48,57 +48,51 @@ def test_credentials_defaults_none() -> None:
     assert creds.status_range is None
 
 
-class TestCheckAndCreateDeviceCredentials:
-    """Tests for the check_and_create_device_credentials factory."""
-
-    def test_all_fields_present(self) -> None:
-        """Assert credentials are created when every required field is set."""
-        creds = AbstractTuyaBLEDeviceManager.check_and_create_device_credentials(
-            uuid="u",
-            local_key="k",
-            device_id="d",
-            category="c",
-            product_id="p",
-            device_name="Device",
-            product_model="Model",
-            product_name="Product",
-        )
-        assert creds is not None
-        assert creds.uuid == "u"
-        assert creds.local_key == "k"
-        assert creds.device_id == "d"
-        assert creds.category == "c"
-        assert creds.product_id == "p"
-        assert creds.device_name == "Device"
-        assert creds.product_model == "Model"
-        assert creds.product_name == "Product"
-
-    @pytest.mark.parametrize(
-        "missing",
-        [
-            {"uuid": None},
-            {"local_key": None},
-            {"device_id": None},
-            {"category": None},
-            {"product_id": None},
-        ],
+def test_all_fields_present() -> None:
+    """Assert credentials are created when every required field is set."""
+    creds = AbstractTuyaBLEDeviceManager.check_and_create_device_credentials(
+        uuid="u",
+        local_key="k",
+        device_id="d",
+        category="c",
+        product_id="p",
+        device_name="Device",
+        product_model="Model",
+        product_name="Product",
     )
-    def test_missing_required_field_returns_none(
-        self, missing: dict[str, str | None]
-    ) -> None:
-        """Assert credentials are refused when a required field is missing."""
-        kwargs: dict[str, str | None] = {
-            "uuid": "u",
-            "local_key": "k",
-            "device_id": "d",
-            "category": "c",
-            "product_id": "p",
-            "device_name": "Device",
-            "product_model": "Model",
-            "product_name": "Product",
-        }
-        kwargs.update(missing)
-        result = AbstractTuyaBLEDeviceManager.check_and_create_device_credentials(
-            **kwargs
-        )
-        assert result is None
+    assert creds is not None
+    assert creds.uuid == "u"
+    assert creds.local_key == "k"
+    assert creds.device_id == "d"
+    assert creds.category == "c"
+    assert creds.product_id == "p"
+    assert creds.device_name == "Device"
+    assert creds.product_model == "Model"
+    assert creds.product_name == "Product"
+
+
+@pytest.mark.parametrize(
+    "missing",
+    [
+        {"uuid": None},
+        {"local_key": None},
+        {"device_id": None},
+        {"category": None},
+        {"product_id": None},
+    ],
+)
+def test_missing_required_field_returns_none(missing: dict[str, str | None]) -> None:
+    """Assert credentials are refused when a required field is missing."""
+    kwargs: dict[str, str | None] = {
+        "uuid": "u",
+        "local_key": "k",
+        "device_id": "d",
+        "category": "c",
+        "product_id": "p",
+        "device_name": "Device",
+        "product_model": "Model",
+        "product_name": "Product",
+    }
+    kwargs.update(missing)
+    result = AbstractTuyaBLEDeviceManager.check_and_create_device_credentials(**kwargs)
+    assert result is None

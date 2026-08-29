@@ -43,6 +43,13 @@ class TuyaBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         device.register_callback(self._async_handle_update)
         device.register_disconnected_callback(self._async_handle_disconnect)
 
+    async def async_shutdown(self) -> None:
+        """Cancel any pending disconnect timer on teardown."""
+        if self._unsub_disconnect is not None:
+            self._unsub_disconnect()
+            self._unsub_disconnect = None
+        await super().async_shutdown()
+
     @property
     def connected(self) -> bool:
         """Return whether the device is currently connected."""

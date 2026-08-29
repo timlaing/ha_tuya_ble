@@ -137,8 +137,7 @@ class TuyaBLEButton(TuyaBLEEntity, ButtonEntity):
             TuyaBLEDataPointType.DT_BOOL,
             False,
         )
-        if datapoint:
-            self.hass.create_task(datapoint.set_value(not bool(datapoint.value)))
+        self.hass.create_task(datapoint.set_value(not bool(datapoint.value)))
 
     @property
     def available(self) -> bool:
