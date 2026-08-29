@@ -20,6 +20,7 @@ from custom_components.tuya_ble.config_flow import (
 from custom_components.tuya_ble.const import CONF_USER_CODE, DOMAIN
 from custom_components.tuya_ble.tuya_ble import SERVICE_UUID, TuyaBLEDeviceCredentials
 from custom_components.tuya_ble.tuya_ble.const import MANUFACTURER_DATA_ID
+from tests.conftest import FakeAdvertisementData
 
 
 class FakeLogin:
@@ -102,6 +103,10 @@ class FakeDiscovery:
             {MANUFACTURER_DATA_ID: b"\x80\x02" + b"\x00" * 4 + encrypted_uuid}
             if with_service
             else None
+        )
+        self.advertisement = FakeAdvertisementData(
+            service_data=self.service_data,
+            manufacturer_data=self.manufacturer_data,
         )
 
 

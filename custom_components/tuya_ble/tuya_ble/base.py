@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 import hashlib
@@ -54,14 +54,15 @@ class TuyaBLEAdvertisementInfo:
 
 
 def decode_tuya_ble_advertisement(
-    service_data: Mapping[str, bytes] | None,
-    manufacturer_data: Mapping[int, bytes] | None,
+    advertisement_data: AdvertisementData,
 ) -> TuyaBLEAdvertisementInfo | None:
     """Decode product and device identity from a Tuya BLE advertisement."""
-    if not service_data or not manufacturer_data:
+    if not advertisement_data.service_data or not advertisement_data.manufacturer_data:
         return None
-    raw_product_id = service_data.get(SERVICE_UUID)
-    raw_manufacturer_data = manufacturer_data.get(MANUFACTURER_DATA_ID)
+    raw_product_id = advertisement_data.service_data.get(SERVICE_UUID)
+    raw_manufacturer_data = advertisement_data.manufacturer_data.get(
+        MANUFACTURER_DATA_ID
+    )
     if (
         not raw_product_id
         or len(raw_product_id) <= 1
@@ -81,7 +82,7 @@ def decode_tuya_ble_advertisement(
         key = hashlib.md5(product_id).digest()  # noqa: S4790
         cipher = AES.new(key, AES.MODE_CBC, key)  # noqa: S5542
         uuid = cipher.decrypt(encrypted_uuid).rstrip(b"\x00").decode("utf-8")
-    except UnicodeDecodeError, ValueError:
+    except ValueError:
         return None
     if not uuid:
         return None
@@ -242,43 +243,14 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         return self._device_info is not None
 
     def _decode_advertisement_data(self) -> None:
+        """Decode the advertisement data from the BLE device."""
         if not self._advertisement_data:
             return
-        raw_product_id = self._parse_product_id_from_service_data()
-        self._parse_manufacturer_data(raw_product_id)
 
-    def _parse_product_id_from_service_data(self) -> bytes | None:
-        """Extract raw product ID from BLE service data."""
-        if not self._advertisement_data or not self._advertisement_data.service_data:
-            return None
-        service_data = self._advertisement_data.service_data.get(SERVICE_UUID)
-        if not service_data or len(service_data) <= 1:
-            return None
-        match service_data[0]:
-            case 0:
-                return service_data[1:]
-        return None
-
-    def _parse_manufacturer_data(self, raw_product_id: bytes | None) -> None:
-        """Extract device flags and UUID from manufacturer data."""
-        if (
-            not self._advertisement_data
-            or not self._advertisement_data.manufacturer_data
-        ):
-            return
-        manufacturer_data = self._advertisement_data.manufacturer_data.get(
-            MANUFACTURER_DATA_ID
-        )
-        if not manufacturer_data or len(manufacturer_data) <= 6:
-            return
-        self._is_bound = (manufacturer_data[0] & 0x80) != 0
-        self._protocol_version = manufacturer_data[1]
-        raw_uuid = manufacturer_data[6:]
-        if raw_product_id:
-            key = hashlib.md5(raw_product_id).digest()  # noqa: S4790
-            cipher = AES.new(key, AES.MODE_CBC, key)  # noqa: S5542
-            raw_uuid = cipher.decrypt(raw_uuid)
-            self._uuid = raw_uuid.decode("utf-8")
+        if advert := decode_tuya_ble_advertisement(self._advertisement_data):
+            self._is_bound = advert.is_bound
+            self._protocol_version = advert.protocol_version
+            self._uuid = advert.uuid
 
     @property
     def address(self) -> str:

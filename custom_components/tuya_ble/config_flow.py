@@ -233,10 +233,7 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             self._abort_if_unique_id_configured()
             if self._manager is None:
                 return self.async_abort(reason="unknown")
-            advertisement = decode_tuya_ble_advertisement(
-                discovery_info.service_data,
-                discovery_info.manufacturer_data,
-            )
+            advertisement = decode_tuya_ble_advertisement(discovery_info.advertisement)
             credentials = await self._manager.get_device_credentials(
                 discovery_info.address,
                 self._get_device_info_error,

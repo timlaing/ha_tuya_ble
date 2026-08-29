@@ -23,7 +23,6 @@ from custom_components.tuya_ble.tuya_ble.exceptions import (
     TuyaBLEError,
 )
 from tests.conftest import (
-    FakeAdvertisementData,
     FakeBleakClient,
     FakeBLEManager,
     make_credentials,
@@ -68,34 +67,6 @@ async def test_initialize_fetches_credentials() -> None:
     await dev.initialize()
     assert dev._device_info is creds
     assert dev._local_key == creds.local_key[:6].encode()
-
-
-def test_parse_service_data_short() -> None:
-    """Service data with length <= 1 returns None."""
-    dev = make_device()
-    dev._advertisement_data = FakeAdvertisementData(  # type: ignore[assignment]
-        service_data={"0000ffe0": b"\x00"},
-    )
-    assert dev._parse_product_id_from_service_data() is None
-
-
-def test_parse_service_data_wrong_first_byte() -> None:
-    """Service data with non-zero first byte returns None."""
-    dev = make_device()
-    dev._advertisement_data = FakeAdvertisementData(  # type: ignore[assignment]
-        service_data={"0000ffe0": b"\x01\x02\x03"},
-    )
-    assert dev._parse_product_id_from_service_data() is None
-
-
-def test_parse_manufacturer_data_no_product_id() -> None:
-    """Manufacturer data parsed without a product ID skips UUID decryption."""
-    dev = make_device()
-    dev._advertisement_data = FakeAdvertisementData(  # type: ignore[assignment]
-        manufacturer_data={0x01FC: b"\x80\x02" + b"\x00" * 4 + b"\x00" * 16},
-    )
-    dev._parse_manufacturer_data(None)
-    assert dev._uuid == ""
 
 
 async def test_disconnect_with_live_client() -> None:
