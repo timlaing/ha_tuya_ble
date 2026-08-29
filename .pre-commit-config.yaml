@@ -135,6 +135,34 @@ repos:
           - serialx
           - tuya-device-handlers
           # END GENERATED REQUIREMENTS
+      - id: pytest
+        name: PyTest
+        entry: pytest
+        args:
+          - "--cov"
+          - "--cov-branch"
+        types: [python]
+        language: python
+        stages: [manual]
+        pass_filenames: false
+        additional_dependencies:
+          # BEGIN GENERATED REQUIREMENTS
+          - tuya-device-sharing-sdk
+          - aiousbwatcher
+          - homeassistant==2026.8.3
+          - homeassistant-stubs==2026.8.3
+          - mypy
+          - prek
+          - pycryptodome
+          - pylint
+          - pytest
+          - pytest-asyncio
+          - pytest-cov
+          - pytest-homeassistant-custom-component==0.13.357
+          - ruff
+          - serialx
+          - tuya-device-handlers
+          # END GENERATED REQUIREMENTS
       - id: check-prek-deps
         name: Check prek dependency sync
         language: system
