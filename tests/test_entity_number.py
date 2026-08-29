@@ -337,197 +337,195 @@ def _make_product(
     return SimpleNamespace(fingerbot=fingerbot)
 
 
-class TestFingerbotNotInProgramMode:
-    """Tests for is_fingerbot_not_in_program_mode."""
-
-    def test_no_fingerbot_returns_true(self) -> None:
-        """Return True when product has no fingerbot."""
-        ent = _make_number({})
-        product = _make_product()
-        assert _not_in_prog(ent, product) is True  # type: ignore[arg-type]
-
-    def test_fingerbot_no_mode_dp_returns_true(self) -> None:
-        """Return True when fingerbot mode datapoint is missing."""
-        ent = _make_number({})
-        product = _make_product(mode_dp=1)
-        assert _not_in_prog(ent, product) is True  # type: ignore[arg-type]
-
-    def test_fingerbot_mode_not_program(self) -> None:
-        """Return True when mode is not program (value != 2)."""
-        ent = _make_number({1: _make_dp(1, 0)})
-        product = _make_product(mode_dp=1)
-        assert _not_in_prog(ent, product) is True  # type: ignore[arg-type]
-
-    def test_fingerbot_in_program_mode(self) -> None:
-        """Return False when mode is program (value == 2)."""
-        ent = _make_number({1: _make_dp(1, 2)})
-        product = _make_product(mode_dp=1)
-        assert _not_in_prog(ent, product) is False  # type: ignore[arg-type]
+def test_no_fingerbot_returns_true() -> None:
+    """Return True when product has no fingerbot."""
+    ent = _make_number({})
+    product = _make_product()
+    assert _not_in_prog(ent, product) is True  # type: ignore[arg-type]
 
 
-class TestFingerbotInPushMode:
-    """Tests for is_fingerbot_in_push_mode."""
-
-    def test_no_fingerbot_returns_true(self) -> None:
-        """Return True when product has no fingerbot."""
-        ent = _make_number({})
-        product = _make_product()
-        assert _in_push(ent, product) is True  # type: ignore[arg-type]
-
-    def test_fingerbot_no_mode_dp_returns_true(self) -> None:
-        """Return True when fingerbot mode datapoint is missing."""
-        ent = _make_number({})
-        product = _make_product(mode_dp=1)
-        assert _in_push(ent, product) is True  # type: ignore[arg-type]
-
-    def test_fingerbot_mode_is_push(self) -> None:
-        """Return True when mode is push (value == 0)."""
-        ent = _make_number({1: _make_dp(1, 0)})
-        product = _make_product(mode_dp=1)
-        assert _in_push(ent, product) is True  # type: ignore[arg-type]
-
-    def test_fingerbot_mode_not_push(self) -> None:
-        """Return False when mode is not push (value != 0)."""
-        ent = _make_number({1: _make_dp(1, 2)})
-        product = _make_product(mode_dp=1)
-        assert _in_push(ent, product) is False  # type: ignore[arg-type]
+def test_fingerbot_no_mode_dp_returns_true() -> None:
+    """Return True when fingerbot mode datapoint is missing."""
+    ent = _make_number({})
+    product = _make_product(mode_dp=1)
+    assert _not_in_prog(ent, product) is True  # type: ignore[arg-type]
 
 
-class TestFingerbotRepeatCountAvailable:
-    """Tests for is_fingerbot_repeat_count_available."""
-
-    def test_no_fingerbot_returns_true(self) -> None:
-        """Return True when product has no fingerbot."""
-        ent = _make_number({})
-        product = _make_product()
-        assert _repeat_avail(ent, product) is True  # type: ignore[arg-type]
-
-    def test_no_program_dp(self) -> None:
-        """Return True when program datapoint is missing."""
-        ent = _make_number({1: _make_dp(1, 2)})
-        product = _make_product(mode_dp=1, program_dp=2)
-        assert _repeat_avail(ent, product) is True  # type: ignore[arg-type]
-
-    def test_mode_not_program(self) -> None:
-        """Return False when mode is not program."""
-        ent = _make_number({1: _make_dp(1, 0)})
-        product = _make_product(mode_dp=1, program_dp=2)
-        assert _repeat_avail(ent, product) is False  # type: ignore[arg-type]
-
-    def test_program_dp_not_bytes(self) -> None:
-        """Return True when program datapoint is not bytes."""
-        ent = _make_number(
-            {1: _make_dp(1, 2), 2: _make_dp(2, 42)},
-        )
-        product = _make_product(mode_dp=1, program_dp=2)
-        assert _repeat_avail(ent, product) is True  # type: ignore[arg-type]
-
-    def test_program_dp_repeat_forever(self) -> None:
-        """Return False when repeat count is 0xFFFF."""
-        program_bytes = b"\xff\xff\x50"
-        ent = _make_number(
-            {1: _make_dp(1, 2), 2: _make_dp(2, program_bytes)},
-        )
-        product = _make_product(mode_dp=1, program_dp=2)
-        assert _repeat_avail(ent, product) is False  # type: ignore[arg-type]
-
-    def test_program_dp_has_repeat_count(self) -> None:
-        """Return True when program has a finite repeat count."""
-        program_bytes = b"\x00\x03\x50"
-        ent = _make_number(
-            {1: _make_dp(1, 2), 2: _make_dp(2, program_bytes)},
-        )
-        product = _make_product(mode_dp=1, program_dp=2)
-        assert _repeat_avail(ent, product) is True  # type: ignore[arg-type]
+def test_fingerbot_mode_not_program() -> None:
+    """Return True when mode is not program (value != 2)."""
+    ent = _make_number({1: _make_dp(1, 0)})
+    product = _make_product(mode_dp=1)
+    assert _not_in_prog(ent, product) is True  # type: ignore[arg-type]
 
 
-class TestGetFingerbotProgramRepeatCount:
-    """Tests for get_fingerbot_program_repeat_count."""
-
-    def test_no_fingerbot_returns_none(self) -> None:
-        """Return None when product has no fingerbot."""
-        ent = _make_number({})
-        product = _make_product()
-        assert _get_repeat(ent, product) is None  # type: ignore[arg-type]
-
-    def test_program_dp_not_bytes_returns_none(self) -> None:
-        """Return None when program datapoint is not bytes."""
-        ent = _make_number({2: _make_dp(2, 42)})
-        product = _make_product(program_dp=2)
-        assert _get_repeat(ent, product) is None  # type: ignore[arg-type]
-
-    def test_program_dp_bytes_returns_count(self) -> None:
-        """Return repeat count from program bytes."""
-        program_bytes = b"\x00\x05\x50"
-        ent = _make_number({2: _make_dp(2, program_bytes)})
-        product = _make_product(program_dp=2)
-        assert _get_repeat(ent, product) == 5.0  # type: ignore[arg-type]
+def test_fingerbot_in_program_mode() -> None:
+    """Return False when mode is program (value == 2)."""
+    ent = _make_number({1: _make_dp(1, 2)})
+    product = _make_product(mode_dp=1)
+    assert _not_in_prog(ent, product) is False  # type: ignore[arg-type]
 
 
-class TestSetFingerbotProgramRepeatCount:
-    """Tests for set_fingerbot_program_repeat_count."""
-
-    def test_no_fingerbot_noop(self) -> None:
-        """No-op when product has no fingerbot."""
-        ent = _make_number({})
-        product = _make_product()
-        _set_repeat(ent, product, 3.0)  # type: ignore[arg-type]
-
-    def test_program_dp_not_bytes_noop(self) -> None:
-        """No-op when program datapoint is not bytes."""
-        ent = _make_number({2: _make_dp(2, 42)})
-        product = _make_product(program_dp=2)
-        _set_repeat(ent, product, 3.0)  # type: ignore[arg-type]
-
-    def test_program_dp_bytes_sets_count(self) -> None:
-        """Set repeat count in program bytes."""
-        program_bytes = b"\x00\x05\x50"
-        ent = _make_number({2: _make_dp(2, program_bytes)})
-        product = _make_product(program_dp=2)
-        _set_repeat(ent, product, 10.0)  # type: ignore[arg-type]
+def test_no_fingerbot_returns_true_2() -> None:
+    """Return True when product has no fingerbot."""
+    ent = _make_number({})
+    product = _make_product()
+    assert _in_push(ent, product) is True  # type: ignore[arg-type]
 
 
-class TestGetFingerbotProgramPosition:
-    """Tests for get_fingerbot_program_position."""
-
-    def test_no_fingerbot_returns_none(self) -> None:
-        """Return None when product has no fingerbot."""
-        ent = _make_number({})
-        product = _make_product()
-        assert _get_pos(ent, product) is None  # type: ignore[arg-type]
-
-    def test_program_dp_not_bytes_returns_none(self) -> None:
-        """Return None when program datapoint is not bytes."""
-        ent = _make_number({2: _make_dp(2, 42)})
-        product = _make_product(program_dp=2)
-        assert _get_pos(ent, product) is None  # type: ignore[arg-type]
-
-    def test_program_dp_bytes_returns_position(self) -> None:
-        """Return position from program bytes."""
-        program_bytes = b"\x00\x05\x32"
-        ent = _make_number({2: _make_dp(2, program_bytes)})
-        product = _make_product(program_dp=2)
-        assert _get_pos(ent, product) == 50.0  # type: ignore[arg-type]
+def test_fingerbot_no_mode_dp_returns_true_2() -> None:
+    """Return True when fingerbot mode datapoint is missing."""
+    ent = _make_number({})
+    product = _make_product(mode_dp=1)
+    assert _in_push(ent, product) is True  # type: ignore[arg-type]
 
 
-class TestSetFingerbotProgramPosition:
-    """Tests for set_fingerbot_program_position."""
+def test_fingerbot_mode_is_push() -> None:
+    """Return True when mode is push (value == 0)."""
+    ent = _make_number({1: _make_dp(1, 0)})
+    product = _make_product(mode_dp=1)
+    assert _in_push(ent, product) is True  # type: ignore[arg-type]
 
-    def test_no_fingerbot_noop(self) -> None:
-        """No-op when product has no fingerbot."""
-        ent = _make_number({})
-        product = _make_product()
-        _set_pos(ent, product, 50.0)  # type: ignore[arg-type]
 
-    def test_program_dp_not_bytes_noop(self) -> None:
-        """No-op when program datapoint is not bytes."""
-        ent = _make_number({2: _make_dp(2, 42)})
-        product = _make_product(program_dp=2)
-        _set_pos(ent, product, 50.0)  # type: ignore[arg-type]
+def test_fingerbot_mode_not_push() -> None:
+    """Return False when mode is not push (value != 0)."""
+    ent = _make_number({1: _make_dp(1, 2)})
+    product = _make_product(mode_dp=1)
+    assert _in_push(ent, product) is False  # type: ignore[arg-type]
 
-    def test_program_dp_bytes_sets_position(self) -> None:
-        """Set position in program bytes."""
-        program_bytes = b"\x00\x05\x32"
-        ent = _make_number({2: _make_dp(2, program_bytes)})
-        product = _make_product(program_dp=2)
-        _set_pos(ent, product, 80.0)  # type: ignore[arg-type]
+
+def test_no_fingerbot_returns_true_3() -> None:
+    """Return True when product has no fingerbot."""
+    ent = _make_number({})
+    product = _make_product()
+    assert _repeat_avail(ent, product) is True  # type: ignore[arg-type]
+
+
+def test_no_program_dp() -> None:
+    """Return True when program datapoint is missing."""
+    ent = _make_number({1: _make_dp(1, 2)})
+    product = _make_product(mode_dp=1, program_dp=2)
+    assert _repeat_avail(ent, product) is True  # type: ignore[arg-type]
+
+
+def test_mode_not_program() -> None:
+    """Return False when mode is not program."""
+    ent = _make_number({1: _make_dp(1, 0)})
+    product = _make_product(mode_dp=1, program_dp=2)
+    assert _repeat_avail(ent, product) is False  # type: ignore[arg-type]
+
+
+def test_program_dp_not_bytes() -> None:
+    """Return True when program datapoint is not bytes."""
+    ent = _make_number(
+        {1: _make_dp(1, 2), 2: _make_dp(2, 42)},
+    )
+    product = _make_product(mode_dp=1, program_dp=2)
+    assert _repeat_avail(ent, product) is True  # type: ignore[arg-type]
+
+
+def test_program_dp_repeat_forever() -> None:
+    """Return False when repeat count is 0xFFFF."""
+    program_bytes = b"\xff\xff\x50"
+    ent = _make_number(
+        {1: _make_dp(1, 2), 2: _make_dp(2, program_bytes)},
+    )
+    product = _make_product(mode_dp=1, program_dp=2)
+    assert _repeat_avail(ent, product) is False  # type: ignore[arg-type]
+
+
+def test_program_dp_has_repeat_count() -> None:
+    """Return True when program has a finite repeat count."""
+    program_bytes = b"\x00\x03\x50"
+    ent = _make_number(
+        {1: _make_dp(1, 2), 2: _make_dp(2, program_bytes)},
+    )
+    product = _make_product(mode_dp=1, program_dp=2)
+    assert _repeat_avail(ent, product) is True  # type: ignore[arg-type]
+
+
+def test_no_fingerbot_returns_none() -> None:
+    """Return None when product has no fingerbot."""
+    ent = _make_number({})
+    product = _make_product()
+    assert _get_repeat(ent, product) is None  # type: ignore[arg-type]
+
+
+def test_program_dp_not_bytes_returns_none() -> None:
+    """Return None when program datapoint is not bytes."""
+    ent = _make_number({2: _make_dp(2, 42)})
+    product = _make_product(program_dp=2)
+    assert _get_repeat(ent, product) is None  # type: ignore[arg-type]
+
+
+def test_program_dp_bytes_returns_count() -> None:
+    """Return repeat count from program bytes."""
+    program_bytes = b"\x00\x05\x50"
+    ent = _make_number({2: _make_dp(2, program_bytes)})
+    product = _make_product(program_dp=2)
+    assert _get_repeat(ent, product) == 5.0  # type: ignore[arg-type]
+
+
+def test_no_fingerbot_noop() -> None:
+    """No-op when product has no fingerbot."""
+    ent = _make_number({})
+    product = _make_product()
+    _set_repeat(ent, product, 3.0)  # type: ignore[arg-type]
+
+
+def test_program_dp_not_bytes_noop() -> None:
+    """No-op when program datapoint is not bytes."""
+    ent = _make_number({2: _make_dp(2, 42)})
+    product = _make_product(program_dp=2)
+    _set_repeat(ent, product, 3.0)  # type: ignore[arg-type]
+
+
+def test_program_dp_bytes_sets_count() -> None:
+    """Set repeat count in program bytes."""
+    program_bytes = b"\x00\x05\x50"
+    ent = _make_number({2: _make_dp(2, program_bytes)})
+    product = _make_product(program_dp=2)
+    _set_repeat(ent, product, 10.0)  # type: ignore[arg-type]
+
+
+def test_no_fingerbot_returns_none_2() -> None:
+    """Return None when product has no fingerbot."""
+    ent = _make_number({})
+    product = _make_product()
+    assert _get_pos(ent, product) is None  # type: ignore[arg-type]
+
+
+def test_program_dp_not_bytes_returns_none_2() -> None:
+    """Return None when program datapoint is not bytes."""
+    ent = _make_number({2: _make_dp(2, 42)})
+    product = _make_product(program_dp=2)
+    assert _get_pos(ent, product) is None  # type: ignore[arg-type]
+
+
+def test_program_dp_bytes_returns_position() -> None:
+    """Return position from program bytes."""
+    program_bytes = b"\x00\x05\x32"
+    ent = _make_number({2: _make_dp(2, program_bytes)})
+    product = _make_product(program_dp=2)
+    assert _get_pos(ent, product) == 50.0  # type: ignore[arg-type]
+
+
+def test_no_fingerbot_noop_2() -> None:
+    """No-op when product has no fingerbot."""
+    ent = _make_number({})
+    product = _make_product()
+    _set_pos(ent, product, 50.0)  # type: ignore[arg-type]
+
+
+def test_program_dp_not_bytes_noop_2() -> None:
+    """No-op when program datapoint is not bytes."""
+    ent = _make_number({2: _make_dp(2, 42)})
+    product = _make_product(program_dp=2)
+    _set_pos(ent, product, 50.0)  # type: ignore[arg-type]
+
+
+def test_program_dp_bytes_sets_position() -> None:
+    """Set position in program bytes."""
+    program_bytes = b"\x00\x05\x32"
+    ent = _make_number({2: _make_dp(2, program_bytes)})
+    product = _make_product(program_dp=2)
+    _set_pos(ent, product, 80.0)  # type: ignore[arg-type]

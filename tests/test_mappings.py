@@ -131,252 +131,245 @@ def make_product(mode: int | None = None, program: int | None = None) -> Any:
     )
 
 
-class TestSwitchHelpers:
-    """Tests for switch.py fingerbot helper functions."""
-
-    def test_is_fingerbot_in_program_mode_true(self) -> None:
-        """Verify program mode is detected when the mode datapoint is 2."""
-        product = make_product(mode=8)
-        self_ = make_self([make_dp(value=2, dp_id=8)])
-        assert fingerbot.is_fingerbot_in_program_mode(self_, product) is True
-
-    def test_is_fingerbot_in_program_mode_false(self) -> None:
-        """Verify program mode is not detected when the mode datapoint is not 2."""
-        product = make_product(mode=8)
-        self_ = make_self([make_dp(value=1, dp_id=8)])
-        assert fingerbot.is_fingerbot_in_program_mode(self_, product) is False
-
-    def test_is_fingerbot_in_program_mode_falsy_datapoint(self) -> None:
-        """Verify a falsy mode datapoint is treated as program mode."""
-        self_: Any = SimpleNamespace(
-            device=SimpleNamespace(datapoints={8: None}),
-            hass=SimpleNamespace(create_task=lambda coro: coro),
-        )
-        assert (
-            fingerbot.is_fingerbot_in_program_mode(self_, make_product(mode=8)) is True
-        )
-
-    def test_is_fingerbot_in_switch_mode_true(self) -> None:
-        """Verify switch mode is detected when the mode datapoint is 1."""
-        product = make_product(mode=2)
-        self_ = make_self([make_dp(value=1, dp_id=2)])
-        assert fingerbot.is_fingerbot_in_switch_mode(self_, product) is True
-
-    def test_get_repeat_forever_true(self) -> None:
-        """Verify repeat-forever is detected from a 0xffff repeat count."""
-        product = make_product(program=121)
-        self_ = make_self([make_dp(value=b"\xff\xff\x01\x02\x03", dp_id=121)])
-        assert fingerbot.get_fingerbot_program_repeat_forever(self_, product) is True
-
-    def test_get_repeat_forever_false(self) -> None:
-        """Verify repeat-forever is not detected from a non-0xffff repeat count."""
-        product = make_product(program=121)
-        self_ = make_self([make_dp(value=b"\x00\x01\x01\x02\x03", dp_id=121)])
-        assert fingerbot.get_fingerbot_program_repeat_forever(self_, product) is False
-
-    def test_get_repeat_forever_non_bytes(self) -> None:
-        """Verify repeat-forever returns None for a non-bytes datapoint."""
-        product = make_product(program=121)
-        self_ = make_self([make_dp(value=5, dp_id=121)])
-        assert fingerbot.get_fingerbot_program_repeat_forever(self_, product) is None
-
-    def test_get_repeat_forever_no_program(self) -> None:
-        """Verify repeat-forever returns None when no program datapoint exists."""
-        self_ = make_self([])
-        assert (
-            fingerbot.get_fingerbot_program_repeat_forever(self_, make_product())
-            is None
-        )
-
-    def test_set_repeat_forever_true_and_false(self) -> None:
-        """Verify setting repeat-forever to true and false records calls."""
-        product = make_product(program=121)
-        self_ = make_self([make_dp(value=b"\x00\x01\x02\x03", dp_id=121)])
-        fingerbot.set_fingerbot_program_repeat_forever(self_, product, True)
-        fingerbot.set_fingerbot_program_repeat_forever(self_, product, False)
+def test_is_fingerbot_in_program_mode_true() -> None:
+    """Verify program mode is detected when the mode datapoint is 2."""
+    product = make_product(mode=8)
+    self_ = make_self([make_dp(value=2, dp_id=8)])
+    assert fingerbot.is_fingerbot_in_program_mode(self_, product) is True
 
 
-class TestTextHelpers:
-    """Tests for text.py fingerbot helper functions."""
-
-    def test_is_fingerbot_in_program_mode(self) -> None:
-        """Verify the fingerbot program-mode text helper."""
-        self_ = make_self([make_dp(value=2, dp_id=2)])
-        assert (
-            fingerbot.is_fingerbot_in_program_mode(self_, make_product(mode=2)) is True
-        )
-
-    def test_get_fingerbot_program(self) -> None:
-        """Verify formatting a fingerbot program datapoint into a string."""
-        # header(3) + step_count(1) + steps(3 each)
-        value = b"\x00\x01\x02" + b"\x02" + b"\x05\x00\x07" + b"\x0a\x13\x88"
-        product = make_product(program=121)
-        self_ = make_self([make_dp(value=value, dp_id=121)])
-        result = fingerbot.get_fingerbot_program(self_, product)
-        assert result is not None
-        assert result.startswith("5/7")
-
-    def test_get_fingerbot_program_no_datapoint(self) -> None:
-        """Verify get_fingerbot_program returns None when no datapoint exists."""
-        product = make_product(program=121)
-        self_ = make_self([make_dp(value=5, dp_id=121)])
-        assert fingerbot.get_fingerbot_program(self_, product) is None
-
-    def test_format_program_step(self) -> None:
-        """Verify a single program step is formatted correctly."""
-        data = b"\x00\x00\x00\x01" + b"\x05\x13\x88"
-        assert fingerbot._format_program_step(data, 0) == "5/5000"
-        data2 = b"\x00\x00\x00\x01" + b"\x05\x00\x00"
-        assert fingerbot._format_program_step(data2, 0) == "5"
-
-    def test_set_fingerbot_program(self) -> None:
-        """Verify setting a fingerbot program records the expected call."""
-        value = b"\x00\x01\x02" + b"\x01" + b"\x05\x13\x88"
-        product = make_product(program=121)
-        self_ = make_self([make_dp(value=value, dp_id=121)])
-        fingerbot.set_fingerbot_program(self_, product, "5/5000;10")
+def test_is_fingerbot_in_program_mode_false() -> None:
+    """Verify program mode is not detected when the mode datapoint is not 2."""
+    product = make_product(mode=8)
+    self_ = make_self([make_dp(value=1, dp_id=8)])
+    assert fingerbot.is_fingerbot_in_program_mode(self_, product) is False
 
 
-class TestNumberHelpers:
-    """Tests for number.py fingerbot helper functions."""
-
-    def test_is_fingerbot_in_program_mode(self) -> None:
-        """Verify the fingerbot program-mode text helper."""
-        self_ = make_self([make_dp(value=2, dp_id=8)])
-        assert (
-            fingerbot.is_fingerbot_in_program_mode(self_, make_product(mode=8)) is True
-        )
-
-    def test_is_fingerbot_not_in_program_mode(self) -> None:
-        """Verify not-in-program-mode is detected when mode is not 2."""
-        self_ = make_self([make_dp(value=1, dp_id=8)])
-        assert (
-            fingerbot.is_fingerbot_not_in_program_mode(self_, make_product(mode=8))
-            is True
-        )
-
-    def test_is_fingerbot_in_push_mode(self) -> None:
-        """Verify push mode is detected when the mode datapoint is 0."""
-        self_ = make_self([make_dp(value=0, dp_id=8)])
-        assert fingerbot.is_fingerbot_in_push_mode(self_, make_product(mode=8)) is True
-
-    def test_repeat_count_available_false_when_forever(self) -> None:
-        """Verify repeat count is unavailable when set to repeat forever."""
-        product = make_product(mode=8, program=121)
-        self_ = make_self([
-            make_dp(value=2, dp_id=8),
-            make_dp(value=b"\xff\xff\x00", dp_id=121),
-        ])
-        assert fingerbot.is_fingerbot_repeat_count_available(self_, product) is False
-
-    def test_repeat_count_available_true(self) -> None:
-        """Verify repeat count is available for a finite repeat count."""
-        product = make_product(mode=8, program=121)
-        self_ = make_self([
-            make_dp(value=2, dp_id=8),
-            make_dp(value=b"\x00\x05\x00", dp_id=121),
-        ])
-        assert fingerbot.is_fingerbot_repeat_count_available(self_, product) is True
-
-    def test_repeat_count_available_no_program(self) -> None:
-        """Verify repeat count is available when no program datapoint exists."""
-        self_ = make_self([make_dp(value=2, dp_id=8)])
-        assert (
-            fingerbot.is_fingerbot_repeat_count_available(self_, make_product(mode=8))
-            is True
-        )
-
-    def test_get_repeat_count(self) -> None:
-        """Verify the repeat count is read from the program datapoint."""
-        product = make_product(program=121)
-        self_ = make_self([make_dp(value=b"\x00\x05\x00", dp_id=121)])
-        assert fingerbot.get_fingerbot_program_repeat_count(self_, product) == 5.0
-
-    def test_get_repeat_count_none(self) -> None:
-        """Verify repeat count returns None when no datapoint exists."""
-        self_ = make_self([])
-        assert (
-            fingerbot.get_fingerbot_program_repeat_count(self_, make_product()) is None
-        )
-
-    def test_set_repeat_count(self) -> None:
-        """Verify setting the repeat count records the expected call."""
-        product = make_product(program=121)
-        self_ = make_self([make_dp(value=b"\x00\x05\x00", dp_id=121)])
-        fingerbot.set_fingerbot_program_repeat_count(self_, product, 3.0)
-
-    def test_get_position(self) -> None:
-        """Verify the program position is read from the datapoint."""
-        product = make_product(program=121)
-        self_ = make_self([make_dp(value=b"\x00\x05\x07\x00", dp_id=121)])
-        assert fingerbot.get_fingerbot_program_position(self_, product) == 7.0
-
-    def test_set_position(self) -> None:
-        """Verify setting the program position records the expected call."""
-        product = make_product(program=121)
-        self_ = make_self([make_dp(value=b"\x00\x05\x07\x00", dp_id=121)])
-        fingerbot.set_fingerbot_program_position(self_, product, 9.0)
+def test_is_fingerbot_in_program_mode_falsy_datapoint() -> None:
+    """Verify a falsy mode datapoint is treated as program mode."""
+    self_: Any = SimpleNamespace(
+        device=SimpleNamespace(datapoints={8: None}),
+        hass=SimpleNamespace(create_task=lambda coro: coro),
+    )
+    assert fingerbot.is_fingerbot_in_program_mode(self_, make_product(mode=8)) is True
 
 
-class TestSensorHelpers:
-    """Tests for sensor.py helper functions."""
-
-    def test_battery_enum_getter(self) -> None:
-        """Verify the battery enum getter converts the datapoint to a percentage."""
-        self_: Any = SimpleNamespace(
-            device=SimpleNamespace(datapoints={104: make_dp(value=3, dp_id=104)}),
-            _attr_native_value=None,
-            set_native_value=lambda v: setattr(self_, "_attr_native_value", v),
-        )
-        sensor.battery_enum_getter(self_)
-        assert self_._attr_native_value == 60.0
-
-    def test_rssi_getter(self) -> None:
-        """Verify the RSSI getter propagates the device signal strength."""
-        self_: Any = SimpleNamespace(
-            device=SimpleNamespace(rssi=-70),
-            _attr_native_value=None,
-            set_native_value=lambda v: setattr(self_, "_attr_native_value", v),
-        )
-        sensor.rssi_getter(self_)
-        assert self_._attr_native_value == -70
-
-    def test_is_co2_alarm_enabled(self) -> None:
-        """Verify the CO2 alarm-enabled helper reads datapoint 13."""
-        self_: Any = SimpleNamespace(
-            device=SimpleNamespace(datapoints={13: make_dp(value=1, dp_id=13)})
-        )
-        assert (
-            sensor.is_co2_alarm_enabled(
-                self_, cast(TuyaBLEProductInfo, SimpleNamespace())
-            )
-            is True
-        )
+def test_is_fingerbot_in_switch_mode_true() -> None:
+    """Verify switch mode is detected when the mode datapoint is 1."""
+    product = make_product(mode=2)
+    self_ = make_self([make_dp(value=1, dp_id=2)])
+    assert fingerbot.is_fingerbot_in_switch_mode(self_, product) is True
 
 
-class TestButtonHelpers:
-    """Tests for fingerbot.py button helper functions."""
-
-    def test_is_fingerbot_in_push_mode_true(self) -> None:
-        """Verify push mode is detected when the mode datapoint is 0."""
-        product = make_product(mode=2)
-        self_ = make_self([make_dp(value=0, dp_id=2)])
-        assert fingerbot.is_fingerbot_in_push_mode(self_, product) is True
-
-    def test_is_fingerbot_in_push_mode_false(self) -> None:
-        """Verify push mode is not detected when the mode datapoint is not 0."""
-        product = make_product(mode=2)
-        self_ = make_self([make_dp(value=1, dp_id=2)])
-        assert fingerbot.is_fingerbot_in_push_mode(self_, product) is False
+def test_get_repeat_forever_true() -> None:
+    """Verify repeat-forever is detected from a 0xffff repeat count."""
+    product = make_product(program=121)
+    self_ = make_self([make_dp(value=b"\xff\xff\x01\x02\x03", dp_id=121)])
+    assert fingerbot.get_fingerbot_program_repeat_forever(self_, product) is True
 
 
-class TestSelectDescription:
-    """Tests for select.py entity descriptions."""
+def test_get_repeat_forever_false() -> None:
+    """Verify repeat-forever is not detected from a non-0xffff repeat count."""
+    product = make_product(program=121)
+    self_ = make_self([make_dp(value=b"\x00\x01\x01\x02\x03", dp_id=121)])
+    assert fingerbot.get_fingerbot_program_repeat_forever(self_, product) is False
 
-    def test_temperature_unit_description(self) -> None:
-        """Verify the temperature unit entity description is built with a key."""
-        desc = select.TemperatureUnitDescription(key="temperature_unit")
-        assert desc.key == "temperature_unit"
+
+def test_get_repeat_forever_non_bytes() -> None:
+    """Verify repeat-forever returns None for a non-bytes datapoint."""
+    product = make_product(program=121)
+    self_ = make_self([make_dp(value=5, dp_id=121)])
+    assert fingerbot.get_fingerbot_program_repeat_forever(self_, product) is None
+
+
+def test_get_repeat_forever_no_program() -> None:
+    """Verify repeat-forever returns None when no program datapoint exists."""
+    self_ = make_self([])
+    assert fingerbot.get_fingerbot_program_repeat_forever(self_, make_product()) is None
+
+
+def test_set_repeat_forever_true_and_false() -> None:
+    """Verify setting repeat-forever to true and false records calls."""
+    product = make_product(program=121)
+    self_ = make_self([make_dp(value=b"\x00\x01\x02\x03", dp_id=121)])
+    fingerbot.set_fingerbot_program_repeat_forever(self_, product, True)
+    fingerbot.set_fingerbot_program_repeat_forever(self_, product, False)
+
+
+def test_is_fingerbot_in_program_mode() -> None:
+    """Verify the fingerbot program-mode text helper."""
+    self_ = make_self([make_dp(value=2, dp_id=2)])
+    assert fingerbot.is_fingerbot_in_program_mode(self_, make_product(mode=2)) is True
+
+
+def test_get_fingerbot_program() -> None:
+    """Verify formatting a fingerbot program datapoint into a string."""
+    # header(3) + step_count(1) + steps(3 each)
+    value = b"\x00\x01\x02" + b"\x02" + b"\x05\x00\x07" + b"\x0a\x13\x88"
+    product = make_product(program=121)
+    self_ = make_self([make_dp(value=value, dp_id=121)])
+    result = fingerbot.get_fingerbot_program(self_, product)
+    assert result is not None
+    assert result.startswith("5/7")
+
+
+def test_get_fingerbot_program_no_datapoint() -> None:
+    """Verify get_fingerbot_program returns None when no datapoint exists."""
+    product = make_product(program=121)
+    self_ = make_self([make_dp(value=5, dp_id=121)])
+    assert fingerbot.get_fingerbot_program(self_, product) is None
+
+
+def test_format_program_step() -> None:
+    """Verify a single program step is formatted correctly."""
+    data = b"\x00\x00\x00\x01" + b"\x05\x13\x88"
+    assert fingerbot._format_program_step(data, 0) == "5/5000"
+    data2 = b"\x00\x00\x00\x01" + b"\x05\x00\x00"
+    assert fingerbot._format_program_step(data2, 0) == "5"
+
+
+def test_set_fingerbot_program() -> None:
+    """Verify setting a fingerbot program records the expected call."""
+    value = b"\x00\x01\x02" + b"\x01" + b"\x05\x13\x88"
+    product = make_product(program=121)
+    self_ = make_self([make_dp(value=value, dp_id=121)])
+    fingerbot.set_fingerbot_program(self_, product, "5/5000;10")
+
+
+def test_is_fingerbot_in_program_mode_2() -> None:
+    """Verify the fingerbot program-mode text helper."""
+    self_ = make_self([make_dp(value=2, dp_id=8)])
+    assert fingerbot.is_fingerbot_in_program_mode(self_, make_product(mode=8)) is True
+
+
+def test_is_fingerbot_not_in_program_mode() -> None:
+    """Verify not-in-program-mode is detected when mode is not 2."""
+    self_ = make_self([make_dp(value=1, dp_id=8)])
+    assert (
+        fingerbot.is_fingerbot_not_in_program_mode(self_, make_product(mode=8)) is True
+    )
+
+
+def test_is_fingerbot_in_push_mode() -> None:
+    """Verify push mode is detected when the mode datapoint is 0."""
+    self_ = make_self([make_dp(value=0, dp_id=8)])
+    assert fingerbot.is_fingerbot_in_push_mode(self_, make_product(mode=8)) is True
+
+
+def test_repeat_count_available_false_when_forever() -> None:
+    """Verify repeat count is unavailable when set to repeat forever."""
+    product = make_product(mode=8, program=121)
+    self_ = make_self([
+        make_dp(value=2, dp_id=8),
+        make_dp(value=b"\xff\xff\x00", dp_id=121),
+    ])
+    assert fingerbot.is_fingerbot_repeat_count_available(self_, product) is False
+
+
+def test_repeat_count_available_true() -> None:
+    """Verify repeat count is available for a finite repeat count."""
+    product = make_product(mode=8, program=121)
+    self_ = make_self([
+        make_dp(value=2, dp_id=8),
+        make_dp(value=b"\x00\x05\x00", dp_id=121),
+    ])
+    assert fingerbot.is_fingerbot_repeat_count_available(self_, product) is True
+
+
+def test_repeat_count_available_no_program() -> None:
+    """Verify repeat count is available when no program datapoint exists."""
+    self_ = make_self([make_dp(value=2, dp_id=8)])
+    assert (
+        fingerbot.is_fingerbot_repeat_count_available(self_, make_product(mode=8))
+        is True
+    )
+
+
+def test_get_repeat_count() -> None:
+    """Verify the repeat count is read from the program datapoint."""
+    product = make_product(program=121)
+    self_ = make_self([make_dp(value=b"\x00\x05\x00", dp_id=121)])
+    assert fingerbot.get_fingerbot_program_repeat_count(self_, product) == 5.0
+
+
+def test_get_repeat_count_none() -> None:
+    """Verify repeat count returns None when no datapoint exists."""
+    self_ = make_self([])
+    assert fingerbot.get_fingerbot_program_repeat_count(self_, make_product()) is None
+
+
+def test_set_repeat_count() -> None:
+    """Verify setting the repeat count records the expected call."""
+    product = make_product(program=121)
+    self_ = make_self([make_dp(value=b"\x00\x05\x00", dp_id=121)])
+    fingerbot.set_fingerbot_program_repeat_count(self_, product, 3.0)
+
+
+def test_get_position() -> None:
+    """Verify the program position is read from the datapoint."""
+    product = make_product(program=121)
+    self_ = make_self([make_dp(value=b"\x00\x05\x07\x00", dp_id=121)])
+    assert fingerbot.get_fingerbot_program_position(self_, product) == 7.0
+
+
+def test_set_position() -> None:
+    """Verify setting the program position records the expected call."""
+    product = make_product(program=121)
+    self_ = make_self([make_dp(value=b"\x00\x05\x07\x00", dp_id=121)])
+    fingerbot.set_fingerbot_program_position(self_, product, 9.0)
+
+
+def test_battery_enum_getter() -> None:
+    """Verify the battery enum getter converts the datapoint to a percentage."""
+    self_: Any = SimpleNamespace(
+        device=SimpleNamespace(datapoints={104: make_dp(value=3, dp_id=104)}),
+        _attr_native_value=None,
+        set_native_value=lambda v: setattr(self_, "_attr_native_value", v),
+    )
+    sensor.battery_enum_getter(self_)
+    assert self_._attr_native_value == 60.0
+
+
+def test_rssi_getter() -> None:
+    """Verify the RSSI getter propagates the device signal strength."""
+    self_: Any = SimpleNamespace(
+        device=SimpleNamespace(rssi=-70),
+        _attr_native_value=None,
+        set_native_value=lambda v: setattr(self_, "_attr_native_value", v),
+    )
+    sensor.rssi_getter(self_)
+    assert self_._attr_native_value == -70
+
+
+def test_is_co2_alarm_enabled() -> None:
+    """Verify the CO2 alarm-enabled helper reads datapoint 13."""
+    self_: Any = SimpleNamespace(
+        device=SimpleNamespace(datapoints={13: make_dp(value=1, dp_id=13)})
+    )
+    assert (
+        sensor.is_co2_alarm_enabled(self_, cast(TuyaBLEProductInfo, SimpleNamespace()))
+        is True
+    )
+
+
+def test_is_fingerbot_in_push_mode_true() -> None:
+    """Verify push mode is detected when the mode datapoint is 0."""
+    product = make_product(mode=2)
+    self_ = make_self([make_dp(value=0, dp_id=2)])
+    assert fingerbot.is_fingerbot_in_push_mode(self_, product) is True
+
+
+def test_is_fingerbot_in_push_mode_false() -> None:
+    """Verify push mode is not detected when the mode datapoint is not 0."""
+    product = make_product(mode=2)
+    self_ = make_self([make_dp(value=1, dp_id=2)])
+    assert fingerbot.is_fingerbot_in_push_mode(self_, product) is False
+
+
+def test_temperature_unit_description() -> None:
+    """Verify the temperature unit entity description is built with a key."""
+    desc = select.TemperatureUnitDescription(key="temperature_unit")
+    assert desc.key == "temperature_unit"
 
 
 def test_fingerbot_info_defaults() -> None:
