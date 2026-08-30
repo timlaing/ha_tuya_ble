@@ -230,12 +230,12 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             manufacturer_data = service_info.manufacturer_data
             if service_info.service_data is None or manufacturer_data is None:
                 return False
-            raw = manufacturer_data.get(MANUFACTURER_DATA_ID)
+            manufacturer_data_raw = manufacturer_data.get(MANUFACTURER_DATA_ID)
             return (
                 SERVICE_UUID in service_info.service_data
-                and raw is not None
-                and len(raw) > 6
-                and (len(raw) - 6) % 16 == 0
+                and manufacturer_data_raw is not None
+                and len(manufacturer_data_raw) > 6
+                and (len(manufacturer_data_raw) - 6) % 16 == 0
             )
 
         try:
