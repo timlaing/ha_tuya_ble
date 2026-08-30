@@ -161,8 +161,6 @@ async def test_update_device_info_reuses_existing() -> None:
 
 
 def _adv(
-    service_data: bytes,
-    manufacturer_data: bytes,
     product_id: bytes,
 ) -> FakeAdvertisementData:
     """Build advertisement data encoding the given product id and uuid."""
@@ -186,9 +184,7 @@ def _encrypt_uuid(product_id: bytes, plaintext: bytes = b"1234567890abcdef") -> 
 def test_decode_advertisement_uuid() -> None:
     """Verify the device uuid and binding are decoded from advertisement."""
     dev = make_device()
-    dev._advertisement_data = _adv(  # type: ignore[assignment]
-        b"pid01", b"\x80\x02" + b"\x00" * 4 + _encrypt_uuid(b"pid01"), b"pid01"
-    )
+    dev._advertisement_data = _adv(b"pid01")  # type: ignore[assignment]
     dev._decode_advertisement_data()
     assert dev._is_bound is True
     assert dev._protocol_version == 2
@@ -197,13 +193,35 @@ def test_decode_advertisement_uuid() -> None:
 
 def test_decode_advertisement_info() -> None:
     """Decode all advertised identity fields without device credentials."""
-    adv = cast(AdvertisementData, _adv(b"pid01", b"", b"pid01"))
+    adv = cast(AdvertisementData, _adv(b"pid01"))
     info = decode_tuya_ble_advertisement(adv)
     assert info is not None
     assert info.product_id == "pid01"
     assert info.uuid == "1234567890abcdef"
     assert info.is_bound is True
     assert info.protocol_version == 2
+
+
+def test_decode_binary_product_id_from_captured_device() -> None:
+    """Decode a valid Tuya advertisement whose raw PID is not UTF-8."""
+    info = decode_tuya_ble_advertisement(
+        cast(
+            AdvertisementData,
+            FakeAdvertisementData(
+                service_data={SERVICE_UUID: bytes.fromhex("006242189ef70302b3")},
+                manufacturer_data={
+                    MANUFACTURER_DATA_ID: bytes.fromhex(
+                        "80030000010061ec486560c8075c37cf692d43faefff"
+                    )
+                },
+            ),
+        )
+    )
+    assert info is not None
+    assert info.product_id is None
+    assert info.uuid == "0237f144b99142e6"
+    assert info.is_bound is True
+    assert info.protocol_version == 3
 
 
 @pytest.mark.parametrize(
@@ -241,7 +259,6 @@ def test_decode_advertisement_rejects_invalid_layout(
 @pytest.mark.parametrize(
     ("product_id", "plaintext"),
     [
-        (b"\xff", b"1234567890abcdef"),
         (b"pid", b"\xff" * 16),
         (b"pid", b"\x00" * 16),
     ],
@@ -275,6 +292,17 @@ def test_decode_advertisement_no_data() -> None:
     dev = make_device()
     dev._advertisement_data = None
     dev._decode_advertisement_data()  # no-op
+
+
+def test_append_functions_ignores_legacy_metadata_without_dp_id() -> None:
+    """Do not fail setup for entries saved with incomplete cloud metadata."""
+    dev = make_device()
+    dev.append_functions(
+        [{"code": "switch_1", "type": "Boolean", "values": "{}"}],
+        [{"code": "battery_percentage", "type": "Integer", "values": "{}"}],
+    )
+    assert not dev.function
+    assert not dev.status_range
 
 
 def test_decode_advertisement_without_service_data_updates_flags_only() -> None:

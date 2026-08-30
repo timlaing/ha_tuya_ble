@@ -165,3 +165,6 @@ uv.lock
 
 # Local Tuya cloud diagnostic (contains sensitive credential output)
 scripts/test_tuya_factory_info.py
+config/
+.DS_Store
+ha-req.txt

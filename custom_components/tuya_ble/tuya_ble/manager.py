@@ -42,12 +42,8 @@ class AbstractTuyaBLEDeviceManager(ABC):
     async def get_device_credentials(
         self,
         address: str,
-        force_update: bool = False,
-        save_data: bool = False,
-        uuid: str | None = None,
-        product_id: str | None = None,
     ) -> TuyaBLEDeviceCredentials | None:
-        """Get credentials of the Tuya BLE device."""
+        """Get stored runtime credentials for a BLE address."""
 
     @staticmethod
     def check_and_create_device_credentials(

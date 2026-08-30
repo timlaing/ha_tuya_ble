@@ -267,18 +267,6 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
             ),
             **{
                 k: TuyaBLEProductInfo(
-                    name="Irrigation computer",
-                )
-                for k in [
-                    "6pahkcau",
-                    "hfgdqhho",
-                    "qycalacn",
-                    "fnlw6npo",
-                    "jjqi2syk",
-                ]  # device product_ids
-            },
-            **{
-                k: TuyaBLEProductInfo(
                     name="Valve controller",
                     watervalve=TuyaBLEWaterValveInfo(
                         switch=1,
@@ -313,10 +301,6 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
             "ldcdnigc": TuyaBLEProductInfo(
                 name="ZX-7378 Smart Irrigation Controller",
             ),
-            "fdrbxxbg": TuyaBLEProductInfo(
-                name="Diivoo WT-05 dual water timer",
-                manufacturer="Diivoo",
-            ),
         },
     ),
     "ggq": TuyaBLECategoryInfo(
@@ -325,8 +309,18 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
                 k: TuyaBLEProductInfo(
                     name="Irrigation computer",
                 )
-                for k in ["6pahkcau", "hfgdqhho"]
+                for k in [
+                    "6pahkcau",
+                    "hfgdqhho",
+                    "qycalacn",
+                    "fnlw6npo",
+                    "jjqi2syk",
+                ]
             },
+            "fdrbxxbg": TuyaBLEProductInfo(
+                name="Diivoo WT-05 dual water timer",
+                manufacturer="Diivoo",
+            ),
         },
     ),
     "dd": TuyaBLECategoryInfo(

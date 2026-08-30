@@ -5,6 +5,8 @@
     },
     "error": {
       "device_not_registered": "Device is not registered in Tuya cloud",
+      "bluetooth_scan_failed": "The complete Bluetooth advertisement was not received. Move the device closer and try again.",
+      "identity_not_decoded": "The identity in the Bluetooth advertisement could not be decoded.",
       "invalid_auth": "Invalid authentication",
       "login_error": "Login error ({code}): {msg}"
     },
@@ -18,6 +20,9 @@
       },
       "qr": {
         "description": "Scan this QR code in your Tuya Smart or Smart Life app."
+      },
+      "discovered_device": {
+        "description": "Set up the discovered device {name} ({address}). Submit to retry the Bluetooth scan."
       },
       "scan": {
         "description": "Waiting for QR code scan..."

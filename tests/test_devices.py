@@ -75,6 +75,14 @@ def test_fingerbot_product() -> None:
     assert info.fingerbot.switch == 2
 
 
+def test_diivoo_dual_water_timer_uses_cloud_category() -> None:
+    """Register the Diivoo dual timer under its Tuya cloud category."""
+    info = get_product_info_by_ids("ggq", "fdrbxxbg")
+    assert info is not None
+    assert info.name == "Diivoo WT-05 dual water timer"
+    assert get_product_info_by_ids("sfkzq", "fdrbxxbg") is None
+
+
 def test_device_product_info() -> None:
     """Resolve product info from the device credentials."""
     dev = make_device()
@@ -163,7 +171,7 @@ async def test_credentials_none() -> None:
 
 
 def test_get_device_info() -> None:
-    """Include connections, identifiers, and version info."""
+    """Map cloud names and available versions into the device registry."""
     dev = make_device()
     dev._device_info = make_credentials()
     dev._device_version = "1.0"
@@ -173,14 +181,22 @@ def test_get_device_info() -> None:
     assert info is not None
     assert dev.address in {k for _, k in info["connections"]}
     assert (DEVICES_DOMAIN, dev.address) in info["identifiers"]
+    assert info["name"] == "Device"
+    assert info["model"] == "Product"
+    assert info["hw_version"] == "h1"
+    assert info["sw_version"] == "1.0 (protocol 2.0)"
 
 
 def test_get_device_info_no_product() -> None:
-    """Fall back to the default manufacturer."""
+    """Fall back cleanly when cloud and version metadata are unavailable."""
     dev = make_device()
     info = get_device_info(dev)
     assert info is not None
     assert info["manufacturer"] == "tuya"
+    assert info["name"] == "TestDevice"
+    assert info["model"] is None
+    assert info["hw_version"] is None
+    assert info["sw_version"] is None
 
 
 def _make_coord(hass: HomeAssistant) -> tuple[TuyaBLECoordinator, TuyaBLEDevice]:
@@ -327,6 +343,19 @@ def test_translation_key_set_on_entity() -> None:
     desc = _make_desc(translation_key=None)
     entity = TuyaBLEEntity(MagicMock(), coordinator, dev, MagicMock(), desc)
     assert entity._attr_translation_key == "test_key"
+
+
+def test_base_entity_does_not_force_sensor_domain() -> None:
+    """Leave entity ID assignment to the entity platform."""
+    dev = make_device()
+    dev._device_info = make_credentials()
+    coordinator = MagicMock()
+    coordinator.connected = True
+
+    entity = TuyaBLEEntity(MagicMock(), coordinator, dev, MagicMock(), _make_desc())
+
+    assert entity.entity_id is None
+    assert entity.unique_id == "device123-test_key"
 
 
 def test_translation_key_not_overridden() -> None:

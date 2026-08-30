@@ -187,7 +187,7 @@ mapping: dict[str, TuyaBLECategorySelectMapping] = {
             ],
         },
     ),
-    "sfkzq": TuyaBLECategorySelectMapping(
+    "ggq": TuyaBLECategorySelectMapping(
         products={
             "fdrbxxbg": [  # Diivoo WT-05 dual water timer
                 TuyaBLESelectMapping(
@@ -229,6 +229,10 @@ mapping: dict[str, TuyaBLECategorySelectMapping] = {
                     ),
                 ),
             ],
+        },
+    ),
+    "sfkzq": TuyaBLECategorySelectMapping(
+        products={
             "nxquc5lb": [  # SOP10 water timer
                 TuyaBLESelectMapping(
                     dp_id=10,

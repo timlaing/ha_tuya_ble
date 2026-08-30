@@ -3,7 +3,8 @@
 # pylint: disable=protected-access
 from __future__ import annotations
 
-from homeassistant.components.sensor import SensorEntityDescription
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntityDescription
+from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant
 
 from custom_components.tuya_ble import sensor
@@ -64,6 +65,25 @@ async def test_value_with_coefficient(hass: HomeAssistant) -> None:
     coordinator.async_set_updated_data({})
     await hass.async_block_till_done()
     assert entity.native_value == 25.0
+
+
+async def test_diivoo_use_time_is_a_duration(hass: HomeAssistant) -> None:
+    """Expose the Diivoo use-time value as seconds rather than a timestamp."""
+    device, coordinator, product = build_context(hass)
+    device._device_info = make_credentials(category="ggq", product_id="fdrbxxbg")
+    mapping = next(
+        item for item in sensor.get_mapping_by_device(device) if item.dp_id == 111
+    )
+    assert mapping.description.device_class is SensorDeviceClass.DURATION
+    assert mapping.description.native_unit_of_measurement is UnitOfTime.SECONDS
+
+    entity = _make_entity(hass, device, coordinator, product, mapping)
+    add_dp(device, 111, TuyaBLEDataPointType.DT_VALUE, 600)
+    datapoint = device.datapoints[111]
+    assert datapoint is not None
+    entity._update_from_datapoint(datapoint)
+
+    assert entity.native_value == 600.0
 
 
 async def test_enum_value(hass: HomeAssistant) -> None:

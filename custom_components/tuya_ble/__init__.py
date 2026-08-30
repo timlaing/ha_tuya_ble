@@ -13,6 +13,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import entity_registry as er
 
 from .const import (
     CONF_CATEGORY,
@@ -60,10 +61,6 @@ class OfflineTuyaBLEDeviceManager(AbstractTuyaBLEDeviceManager):
     async def get_device_credentials(
         self,
         address: str,
-        force_update: bool = False,
-        save_data: bool = False,
-        uuid: str | None = None,
-        product_id: str | None = None,
     ) -> TuyaBLEDeviceCredentials | None:
         """Return the stored credentials."""
         return self._credentials
@@ -84,6 +81,25 @@ def _build_credentials_from_entry(entry: ConfigEntry) -> TuyaBLEDeviceCredential
         functions=data.get(CONF_FUNCTIONS),
         status_range=data.get(CONF_STATUS_RANGE),
     )
+
+
+@callback
+def _remove_legacy_sensor_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove sensor-domain entries superseded by correctly typed entities."""
+    registry = er.async_get(hass)
+    entries = er.async_entries_for_config_entry(registry, entry.entry_id)
+    replacement_unique_ids = {
+        entity.unique_id
+        for entity in entries
+        if entity.platform == DOMAIN and entity.domain != Platform.SENSOR
+    }
+    for entity in entries:
+        if (
+            entity.platform == DOMAIN
+            and entity.domain == Platform.SENSOR
+            and entity.unique_id in replacement_unique_ids
+        ):
+            registry.async_remove(entity.entity_id)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -137,7 +153,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         coordinator,
     )
 
+    # Remove known legacy-domain duplicates before platforms can load them.
+    # Keep the second pass for an entry's first setup with the corrected domains,
+    # when replacement registry entries do not exist until forwarding completes.
+    _remove_legacy_sensor_entities(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    _remove_legacy_sensor_entities(hass, entry)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
     async def _async_stop(event: Event) -> None:

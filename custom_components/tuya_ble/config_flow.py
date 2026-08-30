@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import (
     BluetoothServiceInfoBleak,
     async_discovered_service_info,
@@ -46,8 +47,10 @@ from .const import (
     TUYA_SCHEMA,
 )
 from .tuya_ble import SERVICE_UUID, decode_tuya_ble_advertisement
+from .tuya_ble.const import MANUFACTURER_DATA_ID
 
 UNKNOWN_ERROR = "Unknown error"
+ACTIVE_SCAN_TIMEOUT = 60
 
 
 class _QRCodeLoginMixin:
@@ -218,6 +221,101 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             description_placeholders=placeholders,
         )
 
+    async def _async_scan_device(
+        self, address: str
+    ) -> BluetoothServiceInfoBleak | None:
+        """Actively scan until Tuya service and manufacturer data are available."""
+
+        def _has_complete_identity(service_info: BluetoothServiceInfoBleak) -> bool:
+            manufacturer_data = service_info.manufacturer_data.get(MANUFACTURER_DATA_ID)
+            return (
+                SERVICE_UUID in service_info.service_data
+                and manufacturer_data is not None
+                and len(manufacturer_data) == 6 + 16
+            )
+
+        try:
+            return await bluetooth.async_process_advertisements(
+                self.hass,
+                _has_complete_identity,
+                {"address": address, "connectable": True},
+                bluetooth.BluetoothScanningMode.ACTIVE,
+                ACTIVE_SCAN_TIMEOUT,
+            )
+        except TimeoutError:
+            return None
+
+    async def _async_setup_address(
+        self, address: str
+    ) -> tuple[ConfigFlowResult | None, str | None]:
+        """Scan, decode, and create an entry for one BLE address."""
+        await self.async_set_unique_id(address, raise_on_progress=False)
+        self._abort_if_unique_id_configured()
+        if self._manager is None:
+            return self.async_abort(reason="unknown"), None
+
+        discovery_info = await self._async_scan_device(address)
+        if discovery_info is None:
+            return None, "bluetooth_scan_failed"
+
+        advertisement = decode_tuya_ble_advertisement(discovery_info.advertisement)
+        if advertisement is None:
+            return None, "identity_not_decoded"
+
+        credentials = await self._manager.get_device_credentials_by_uuid(
+            advertisement.uuid,
+            force_update=self._get_device_info_error,
+        )
+        if credentials is None:
+            self._get_device_info_error = True
+            return None, "device_not_registered"
+
+        entry_data: dict[str, Any] = {
+            CONF_ADDRESS: address,
+            CONF_UUID: credentials.uuid,
+            CONF_LOCAL_KEY: credentials.local_key,
+            "device_id": credentials.device_id,
+            CONF_CATEGORY: credentials.category,
+            CONF_PRODUCT_ID: credentials.product_id,
+            CONF_DEVICE_NAME: credentials.device_name,
+            CONF_PRODUCT_MODEL: credentials.product_model,
+            CONF_PRODUCT_NAME: credentials.product_name,
+            CONF_FUNCTIONS: credentials.functions,
+            CONF_STATUS_RANGE: credentials.status_range,
+        }
+        return (
+            self.async_create_entry(
+                title=credentials.device_name or discovery_info.name or address,
+                data=entry_data,
+            ),
+            None,
+        )
+
+    async def async_step_discovered_device(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Set up the device that initiated this Bluetooth discovery flow."""
+        if self.discovery_info is None:
+            return self.async_abort(reason="unknown")
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            result, error = await self._async_setup_address(self.discovery_info.address)
+            if result is not None:
+                return result
+            if error is not None:
+                errors["base"] = error
+
+        return self.async_show_form(
+            step_id="discovered_device",
+            data_schema=vol.Schema({}),
+            errors=errors,
+            description_placeholders={
+                CONF_ADDRESS: self.discovery_info.address,
+                "name": self.discovery_info.name or self.discovery_info.address,
+            },
+        )
+
     async def async_step_device(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -226,47 +324,13 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
 
         if user_input is not None:
             address = user_input[CONF_ADDRESS]
-            discovery_info = self._discovered_devices[address]
-            await self.async_set_unique_id(
-                discovery_info.address, raise_on_progress=False
-            )
-            self._abort_if_unique_id_configured()
-            if self._manager is None:
-                return self.async_abort(reason="unknown")
-            advertisement = decode_tuya_ble_advertisement(discovery_info.advertisement)
-            credentials = await self._manager.get_device_credentials(
-                discovery_info.address,
-                self._get_device_info_error,
-                True,
-                uuid=advertisement.uuid if advertisement else None,
-                product_id=advertisement.product_id if advertisement else None,
-            )
-            if credentials is None:
-                self._get_device_info_error = True
-                errors["base"] = "device_not_registered"
-            else:
-                entry_data: dict[str, Any] = {
-                    CONF_ADDRESS: discovery_info.address,
-                    CONF_UUID: credentials.uuid,
-                    CONF_LOCAL_KEY: credentials.local_key,
-                    "device_id": credentials.device_id,
-                    CONF_CATEGORY: credentials.category,
-                    CONF_PRODUCT_ID: credentials.product_id,
-                    CONF_DEVICE_NAME: credentials.device_name,
-                    CONF_PRODUCT_MODEL: credentials.product_model,
-                    CONF_PRODUCT_NAME: credentials.product_name,
-                    CONF_FUNCTIONS: credentials.functions,
-                    CONF_STATUS_RANGE: credentials.status_range,
-                }
-                return self.async_create_entry(
-                    title=discovery_info.name or discovery_info.address,
-                    data=entry_data,
-                )
+            result, error = await self._async_setup_address(address)
+            if result is not None:
+                return result
+            if error is not None:
+                errors["base"] = error
 
-        if discovery := self.discovery_info:
-            self._discovered_devices[discovery.address] = discovery
-        else:
-            self._refresh_discovered_devices()
+        self._refresh_discovered_devices()
 
         if not self._discovered_devices:
             return self.async_abort(reason="no_unconfigured_devices")
@@ -300,7 +364,6 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         for discovery in async_discovered_service_info(self.hass):
             if (
                 discovery.address in current_addresses
-                or discovery.address in self._discovered_devices
                 or discovery.service_data is None
                 or SERVICE_UUID not in discovery.service_data
             ):
@@ -324,6 +387,8 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         self._manager = HASSTuyaBLEDeviceManager(self.hass, self._data)
         await self._manager.initialize()
 
+        if self.discovery_info is not None:
+            return await self.async_step_discovered_device(user_input={})
         return await self.async_step_device()
 
     @staticmethod

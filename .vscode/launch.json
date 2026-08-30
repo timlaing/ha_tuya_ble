@@ -1,6 +1,14 @@
 {
   "configurations": [
     {
+      "name": "Home Assistant",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "homeassistant",
+      "justMyCode": false,
+      "args": ["-v", "-c", "${workspaceFolder}/config"]
+    },
+    {
       "name": "Attach to HA",
       "type": "debugpy",
       "request": "attach",

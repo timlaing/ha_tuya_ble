@@ -147,6 +147,7 @@ class TuyaBLEWaterValveWeatherSwitchMapping(TuyaBLESwitchMapping):
         default_factory=lambda: SwitchEntityDescription(
             key="weather_switch",
             icon="mdi:cloud-question",
+            name="Weather Switch",
         )
     )
 
@@ -392,8 +393,11 @@ mapping: dict[str, TuyaBLECategorySwitchMapping] = {
                     TuyaBLEWaterValveSwitchMapping(dp_id=1),
                     TuyaBLEWaterValveWeatherSwitchMapping(dp_id=14),
                 ]
-                for k in ["nxquc5lb", "svhikeyq"]
+                for k in ["svhikeyq"]
             },
+            "nxquc5lb": [
+                TuyaBLEWaterValveWeatherSwitchMapping(dp_id=14),
+            ],
         },
     ),
     "ggq": TuyaBLECategorySwitchMapping(

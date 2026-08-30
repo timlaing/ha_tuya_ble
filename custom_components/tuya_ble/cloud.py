@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from tuya_sharing import CustomerDevice, Manager, SharingTokenListener
@@ -17,10 +16,7 @@ from .const import (
     CONF_USER_CODE,
     TUYA_CLIENT_ID,
 )
-from .tuya_ble import (
-    AbstractTuyaBLEDeviceManager,
-    TuyaBLEDeviceCredentials,
-)
+from .tuya_ble import TuyaBLEDeviceCredentials
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -38,7 +34,7 @@ class TokenRefreshListener(SharingTokenListener):  # type: ignore[misc]
         _LOGGER.debug("Token refreshed for Tuya BLE")
 
 
-class HASSTuyaBLEDeviceManager(AbstractTuyaBLEDeviceManager):
+class HASSTuyaBLEDeviceManager:
     """Cloud connected manager of the Tuya BLE devices credentials."""
 
     def __init__(self, hass: HomeAssistant, data: dict[str, Any]) -> None:
@@ -67,15 +63,13 @@ class HASSTuyaBLEDeviceManager(AbstractTuyaBLEDeviceManager):
             len(self._manager.device_map),
         )
 
-    async def get_device_credentials(
+    async def get_device_credentials_by_uuid(
         self,
-        address: str,
+        uuid: str,
+        *,
         force_update: bool = False,
-        save_data: bool = False,
-        uuid: str | None = None,
-        product_id: str | None = None,
     ) -> TuyaBLEDeviceCredentials | None:
-        """Get credentials matching identity decoded from a BLE advertisement."""
+        """Get cloud credentials matching a decoded BLE device UUID."""
         if self._manager is None:
             await self.initialize()
 
@@ -85,31 +79,13 @@ class HASSTuyaBLEDeviceManager(AbstractTuyaBLEDeviceManager):
         if force_update:
             await self._hass.async_add_executor_job(self._manager.update_device_cache)
 
-        if not uuid:
-            _LOGGER.warning(
-                "No Tuya BLE identity decoded for address %s (uuid=%s, product_id=%s)",
-                address,
-                uuid,
-                product_id,
-            )
-            return None
-
         for device in self._manager.device_map.values():
-            if device.uuid != uuid or (
-                product_id is not None and device.product_id != product_id
-            ):
+            if device.uuid != uuid:
                 continue
-            _LOGGER.debug("Retrieved credentials for %s", address)
-            if save_data:
-                self._data[CONF_ADDRESS] = address
+            _LOGGER.debug("Retrieved credentials for Tuya UUID %s", uuid)
             return _build_credentials(device)
 
-        _LOGGER.warning(
-            "No Tuya credentials found for address %s (uuid=%s, product_id=%s)",
-            address,
-            uuid,
-            product_id,
-        )
+        _LOGGER.warning("No Tuya credentials found for UUID %s", uuid)
         return None
 
     @property
@@ -118,34 +94,35 @@ class HASSTuyaBLEDeviceManager(AbstractTuyaBLEDeviceManager):
         return self._data
 
 
-def _extract_functions(device: CustomerDevice) -> list[dict[str, str]]:
-    """Extract function specifications from a device."""
-    if not device.function:
-        return []
-    return [
-        {
-            "code": f.code,
-            "desc": f.desc,
-            "name": f.name,
-            "type": f.type,
-            "values": f.values,
-        }
-        for f in device.function.values()
-    ]
+def _extract_local_strategy(
+    device: CustomerDevice,
+    supported_codes: set[str],
+) -> list[dict[str, Any]]:
+    """Extract DP metadata for selected codes from the local strategy."""
+    result: list[dict[str, Any]] = []
+    for dp_id, strategy in (getattr(device, "local_strategy", None) or {}).items():
+        code = strategy.get("status_code")
+        config = strategy.get("config_item") or {}
+        dp_type = config.get("valueType")
+        if code not in supported_codes or not isinstance(dp_id, int) or not dp_type:
+            continue
+        result.append({
+            "code": code,
+            "dp_id": dp_id,
+            "type": dp_type,
+            "values": config.get("valueDesc"),
+        })
+    return result
 
 
-def _extract_status_range(device: CustomerDevice) -> list[dict[str, str]]:
-    """Extract status range specifications from a device."""
-    if not device.status_range:
-        return []
-    return [
-        {
-            "code": s.code,
-            "type": s.type,
-            "values": s.values,
-        }
-        for s in device.status_range.values()
-    ]
+def _extract_functions(device: CustomerDevice) -> list[dict[str, Any]]:
+    """Extract writable function specifications with their BLE DP IDs."""
+    return _extract_local_strategy(device, set(device.function or {}))
+
+
+def _extract_status_range(device: CustomerDevice) -> list[dict[str, Any]]:
+    """Extract readable status specifications with their BLE DP IDs."""
+    return _extract_local_strategy(device, set(device.status_range or {}))
 
 
 def _build_credentials(device: CustomerDevice) -> TuyaBLEDeviceCredentials:
