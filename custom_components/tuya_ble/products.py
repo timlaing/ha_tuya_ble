@@ -286,16 +286,32 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
                     name="Water valve controller",
                     watervalve=TuyaBLEWaterValveInfo(
                         switch=1,
-                        countdown=8,
+                        countdown=11,
                         weather_delay=10,
                         smart_weather=13,
-                        use_time=9,
+                        use_time=15,
+                    ),
+                )
+                for k in [
+                    "46zia2nz",
+                    "1fcnd8xk",
+                ]
+            },
+            **{
+                k: TuyaBLEProductInfo(  # Smart water timer - SOP10
+                    name="Water valve controller",
+                    watervalve=TuyaBLEWaterValveInfo(
+                        switch=1,
+                        countdown=11,
+                        weather_delay=10,
+                        smart_weather=13,
+                        use_time=15,
                     ),
                 )
                 for k in [
                     "nxquc5lb",
-                    "46zia2nz",
-                    "1fcnd8xk",
+                    "c8800fd30884068f",
+                    "so5ybnw9",
                 ]
             },
             "ldcdnigc": TuyaBLEProductInfo(

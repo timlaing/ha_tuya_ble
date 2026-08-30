@@ -1154,26 +1154,64 @@ mapping: dict[str, TuyaBLECategorySensorMapping] = {
                 ]
                 for k in ["46zia2nz", "1fcnd8xk", "svhikeyq"]
             },
-            "nxquc5lb": [  # Smart water timer - SOP10
-                TuyaBLEBatteryMapping(dp_id=7),
-                TuyaBLESensorMapping(
-                    dp_id=12,
-                    description=SensorEntityDescription(
-                        key="work_state",
-                        device_class=SensorDeviceClass.ENUM,
-                        options=["auto", "manual", "idle"],
+            **{
+                k: [  # Smart water timer - SOP10 / Water timer valve
+                    TuyaBLEBatteryMapping(dp_id=7),
+                    TuyaBLESensorMapping(
+                        dp_id=12,
+                        description=SensorEntityDescription(
+                            key="work_state",
+                        ),
                     ),
-                ),
-                TuyaBLESensorMapping(
-                    dp_id=9,
-                    description=SensorEntityDescription(
-                        key="time_use",
-                        device_class=SensorDeviceClass.DURATION,
-                        native_unit_of_measurement=UnitOfTime.SECONDS,
-                        state_class=SensorStateClass.MEASUREMENT,
+                    TuyaBLESensorMapping(
+                        dp_id=9,
+                        description=SensorEntityDescription(
+                            key="time_use",
+                            device_class=SensorDeviceClass.DURATION,
+                            native_unit_of_measurement=UnitOfTime.SECONDS,
+                            state_class=SensorStateClass.MEASUREMENT,
+                        ),
                     ),
-                ),
-            ],
+                    TuyaBLESensorMapping(
+                        dp_id=13,
+                        description=SensorEntityDescription(
+                            key="weather",
+                            icon="mdi:weather-cloudy-alert",
+                            device_class=SensorDeviceClass.ENUM,
+                            options=["no_forecast", "sunny", "cloudy", "rainy"],
+                        ),
+                    ),
+                    TuyaBLESensorMapping(
+                        dp_id=15,
+                        description=SensorEntityDescription(
+                            key="last_use_time",
+                            device_class=SensorDeviceClass.DURATION,
+                            native_unit_of_measurement=UnitOfTime.SECONDS,
+                            entity_category=EntityCategory.DIAGNOSTIC,
+                            state_class=SensorStateClass.MEASUREMENT,
+                        ),
+                    ),
+                    TuyaBLESensorMapping(
+                        dp_id=16,
+                        description=SensorEntityDescription(
+                            key="soak_schedule",
+                            entity_category=EntityCategory.DIAGNOSTIC,
+                        ),
+                    ),
+                    TuyaBLESensorMapping(
+                        dp_id=17,
+                        description=SensorEntityDescription(
+                            key="irrigation_schedule",
+                            entity_category=EntityCategory.DIAGNOSTIC,
+                        ),
+                    ),
+                ]
+                for k in [
+                    "nxquc5lb",
+                    "c8800fd30884068f",
+                    "so5ybnw9",
+                ]
+            },
         },
     ),
     "cl": TuyaBLECategorySensorMapping(

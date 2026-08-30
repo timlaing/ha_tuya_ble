@@ -64,6 +64,27 @@ mapping: dict[str, TuyaBLECategoryBinarySensorMapping] = {
             ],
         },
     ),
+    "sfkzq": TuyaBLECategoryBinarySensorMapping(
+        products={
+            **{
+                k: [
+                    TuyaBLEBinarySensorMapping(
+                        dp_id=4,
+                        description=BinarySensorEntityDescription(
+                            key="fault_code",
+                            device_class=BinarySensorDeviceClass.PROBLEM,
+                            entity_category=EntityCategory.DIAGNOSTIC,
+                        ),
+                    )
+                ]
+                for k in [
+                    "nxquc5lb",
+                    "c8800fd30884068f",
+                    "so5ybnw9",
+                ]  # Smart water timer - SOP10 / Water timer valve
+            },
+        },
+    ),
 }
 
 

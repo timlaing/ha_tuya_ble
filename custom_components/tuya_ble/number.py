@@ -538,19 +538,26 @@ mapping: dict[str, TuyaBLECategoryNumberMapping] = {
                     ),
                 ),
             ],
-            "nxquc5lb": [  # Smart water timer - SOP10
-                TuyaBLENumberMapping(
-                    dp_id=8,
-                    description=NumberEntityDescription(
-                        key="countdown",
-                        icon=ICON_TIMER,
-                        native_max_value=86400,
-                        native_min_value=60,
-                        native_unit_of_measurement=UnitOfTime.SECONDS,
-                        native_step=1,
-                    ),
-                ),
-            ],
+            **{
+                k: [
+                    TuyaBLENumberMapping(
+                        dp_id=11,
+                        description=NumberEntityDescription(
+                            key="countdown",
+                            icon=ICON_TIMER,
+                            native_max_value=86400,
+                            native_min_value=0,
+                            native_unit_of_measurement=UnitOfTime.SECONDS,
+                            native_step=1,
+                        ),
+                    )
+                ]
+                for k in [
+                    "nxquc5lb",
+                    "c8800fd30884068f",
+                    "so5ybnw9",
+                ]  # Smart water timer - SOP10 / Water timer valve
+            },
         },
     ),
     "dcb": TuyaBLECategoryNumberMapping(

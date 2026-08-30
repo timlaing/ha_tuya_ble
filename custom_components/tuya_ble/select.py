@@ -34,6 +34,7 @@ class TuyaBLESelectMapping:
     description: SelectEntityDescription
     force_add: bool = True
     dp_type: TuyaBLEDataPointType | None = None
+    values: list[str] | None = None
 
 
 class TemperatureUnitDescription(SelectEntityDescription):
@@ -233,36 +234,26 @@ mapping: dict[str, TuyaBLECategorySelectMapping] = {
     ),
     "sfkzq": TuyaBLECategorySelectMapping(
         products={
-            "nxquc5lb": [  # SOP10 water timer
-                TuyaBLESelectMapping(
-                    dp_id=10,
-                    description=SelectEntityDescription(
-                        key="weather_delay",
-                        icon=ICON_WEATHER_PARTLY_CLOUDY,
-                        options=[
-                            "off",
-                            "1h",
-                            "2h",
-                            "4h",
-                            "8h",
-                            "12h",
-                            "24h",
-                            "48h",
-                            "72h",
-                        ],
-                        entity_category=EntityCategory.CONFIG,
-                    ),
-                ),
-                TuyaBLESelectMapping(
-                    dp_id=12,
-                    description=SelectEntityDescription(
-                        key="work_state",
-                        icon="mdi:sprinkler",
-                        options=["off", "manual", "auto"],
-                        entity_category=EntityCategory.CONFIG,
-                    ),
-                ),
-            ],
+            **{
+                k: [
+                    TuyaBLESelectMapping(
+                        dp_id=10,
+                        description=SelectEntityDescription(
+                            key="weather_delay",
+                            icon=ICON_WEATHER_PARTLY_CLOUDY,
+                            options=["cancel", "24h", "48h", "72h"],
+                            entity_category=EntityCategory.CONFIG,
+                        ),
+                        values=["cancel", "24h", "48h", "72h"],
+                        dp_type=TuyaBLEDataPointType.DT_STRING,
+                    )
+                ]
+                for k in [
+                    "nxquc5lb",
+                    "c8800fd30884068f",
+                    "so5ybnw9",
+                ]  # SOP10 water timer / Water timer valve
+            },
         },
     ),
 }
@@ -304,6 +295,8 @@ class TuyaBLESelect(TuyaBLEEntity, SelectEntity):
         datapoint = self.device.datapoints[self._mapping.dp_id]
         if datapoint:
             value = str(datapoint.value)
+            if self._mapping.values and value in self._mapping.values:
+                return self._attr_options[self._mapping.values.index(value)]
             if (
                 isinstance(datapoint.value, int)
                 and datapoint.value >= 0
@@ -317,12 +310,22 @@ class TuyaBLESelect(TuyaBLEEntity, SelectEntity):
         """Change the selected option."""
         if option in self._attr_options:
             int_value = self._attr_options.index(option)
-            datapoint = self.device.datapoints.get_or_create(
-                self._mapping.dp_id,
-                TuyaBLEDataPointType.DT_ENUM,
-                int_value,
-            )
-            self.hass.create_task(datapoint.set_value(int_value))
+            if self._mapping.values:
+                datapoint = self.device.datapoints.get_or_create(
+                    self._mapping.dp_id,
+                    TuyaBLEDataPointType.DT_STRING,
+                    self._mapping.values[int_value],
+                )
+                self.hass.create_task(
+                    datapoint.set_value(self._mapping.values[int_value])
+                )
+            else:
+                datapoint = self.device.datapoints.get_or_create(
+                    self._mapping.dp_id,
+                    TuyaBLEDataPointType.DT_ENUM,
+                    int_value,
+                )
+                self.hass.create_task(datapoint.set_value(int_value))
 
 
 async def async_setup_entry(  # noqa: S7503

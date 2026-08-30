@@ -57,7 +57,7 @@ Supports lock/unlock, alarm events, fingerprint/card/password unlock tracking, a
 
 - Aldi/Ferrex Smart Water Valve (product_id `16wgjvck`).
 - Diivoo WT-05 dual water timer (product_id `fdrbxxbg`).
-- SOP10 water timer (product_id `nxquc5lb`).
+- SIP10 water timer (product_id `nxquc5lb`, `c8800fd30884068f`, `so5ybnw9`).
 - Valve controller (product_ids `svhikeyq`, `0axr5s0b`).
 - Water valve controller (product_ids `46zia2nz`, `1fcnd8xk`).
 - ZX-7378 Smart Irrigation Controller (product_id `ldcdnigc`).

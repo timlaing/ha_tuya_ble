@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog],
 and this project adheres to [Semantic Versioning].
 
+## [Unreleased]
+
+### Changed
+
+- **SOP10 config**: re-aligned the water timer device config (product IDs `nxquc5lb`, `c8800fd30884068f`, `so5ybnw9`) with the reference, moving the countdown to DP 11 (was DP 8) and last use time to DP 15; weather-delay select now uses the `cancel`/`24h`/`48h`/`72h` string values; work state is surfaced as a plain string.
+
+### Added
+
+- **SOP10**: weather forecast (DP 13), last use time (DP 15), soak schedule (DP 16) and irrigation schedule (DP 17) sensors, plus a fault-code problem binary sensor (DP 4), for water timer products `nxquc5lb`, `c8800fd30884068f` and `so5ybnw9`.
+
 ## [2.0.4] - 2026-08-30
 
 ### Changed
