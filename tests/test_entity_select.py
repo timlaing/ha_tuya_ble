@@ -25,6 +25,7 @@ def _make_entity(
     product: TuyaBLEProductInfo,
     options: list[str] | None = None,
     values: list[str] | None = None,
+    dp_type: TuyaBLEDataPointType | None = None,
 ) -> TuyaBLESelect:
     """Build a select entity with the given options."""
     mapping = select.TuyaBLESelectMapping(
@@ -33,6 +34,7 @@ def _make_entity(
             key="mode", options=options or ["off", "auto", "manual"]
         ),
         values=values,
+        dp_type=dp_type,
     )
     entity = select.TuyaBLESelect(hass, coordinator, device, product, mapping)
     entity.hass = hass
@@ -133,6 +135,44 @@ async def test_select_option_values(hass: HomeAssistant) -> None:
     assert dp is not None
     assert dp.dp_type == TuyaBLEDataPointType.DT_STRING
     assert dp.value == "24h"
+
+
+async def test_select_option_values_mapping_dp_type(hass: HomeAssistant) -> None:
+    """Verify select_option uses the mapping dp_type for string values."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(
+        hass,
+        device,
+        coordinator,
+        product,
+        options=["cancel", "24h", "48h"],
+        values=["cancel", "24h", "48h"],
+        dp_type=TuyaBLEDataPointType.DT_STRING,
+    )
+    entity.select_option("48h")
+    await hass.async_block_till_done()
+    dp = device.datapoints[3]
+    assert dp is not None
+    assert dp.dp_type == TuyaBLEDataPointType.DT_STRING
+    assert dp.value == "48h"
+
+
+async def test_select_option_mapping_dp_type(hass: HomeAssistant) -> None:
+    """Verify select_option uses the mapping dp_type without values."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(
+        hass,
+        device,
+        coordinator,
+        product,
+        dp_type=TuyaBLEDataPointType.DT_STRING,
+    )
+    entity.select_option("manual")
+    await hass.async_block_till_done()
+    dp = device.datapoints[3]
+    assert dp is not None
+    assert dp.dp_type == TuyaBLEDataPointType.DT_STRING
+    assert dp.value == "2"
 
 
 async def test_select_option_values_day_range(hass: HomeAssistant) -> None:

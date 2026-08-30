@@ -323,14 +323,14 @@ class TuyaBLESelect(TuyaBLEEntity, SelectEntity):
                 option_value = self._mapping.values[int_value]
                 datapoint = self.device.datapoints.get_or_create(
                     self._mapping.dp_id,
-                    TuyaBLEDataPointType.DT_STRING,
+                    self._mapping.dp_type or TuyaBLEDataPointType.DT_STRING,
                     option_value,
                 )
                 self.hass.create_task(datapoint.set_value(option_value))
             else:
                 datapoint = self.device.datapoints.get_or_create(
                     self._mapping.dp_id,
-                    TuyaBLEDataPointType.DT_ENUM,
+                    self._mapping.dp_type or TuyaBLEDataPointType.DT_ENUM,
                     int_value,
                 )
                 self.hass.create_task(datapoint.set_value(int_value))
