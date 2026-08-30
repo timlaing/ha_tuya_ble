@@ -1,55 +1,101 @@
 name-template: "v$RESOLVED_VERSION"
 tag-template: "v$RESOLVED_VERSION"
 
+# Categorise merged pull requests into release-note sections. Each category
+# can match on conventional-commit type and/or GitHub labels.  If a PR is not
+# labelled (or the title is not conventional), it falls through to the
+# uncategorised catch-all below.
 categories:
   - title: "🚀 Features"
-    labels:
-      - feature
-      - enhancement
+    semver-increment: "minor"
+    exclusive: true
+    when:
+      - conventional:
+          type: "feat"
+      - labels:
+          - "enhancement"
 
   - title: "🐛 Bug Fixes"
-    labels:
-      - bug
-      - fix
+    exclusive: true
+    when:
+      - conventional:
+          type: "fix"
+      - labels:
+          - "bug"
 
-  - title: "🛠 Maintenance"
-    labels:
-      - maintenance
-      - dependencies
+  - title: "🧰 Maintenance"
+    exclusive: true
+    when:
+      conventional:
+        type: "chore"
+
+  - title: "⬆️ Dependencies"
+    collapse-after: 0
+    exclusive: true
+    when:
+      labels:
+        - "dependencies"
 
   - title: "📚 Documentation"
-    labels:
-      - documentation
+    exclusive: true
+    when:
+      - conventional:
+          type: "docs"
+      - labels:
+          - "documentation"
 
-exclude-labels:
-  - skip-changelog
+  - type: "pre-exclude"
+    when:
+      label: "skip-changelog"
+
+  # Anything not matched above lands here.
+  - title: "🔧 Other Changes"
+    exclusive: true
+
+autolabeler:
+  - label: "documentation"
+    files:
+      - "*.md"
+      - "docs/**"
+    title:
+      - "/docs/i"
+  - label: "bug"
+    branch:
+      - '/fix\/.+/'
+    title:
+      - "/fix/i"
+  - label: "enhancement"
+    branch:
+      - '/feature\/.+/'
+    title:
+      - "/feat/i"
+  - label: "dependencies"
+    title:
+      - "/deps/i"
+      - "/bump/i"
+
+exclude-contributors:
+  - "dependabot[bot]"
 
 change-template: "- $TITLE (#$NUMBER) @$AUTHOR"
-
-version-resolver:
-  major:
-    labels:
-      - major
-
-  minor:
-    labels:
-      - minor
-      - feature
-      - enhancement
-
-  patch:
-    labels:
-      - patch
-      - bug
-      - fix
-
-  default: patch
+change-title-escapes: '\<*_&'
+no-changes-template: "* No notable changes in this release."
+sort-by: "title"
+sort-direction: "ascending"
 
 template: |
   ## What's Changed
 
   $CHANGES
 
-  ## Contributors
+  ## 🆕 New Contributors
+
+  $NEW_CONTRIBUTORS
+
+  ## 👥 Contributors
 
   $CONTRIBUTORS
+
+  **Change Log**: [CHANGELOG.md](https://github.com/$OWNER/$REPOSITORY/blob/v$RESOLVED_VERSION/CHANGELOG.md)
+
+  **Full Changelog**: [$PREVIOUS_TAG...v$RESOLVED_VERSION](https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION)
