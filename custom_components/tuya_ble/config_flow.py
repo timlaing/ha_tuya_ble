@@ -221,27 +221,29 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             description_placeholders=placeholders,
         )
 
+    @staticmethod
+    def _has_complete_identity(service_info: BluetoothServiceInfoBleak) -> bool:
+        """Return True when the scan response carries a usable Tuya identity."""
+        manufacturer_data = service_info.manufacturer_data
+        if service_info.service_data is None or manufacturer_data is None:
+            return False
+        manufacturer_data_raw = manufacturer_data.get(MANUFACTURER_DATA_ID)
+        return (
+            SERVICE_UUID in service_info.service_data
+            and manufacturer_data_raw is not None
+            and len(manufacturer_data_raw) > 6
+            and (len(manufacturer_data_raw) - 6) % 16 == 0
+        )
+
     async def _async_scan_device(
         self, address: str
     ) -> BluetoothServiceInfoBleak | None:
         """Actively scan until Tuya service and manufacturer data are available."""
 
-        def _has_complete_identity(service_info: BluetoothServiceInfoBleak) -> bool:
-            manufacturer_data = service_info.manufacturer_data
-            if service_info.service_data is None or manufacturer_data is None:
-                return False
-            manufacturer_data_raw = manufacturer_data.get(MANUFACTURER_DATA_ID)
-            return (
-                SERVICE_UUID in service_info.service_data
-                and manufacturer_data_raw is not None
-                and len(manufacturer_data_raw) > 6
-                and (len(manufacturer_data_raw) - 6) % 16 == 0
-            )
-
         try:
             return await bluetooth.async_process_advertisements(
                 self.hass,
-                _has_complete_identity,
+                self._has_complete_identity,
                 {"address": address, "connectable": True},
                 bluetooth.BluetoothScanningMode.ACTIVE,
                 ACTIVE_SCAN_TIMEOUT,
