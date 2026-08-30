@@ -19,6 +19,7 @@ from homeassistant.const import (
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     EntityCategory,
     UnitOfTemperature,
+    UnitOfTime,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -40,6 +41,15 @@ ICON_BATTERY = "mdi:battery"
 ICON_BATTERY_CHECK = "mdi:battery-check"
 ICON_COUNTER = "mdi:counter"
 ICON_FINGERPRINT = "mdi:fingerprint"
+
+UNIT_CONVERSIONS: dict[str, str] = {
+    "%": PERCENTAGE,
+    "s": UnitOfTime.SECONDS,
+    "min": UnitOfTime.MINUTES,
+    "h": UnitOfTime.HOURS,
+    "°C": UnitOfTemperature.CELSIUS,
+    "℃": UnitOfTemperature.CELSIUS,
+}
 
 
 TuyaBLESensorIsAvailable = Callable[["TuyaBLESensor", TuyaBLEProductInfo], bool] | None
@@ -106,7 +116,11 @@ def _sensor_description(desc: EntityDescriptor) -> SensorEntityDescription:
             if desc.device_class is not None
             else None
         ),
-        native_unit_of_measurement=desc.unit,
+        native_unit_of_measurement=(
+            UNIT_CONVERSIONS.get(desc.unit, desc.unit)
+            if desc.unit is not None
+            else None
+        ),
         state_class=(
             SensorStateClass(desc.state_class) if desc.state_class is not None else None
         ),
