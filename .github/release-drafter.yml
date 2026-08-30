@@ -8,6 +8,7 @@ tag-template: "v$RESOLVED_VERSION"
 categories:
   - title: "🚀 Features"
     semver-increment: "minor"
+    exclusive: true
     when:
       - conventional:
           type: "feat"
@@ -16,6 +17,7 @@ categories:
           - "enhancement"
 
   - title: "🐛 Bug Fixes"
+    exclusive: true
     when:
       - conventional:
           type: "fix"
@@ -24,6 +26,7 @@ categories:
           - "fix"
 
   - title: "🧰 Maintenance"
+    exclusive: true
     when:
       - conventional:
           type: "chore"
@@ -33,11 +36,13 @@ categories:
 
   - title: "⬆️ Dependencies"
     collapse-after: 0
+    exclusive: true
     when:
       labels:
         - "dependencies"
 
   - title: "📚 Documentation"
+    exclusive: true
     when:
       - conventional:
           type: "docs"
@@ -46,6 +51,7 @@ categories:
 
   # Anything not matched above lands here.
   - title: "🔧 Other Changes"
+    exclusive: true
 
   - type: "pre-exclude"
     when:
