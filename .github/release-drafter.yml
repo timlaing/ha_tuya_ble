@@ -98,4 +98,4 @@ template: |
 
   **Full Changelog**: [$PREVIOUS_TAG...v$RESOLVED_VERSION](https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION)
 
-  **Change Log**: [CHANGELOG.md](https://github.com/$OWNER/$REPOSITORY/blob/main/CHANGELOG.md)
+  **Change Log**: [CHANGELOG.md](https://github.com/$OWNER/$REPOSITORY/blob/v$RESOLVED_VERSION/CHANGELOG.md)
