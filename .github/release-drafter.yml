@@ -44,13 +44,13 @@ categories:
       - labels:
           - "documentation"
 
-  # Anything not matched above lands here.
-  - title: "🔧 Other Changes"
-    exclusive: true
-
   - type: "pre-exclude"
     when:
       label: "skip-changelog"
+
+  # Anything not matched above lands here.
+  - title: "🔧 Other Changes"
+    exclusive: true
 
 autolabeler:
   - label: "documentation"
@@ -61,12 +61,12 @@ autolabeler:
       - "/docs/i"
   - label: "bug"
     branch:
-      - "/fix\/.+/"
+      - '/fix\/.+/'
     title:
       - "/fix/i"
   - label: "enhancement"
     branch:
-      - "/feature\/.+/"
+      - '/feature\/.+/'
     title:
       - "/feat/i"
   - label: "dependencies"
