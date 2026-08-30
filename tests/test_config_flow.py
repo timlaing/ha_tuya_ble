@@ -621,6 +621,58 @@ async def test_async_scan_device_rejects_non_block_aligned_manufacturer_bytes(
     assert result is cast(Any, discovery)
 
 
+async def test_async_scan_device_tolerates_missing_manufacturer_data(
+    hass: HomeAssistant,
+) -> None:
+    """Predicate must not raise when manufacturer_data is None during scanning."""
+    flow = build_flow(hass)
+    discovery = FakeDiscovery()
+    discovery.manufacturer_data = None
+
+    async def process_advertisements(
+        hass_arg: HomeAssistant,
+        predicate: Any,
+        matcher: dict[str, Any],
+        mode: Any,
+        timeout: float,
+    ) -> FakeDiscovery:
+        assert predicate(discovery) is False
+        return discovery
+
+    with patch(
+        "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements",
+        side_effect=process_advertisements,
+    ):
+        result = await flow._async_scan_device(discovery.address)
+    assert result is cast(Any, discovery)
+
+
+async def test_async_scan_device_tolerates_missing_service_data(
+    hass: HomeAssistant,
+) -> None:
+    """Predicate must not raise when service_data is None during scanning."""
+    flow = build_flow(hass)
+    discovery = FakeDiscovery()
+    discovery.service_data = None
+
+    async def process_advertisements(
+        hass_arg: HomeAssistant,
+        predicate: Any,
+        matcher: dict[str, Any],
+        mode: Any,
+        timeout: float,
+    ) -> FakeDiscovery:
+        assert predicate(discovery) is False
+        return discovery
+
+    with patch(
+        "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements",
+        side_effect=process_advertisements,
+    ):
+        result = await flow._async_scan_device(discovery.address)
+    assert result is cast(Any, discovery)
+
+
 async def test_async_step_bluetooth_discovered(hass: HomeAssistant) -> None:
     """Test the bluetooth discovery step."""
     flow = build_flow(hass)

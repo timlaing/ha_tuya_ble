@@ -227,12 +227,15 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         """Actively scan until Tuya service and manufacturer data are available."""
 
         def _has_complete_identity(service_info: BluetoothServiceInfoBleak) -> bool:
-            manufacturer_data = service_info.manufacturer_data.get(MANUFACTURER_DATA_ID)
+            manufacturer_data = service_info.manufacturer_data
+            if service_info.service_data is None or manufacturer_data is None:
+                return False
+            raw = manufacturer_data.get(MANUFACTURER_DATA_ID)
             return (
                 SERVICE_UUID in service_info.service_data
-                and manufacturer_data is not None
-                and len(manufacturer_data) > 6
-                and (len(manufacturer_data) - 6) % 16 == 0
+                and raw is not None
+                and len(raw) > 6
+                and (len(raw) - 6) % 16 == 0
             )
 
         try:
