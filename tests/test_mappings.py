@@ -428,10 +428,20 @@ def test_sop10_water_timer_has_one_entity_per_datapoint_role() -> None:
     """Keep SOP10 status and control datapoints in their proper domains."""
     device = cast(TuyaBLEDevice, FakeDevice("sfkzq", "nxquc5lb"))
 
-    assert [item.dp_id for item in sensor.get_mapping_by_device(device)] == [7, 12, 9]
-    assert [item.dp_id for item in number.get_mapping_by_device(device)] == [8]
+    assert [item.dp_id for item in sensor.get_mapping_by_device(device)] == [
+        7,
+        12,
+        9,
+        13,
+        15,
+        16,
+        17,
+    ]
+    assert [item.dp_id for item in number.get_mapping_by_device(device)] == [11]
     assert [item.dp_id for item in switch.get_mapping_by_device(device)] == [14]
     assert [item.dp_id for item in valve.get_mapping_by_device(device)] == [1]
+    assert [item.dp_id for item in select.get_mapping_by_device(device)] == [10]
+    assert [item.dp_id for item in binary_sensor.get_mapping_by_device(device)] == [4]
 
 
 def test_all_product_mappings_use_registered_category() -> None:

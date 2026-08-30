@@ -125,6 +125,8 @@ mapping: dict[str, TuyaBLECategoryValveMapping] = {
                 ]
                 for k in [
                     "nxquc5lb",
+                    "c8800fd30884068f",
+                    "so5ybnw9",
                     "16wgjvck",
                     "0axr5s0b",
                     "svhikeyq",
