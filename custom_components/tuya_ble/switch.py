@@ -431,7 +431,14 @@ mapping: dict[str, TuyaBLECategorySwitchMapping] = {
                         ),
                     ),
                 ]
-                for k in ["hfgdqhho", "qycalacn", "fnlw6npo", "jjqi2syk"]
+                for k in [
+                    "hfgdqhho",
+                    "qycalacn",
+                    "fnlw6npo",
+                    "jjqi2syk",
+                    "fdrbxxbg",
+                    "jntxv3q4",
+                ]  # shared ggq water valve mapping
             },
         },
     ),

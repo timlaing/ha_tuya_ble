@@ -88,26 +88,14 @@ mapping: dict[str, TuyaBLECategoryValveMapping] = {
                         ),
                     ),
                 ]
-                for k in ["qycalacn", "fnlw6npo", "jjqi2syk"]
+                for k in [
+                    "qycalacn",
+                    "fnlw6npo",
+                    "jjqi2syk",
+                    "fdrbxxbg",
+                    "jntxv3q4",
+                ]  # shared ggq dual-outlet valve mapping
             },
-            "fdrbxxbg": [  # Diivoo WT-05 dual water timer
-                TuyaBLEValveMapping(
-                    dp_id=105,
-                    description=ValveEntityDescription(
-                        key="valve_zone1",
-                        device_class=ValveDeviceClass.WATER,
-                        entity_registry_enabled_default=True,
-                    ),
-                ),
-                TuyaBLEValveMapping(
-                    dp_id=104,
-                    description=ValveEntityDescription(
-                        key="valve_zone2",
-                        device_class=ValveDeviceClass.WATER,
-                        entity_registry_enabled_default=True,
-                    ),
-                ),
-            ],
         },
     ),
     "sfkzq": TuyaBLECategoryValveMapping(

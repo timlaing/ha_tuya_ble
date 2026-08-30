@@ -328,7 +328,6 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
                 for k in [
                     "6pahkcau",
                     "hfgdqhho",
-                    "qycalacn",
                     "fnlw6npo",
                     "jjqi2syk",
                 ]
@@ -336,6 +335,14 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
             "fdrbxxbg": TuyaBLEProductInfo(
                 name="Diivoo WT-05 dual water timer",
                 manufacturer="Diivoo",
+            ),
+            "jntxv3q4": TuyaBLEProductInfo(
+                name="Dual water timer",
+                manufacturer="Insoma",
+            ),
+            "qycalacn": TuyaBLEProductInfo(
+                name="Dual water timer",
+                manufacturer="Yohgee",
             ),
         },
     ),

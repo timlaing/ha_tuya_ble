@@ -190,46 +190,51 @@ mapping: dict[str, TuyaBLECategorySelectMapping] = {
     ),
     "ggq": TuyaBLECategorySelectMapping(
         products={
-            "fdrbxxbg": [  # Diivoo WT-05 dual water timer
-                TuyaBLESelectMapping(
-                    dp_id=117,
-                    description=SelectEntityDescription(
-                        key="weather_delay_zone1",
-                        icon=ICON_WEATHER_PARTLY_CLOUDY,
-                        options=[
-                            "off",
-                            "1h",
-                            "2h",
-                            "4h",
-                            "8h",
-                            "12h",
-                            "24h",
-                            "48h",
-                            "72h",
-                        ],
-                        entity_category=EntityCategory.CONFIG,
+            **{
+                k: [  # Dual water timer (Diivoo WT-05 family)
+                    TuyaBLESelectMapping(
+                        dp_id=117,
+                        description=SelectEntityDescription(
+                            key="weather_delay_zone1",
+                            icon=ICON_WEATHER_PARTLY_CLOUDY,
+                            options=[
+                                "Off",
+                                "1 day",
+                                "2 days",
+                                "3 days",
+                                "4 days",
+                                "5 days",
+                                "6 days",
+                                "7 days",
+                            ],
+                            entity_category=EntityCategory.CONFIG,
+                        ),
+                        values=["OFF", "1", "2", "3", "4", "5", "6", "7"],
+                        dp_type=TuyaBLEDataPointType.DT_STRING,
                     ),
-                ),
-                TuyaBLESelectMapping(
-                    dp_id=114,
-                    description=SelectEntityDescription(
-                        key="weather_delay_zone2",
-                        icon=ICON_WEATHER_PARTLY_CLOUDY,
-                        options=[
-                            "off",
-                            "1h",
-                            "2h",
-                            "4h",
-                            "8h",
-                            "12h",
-                            "24h",
-                            "48h",
-                            "72h",
-                        ],
-                        entity_category=EntityCategory.CONFIG,
+                    TuyaBLESelectMapping(
+                        dp_id=114,
+                        description=SelectEntityDescription(
+                            key="weather_delay_zone2",
+                            icon=ICON_WEATHER_PARTLY_CLOUDY,
+                            options=[
+                                "Off",
+                                "1 day",
+                                "2 days",
+                                "3 days",
+                                "4 days",
+                                "5 days",
+                                "6 days",
+                                "7 days",
+                            ],
+                            entity_category=EntityCategory.CONFIG,
+                        ),
+                        values=["OFF", "1", "2", "3", "4", "5", "6", "7"],
+                        dp_type=TuyaBLEDataPointType.DT_STRING,
                     ),
-                ),
-            ],
+                ]
+                for k in ["fdrbxxbg", "jntxv3q4", "qycalacn"]
+            },
         },
     ),
     "sfkzq": TuyaBLECategorySelectMapping(
@@ -295,8 +300,10 @@ class TuyaBLESelect(TuyaBLEEntity, SelectEntity):
         datapoint = self.device.datapoints[self._mapping.dp_id]
         if datapoint:
             value = str(datapoint.value)
-            if self._mapping.values and value in self._mapping.values:
-                return self._attr_options[self._mapping.values.index(value)]
+            if self._mapping.values:
+                for index, mapped_value in enumerate(self._mapping.values):
+                    if mapped_value == value and index < len(self._attr_options):
+                        return self._attr_options[index]
             if (
                 isinstance(datapoint.value, int)
                 and datapoint.value >= 0
@@ -311,18 +318,19 @@ class TuyaBLESelect(TuyaBLEEntity, SelectEntity):
         if option in self._attr_options:
             int_value = self._attr_options.index(option)
             if self._mapping.values:
+                if int_value >= len(self._mapping.values):
+                    return
+                option_value = self._mapping.values[int_value]
                 datapoint = self.device.datapoints.get_or_create(
                     self._mapping.dp_id,
-                    TuyaBLEDataPointType.DT_STRING,
-                    self._mapping.values[int_value],
+                    self._mapping.dp_type or TuyaBLEDataPointType.DT_STRING,
+                    option_value,
                 )
-                self.hass.create_task(
-                    datapoint.set_value(self._mapping.values[int_value])
-                )
+                self.hass.create_task(datapoint.set_value(option_value))
             else:
                 datapoint = self.device.datapoints.get_or_create(
                     self._mapping.dp_id,
-                    TuyaBLEDataPointType.DT_ENUM,
+                    self._mapping.dp_type or TuyaBLEDataPointType.DT_ENUM,
                     int_value,
                 )
                 self.hass.create_task(datapoint.set_value(int_value))

@@ -420,32 +420,35 @@ mapping: dict[str, TuyaBLECategoryNumberMapping] = {
                         ),
                     ),
                 ]
-                for k in ["hfgdqhho", "qycalacn", "fnlw6npo", "jjqi2syk"]
+                for k in ["hfgdqhho", "fnlw6npo", "jjqi2syk"]
             },
-            "fdrbxxbg": [  # Diivoo WT-05 dual water timer
-                TuyaBLENumberMapping(
-                    dp_id=106,
-                    description=NumberEntityDescription(
-                        key="countdown_zone1",
-                        icon=ICON_TIMER,
-                        native_max_value=1440,
-                        native_min_value=1,
-                        native_unit_of_measurement=UnitOfTime.MINUTES,
-                        native_step=1,
+            **{
+                k: [  # Dual water timer (Diivoo WT-05 family)
+                    TuyaBLENumberMapping(
+                        dp_id=106,
+                        description=NumberEntityDescription(
+                            key="countdown_zone1",
+                            icon=ICON_TIMER,
+                            native_max_value=1440,
+                            native_min_value=0,
+                            native_unit_of_measurement=UnitOfTime.MINUTES,
+                            native_step=1,
+                        ),
                     ),
-                ),
-                TuyaBLENumberMapping(
-                    dp_id=103,
-                    description=NumberEntityDescription(
-                        key="countdown_zone2",
-                        icon=ICON_TIMER,
-                        native_max_value=1440,
-                        native_min_value=1,
-                        native_unit_of_measurement=UnitOfTime.MINUTES,
-                        native_step=1,
+                    TuyaBLENumberMapping(
+                        dp_id=103,
+                        description=NumberEntityDescription(
+                            key="countdown_zone2",
+                            icon=ICON_TIMER,
+                            native_max_value=1440,
+                            native_min_value=0,
+                            native_unit_of_measurement=UnitOfTime.MINUTES,
+                            native_step=1,
+                        ),
                     ),
-                ),
-            ],
+                ]
+                for k in ["fdrbxxbg", "jntxv3q4", "qycalacn"]
+            },
         },
     ),
     "sfkzq": TuyaBLECategoryNumberMapping(
