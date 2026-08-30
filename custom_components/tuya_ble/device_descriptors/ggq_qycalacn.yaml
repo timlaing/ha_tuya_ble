@@ -65,7 +65,7 @@ entities:
         - 6 days
         - 7 days
       values:
-        - OFF
+        - "OFF"
         - "1"
         - "2"
         - "3"
@@ -88,7 +88,7 @@ entities:
         - 6 days
         - 7 days
       values:
-        - OFF
+        - "OFF"
         - "1"
         - "2"
         - "3"
