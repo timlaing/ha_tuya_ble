@@ -7,6 +7,7 @@ from collections.abc import Callable
 import hashlib
 import logging
 import secrets
+import struct
 from struct import pack, unpack
 import time
 from typing import Any, Protocol
@@ -825,3 +826,15 @@ class TuyaBLEProtocol(Protocol):
 
         if len(self._input_buffer) == self._input_expected_length:
             self._parse_input()
+
+    def _safe_notification_handler(self, sender: Any, data: bytearray) -> None:
+        """Process a BLE notification without leaking protocol errors to Bleak."""
+        try:
+            self._notification_handler(sender, data)
+        except (TuyaBLEError, ValueError, struct.error, IndexError) as err:
+            self._clean_input()
+            _LOGGER.warning(
+                "%s: Ignoring malformed BLE notification: %s",
+                self.address,
+                err,
+            )

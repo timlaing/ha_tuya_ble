@@ -331,6 +331,50 @@ async def test_length_error(h: ProtocolHarness) -> None:
         h.notify(msg)
 
 
+async def test_safe_notification_handler_discards_length_error(
+    h: ProtocolHarness, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Do not leak malformed device frames into the BLE transport callback."""
+    raw = pack(">IIHH", 1, 0, TuyaBLECode.FUN_SENDER_DEVICE_STATUS.value, 50)
+    raw += b"\x00"
+    while len(raw) % 16 != 0:
+        raw += b"\x00"
+    msg = frame_packet0(encrypt_raw(session_key(h), 5, bytes(raw)))
+
+    h.device._safe_notification_handler(None, bytearray(msg))
+
+    assert h.device._input_buffer is None
+    assert "Ignoring malformed BLE notification" in caplog.text
+
+
+async def test_safe_notification_handler_discards_non_aligned_payload(
+    h: ProtocolHarness, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A device-reported length that isn't block-aligned must not leak a ValueError."""
+    raw = pack(">IIHH", 1, 0, TuyaBLECode.FUN_SENDER_DEVICE_STATUS.value, 0)
+    raw += b"\x00" * 8
+    payload = b"\x05" + b"\x00" * 16 + bytes(raw)[:8]
+    msg = frame_packet0(payload)
+
+    h.device._safe_notification_handler(None, bytearray(msg))
+
+    assert h.device._input_buffer is None
+    assert "Ignoring malformed BLE notification" in caplog.text
+
+
+async def test_safe_notification_handler_discards_short_decrypted_buffer(
+    h: ProtocolHarness, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A decrypted buffer shorter than the header must not leak a struct.error."""
+    payload = b"\x05" + b"\x00" * 16
+    msg = frame_packet0(payload)
+
+    h.device._safe_notification_handler(None, bytearray(msg))
+
+    assert h.device._input_buffer is None
+    assert "Ignoring malformed BLE notification" in caplog.text
+
+
 def _split_encrypted(encrypted: bytes, chunk: int = 12) -> list[bytes]:
     """Split encrypted bytes into chunks."""
     return [encrypted[i : i + chunk] for i in range(0, len(encrypted), chunk)]

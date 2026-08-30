@@ -40,10 +40,6 @@ class FakeBLEManager(AbstractTuyaBLEDeviceManager):
     async def get_device_credentials(
         self,
         address: str,
-        force_update: bool = False,
-        save_data: bool = False,
-        uuid: str | None = None,
-        product_id: str | None = None,
     ) -> TuyaBLEDeviceCredentials | None:
         """Get the fake device credentials for the given address."""
         self.address = address

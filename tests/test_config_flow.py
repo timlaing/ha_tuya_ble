@@ -1,11 +1,13 @@
 """Unit tests for the Tuya BLE config flow and options flow."""
 
+# cspell:ignore dbca
+
 # pylint: disable=protected-access
 from __future__ import annotations
 
 import hashlib
 from typing import Any, cast
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from Crypto.Cipher import AES
 from homeassistant.const import CONF_ADDRESS
@@ -17,7 +19,15 @@ from custom_components.tuya_ble.config_flow import (
     TuyaBLEConfigFlow,
     TuyaBLEOptionsFlow,
 )
-from custom_components.tuya_ble.const import CONF_USER_CODE, DOMAIN
+from custom_components.tuya_ble.const import (
+    CONF_CATEGORY,
+    CONF_DEVICE_NAME,
+    CONF_PRODUCT_ID,
+    CONF_PRODUCT_NAME,
+    CONF_USER_CODE,
+    CONF_UUID,
+    DOMAIN,
+)
 from custom_components.tuya_ble.tuya_ble import SERVICE_UUID, TuyaBLEDeviceCredentials
 from custom_components.tuya_ble.tuya_ble.const import MANUFACTURER_DATA_ID
 from tests.conftest import FakeAdvertisementData
@@ -64,22 +74,20 @@ class FakeManager:
     def __init__(self, credentials: TuyaBLEDeviceCredentials | None = None) -> None:
         self.credentials = credentials
         self.initialized = False
-        self.calls: list[tuple[Any, Any, Any, Any, Any]] = []
+        self.calls: list[tuple[str, bool]] = []
 
     async def initialize(self) -> None:
         """Mark the fake manager as initialized."""
         self.initialized = True
 
-    async def get_device_credentials(
+    async def get_device_credentials_by_uuid(
         self,
-        address: str,
+        uuid: str,
+        *,
         force_update: bool = False,
-        save_data: bool = False,
-        uuid: str | None = None,
-        product_id: str | None = None,
     ) -> TuyaBLEDeviceCredentials | None:
         """Return the fake credentials and record the call."""
-        self.calls.append((address, force_update, save_data, uuid, product_id))
+        self.calls.append((uuid, force_update))
         return self.credentials
 
 
@@ -108,6 +116,28 @@ class FakeDiscovery:
             service_data=self.service_data,
             manufacturer_data=self.manufacturer_data,
         )
+
+
+def captured_irrigation_discovery() -> FakeDiscovery:
+    """Build the exact advertisement captured from the Diivoo timer."""
+    discovery = FakeDiscovery(
+        address="DC:23:4D:CD:E0:34",
+        name="DC:23:4D:CD:E0:34",
+    )
+    discovery.service_data = {SERVICE_UUID: bytes.fromhex("006242189ef70302b3")}
+    discovery.manufacturer_data = {
+        MANUFACTURER_DATA_ID: bytes.fromhex(
+            "80030000010061ec486560c8075c37cf692d43faefff"
+        )
+    }
+    discovery.advertisement = FakeAdvertisementData(
+        rssi=-76,
+        service_data=discovery.service_data,
+        manufacturer_data=discovery.manufacturer_data,
+        service_uuids=[SERVICE_UUID],
+        tx_power=-127,
+    )
+    return discovery
 
 
 def build_flow(
@@ -266,6 +296,46 @@ async def test_async_step_scan_success(hass: HomeAssistant) -> None:
     assert manager.initialized is True
 
 
+async def test_bluetooth_flow_sets_up_discovery_directly_after_login(
+    hass: HomeAssistant,
+) -> None:
+    """Set up the captured Diivoo timer without offering a device list."""
+    flow = build_flow(hass)
+    flow.context = {}
+    discovery = captured_irrigation_discovery()
+    flow.discovery_info = discovery  # type: ignore[assignment]
+    manager = FakeManager(
+        credentials=TuyaBLEDeviceCredentials(
+            uuid="0237f144b99142e6",
+            local_key="test-local-key",
+            device_id="bfd2847bb05f5dbca9t4uj",
+            category="ggq",
+            product_id="fdrbxxbg",
+            device_name="Irrigation (Irrigation - Main)",
+            product_model=None,
+            product_name="Diivoo smart dual water timer",
+        )
+    )
+    with (
+        patch(
+            "custom_components.tuya_ble.config_flow.HASSTuyaBLEDeviceManager",
+            return_value=manager,
+        ),
+        patch.object(flow, "_async_scan_device", return_value=discovery),
+    ):
+        result = await flow.async_step_scan(user_input={})
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Irrigation (Irrigation - Main)"
+    assert manager.calls == [("0237f144b99142e6", False)]
+    entry_data = cast(dict[str, Any], result["data"])
+    assert entry_data[CONF_UUID] == "0237f144b99142e6"
+    assert entry_data["device_id"] == "bfd2847bb05f5dbca9t4uj"
+    assert entry_data[CONF_CATEGORY] == "ggq"
+    assert entry_data[CONF_PRODUCT_ID] == "fdrbxxbg"
+    assert entry_data[CONF_DEVICE_NAME] == "Irrigation (Irrigation - Main)"
+    assert entry_data[CONF_PRODUCT_NAME] == "Diivoo smart dual water timer"
+
+
 async def test_is_matching(hass: HomeAssistant) -> None:
     """Test that flows with identical discovery info match."""
     flow1 = build_flow(hass)
@@ -341,9 +411,11 @@ async def test_async_step_device_setup(hass: HomeAssistant) -> None:
     d = FakeDiscovery("AA:BB:CC:DD:EE:FF")
     flow._discovered_devices[d.address] = d  # type: ignore[assignment]
     flow._data = {}
-    result = await flow.async_step_device(user_input={CONF_ADDRESS: d.address})
+    with patch.object(flow, "_async_scan_device", return_value=d):
+        result = await flow.async_step_device(user_input={CONF_ADDRESS: d.address})
     assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert manager.calls == [(d.address, False, True, "1234567890abcdef", "prod")]
+    assert result["title"] == "Device"
+    assert manager.calls == [("1234567890abcdef", False)]
 
 
 async def test_async_step_device_no_credentials(hass: HomeAssistant) -> None:
@@ -360,6 +432,7 @@ async def test_async_step_device_no_credentials(hass: HomeAssistant) -> None:
             return_value=[],
         ),
         patch.object(flow, "_async_current_ids", return_value=set()),
+        patch.object(flow, "_async_scan_device", return_value=d),
     ):
         result = await flow.async_step_device(user_input={CONF_ADDRESS: d.address})
     assert result["type"] == FlowResultType.FORM
@@ -407,26 +480,197 @@ async def test_async_step_device_form(hass: HomeAssistant) -> None:
     assert d.address in cast(Any, result["data_schema"]).schema[CONF_ADDRESS].container
 
 
-async def test_async_step_device_uses_discovery_info(hass: HomeAssistant) -> None:
-    """Test the device step auto-selecting discovery info."""
+async def test_discovered_device_step_has_no_device_selector(
+    hass: HomeAssistant,
+) -> None:
+    """Keep a Bluetooth-triggered flow locked to its discovered address."""
     flow = build_flow(hass)
     flow.context = {}
     flow._manager = FakeManager(credentials=None)  # type: ignore[assignment]
     d = FakeDiscovery("AA:BB:CC:DD:EE:FF")
     flow.discovery_info = d  # type: ignore[assignment]
-    flow._discovered_devices = {}
-    flow._unique_id_added = False  # type: ignore[attr-defined]
-    with (
-        patch(
-            "custom_components.tuya_ble.config_flow.async_discovered_service_info",
-            return_value=[],
-        ),
-        patch.object(flow, "_async_current_ids", return_value=set()),
-    ):
-        result = await flow.async_step_device(user_input=None)
+    result = await flow.async_step_discovered_device(user_input=None)
     assert result["type"] == FlowResultType.FORM
-    assert result["step_id"] == "device"
-    assert flow._discovered_devices[d.address] is d  # type: ignore[comparison-overlap]
+    assert result["step_id"] == "discovered_device"
+    assert not cast(Any, result["data_schema"]).schema
+
+
+async def test_discovered_device_setup_scans_original_address(
+    hass: HomeAssistant,
+) -> None:
+    """Set up a Bluetooth-triggered flow without offering other devices."""
+    flow = build_flow(hass)
+    flow.context = {}
+    credentials = TuyaBLEDeviceCredentials(
+        uuid="1234567890abcdef",
+        local_key="key",
+        device_id="dev",
+        category="wk",
+        product_id="prod",
+        device_name="Cloud name",
+        product_model=None,
+        product_name="Cloud product",
+    )
+    flow._manager = FakeManager(credentials)  # type: ignore[assignment]
+    discovery = FakeDiscovery("AA:BB:CC:DD:EE:FF")
+    flow.discovery_info = discovery  # type: ignore[assignment]
+    scan = AsyncMock(return_value=discovery)
+    with patch.object(flow, "_async_scan_device", scan):
+        result = await flow.async_step_discovered_device(user_input={})
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Cloud name"
+    scan.assert_awaited_once_with(discovery.address)
+
+
+async def test_discovered_device_scan_failure_is_retry_form(
+    hass: HomeAssistant,
+) -> None:
+    """Retry only the original discovery when its active scan times out."""
+    flow = build_flow(hass)
+    flow.context = {}
+    flow._manager = FakeManager()  # type: ignore[assignment]
+    flow.discovery_info = FakeDiscovery()  # type: ignore[assignment]
+    with patch.object(flow, "_async_scan_device", return_value=None):
+        result = await flow.async_step_discovered_device(user_input={})
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "discovered_device"
+    assert result["errors"]["base"] == "bluetooth_scan_failed"  # type: ignore[index]
+
+
+async def test_async_scan_device_waits_for_complete_tuya_identity(
+    hass: HomeAssistant,
+) -> None:
+    """Request active scanning and accept the complete Tuya scan response."""
+    flow = build_flow(hass)
+    discovery = captured_irrigation_discovery()
+
+    async def process_advertisements(
+        hass_arg: HomeAssistant,
+        predicate: Any,
+        matcher: dict[str, Any],
+        mode: Any,
+        timeout: float,
+    ) -> FakeDiscovery:
+        assert hass_arg is hass
+        assert predicate(discovery) is True
+        assert matcher == {"address": discovery.address, "connectable": True}
+        assert timeout == 60
+        return discovery
+
+    with patch(
+        "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements",
+        side_effect=process_advertisements,
+    ):
+        result = await flow._async_scan_device(discovery.address)
+    assert result is cast(Any, discovery)
+
+
+async def test_async_scan_device_accepts_block_aligned_extra_manufacturer_bytes(
+    hass: HomeAssistant,
+) -> None:
+    """Scan predicate must accept manufacturer payloads with extra aligned bytes."""
+    flow = build_flow(hass)
+    discovery = FakeDiscovery()
+    discovery.manufacturer_data = {
+        MANUFACTURER_DATA_ID: b"\x80\x02" + b"\x00" * 4 + b"\x00" * 48
+    }
+
+    async def process_advertisements(
+        hass_arg: HomeAssistant,
+        predicate: Any,
+        matcher: dict[str, Any],
+        mode: Any,
+        timeout: float,
+    ) -> FakeDiscovery:
+        assert predicate(discovery) is True
+        return discovery
+
+    with patch(
+        "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements",
+        side_effect=process_advertisements,
+    ):
+        result = await flow._async_scan_device(discovery.address)
+    assert result is cast(Any, discovery)
+
+
+async def test_async_scan_device_rejects_non_block_aligned_manufacturer_bytes(
+    hass: HomeAssistant,
+) -> None:
+    """Scan predicate must reject manufacturer payloads that aren't block aligned."""
+    flow = build_flow(hass)
+    discovery = FakeDiscovery()
+    discovery.manufacturer_data = {
+        MANUFACTURER_DATA_ID: b"\x80\x02" + b"\x00" * 4 + b"\x00" * 17
+    }
+
+    async def process_advertisements(
+        hass_arg: HomeAssistant,
+        predicate: Any,
+        matcher: dict[str, Any],
+        mode: Any,
+        timeout: float,
+    ) -> FakeDiscovery:
+        assert predicate(discovery) is False
+        return discovery
+
+    with patch(
+        "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements",
+        side_effect=process_advertisements,
+    ):
+        result = await flow._async_scan_device(discovery.address)
+    assert result is cast(Any, discovery)
+
+
+async def test_async_scan_device_tolerates_missing_manufacturer_data(
+    hass: HomeAssistant,
+) -> None:
+    """Predicate must not raise when manufacturer_data is None during scanning."""
+    flow = build_flow(hass)
+    discovery = FakeDiscovery()
+    discovery.manufacturer_data = None
+
+    async def process_advertisements(
+        hass_arg: HomeAssistant,
+        predicate: Any,
+        matcher: dict[str, Any],
+        mode: Any,
+        timeout: float,
+    ) -> FakeDiscovery:
+        assert predicate(discovery) is False
+        return discovery
+
+    with patch(
+        "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements",
+        side_effect=process_advertisements,
+    ):
+        result = await flow._async_scan_device(discovery.address)
+    assert result is cast(Any, discovery)
+
+
+async def test_async_scan_device_tolerates_missing_service_data(
+    hass: HomeAssistant,
+) -> None:
+    """Predicate must not raise when service_data is None during scanning."""
+    flow = build_flow(hass)
+    discovery = FakeDiscovery()
+    discovery.service_data = None
+
+    async def process_advertisements(
+        hass_arg: HomeAssistant,
+        predicate: Any,
+        matcher: dict[str, Any],
+        mode: Any,
+        timeout: float,
+    ) -> FakeDiscovery:
+        assert predicate(discovery) is False
+        return discovery
+
+    with patch(
+        "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements",
+        side_effect=process_advertisements,
+    ):
+        result = await flow._async_scan_device(discovery.address)
+    assert result is cast(Any, discovery)
 
 
 async def test_async_step_bluetooth_discovered(hass: HomeAssistant) -> None:

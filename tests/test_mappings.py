@@ -23,6 +23,8 @@ from custom_components.tuya_ble import (
     valve,
 )
 from custom_components.tuya_ble.devices import TuyaBLEFingerbotInfo, TuyaBLEProductInfo
+from custom_components.tuya_ble.products import devices_database
+from custom_components.tuya_ble.tuya_ble import TuyaBLEDevice
 
 PLATFORMS = {
     "binary_sensor": binary_sensor,
@@ -34,6 +36,13 @@ PLATFORMS = {
     "switch": switch,
     "text": text,
     "valve": valve,
+}
+
+# These mappings intentionally use category-level product information because
+# their exact product IDs have not yet been added to the product registry.
+CATEGORY_FALLBACK_PRODUCTS = {
+    ("cl", "qqdxfdht"),
+    ("ms", "bvclwu9b"),
 }
 
 
@@ -405,3 +414,46 @@ def test_get_mapping_by_device_no_default_mapping(name: str, category: str) -> N
     mod = PLATFORMS[name]
     result = mod.get_mapping_by_device(FakeDevice(category, "unknown_xyz"))
     assert result == []
+
+
+@pytest.mark.parametrize("name", ["number", "select", "sensor", "valve"])
+def test_diivoo_dual_water_timer_mappings_use_ggq(name: str) -> None:
+    """Resolve every dual water timer platform using its cloud category."""
+    mod = PLATFORMS[name]
+    assert mod.get_mapping_by_device(FakeDevice("ggq", "fdrbxxbg"))
+    assert mod.get_mapping_by_device(FakeDevice("sfkzq", "fdrbxxbg")) == []
+
+
+def test_sop10_water_timer_has_one_entity_per_datapoint_role() -> None:
+    """Keep SOP10 status and control datapoints in their proper domains."""
+    device = cast(TuyaBLEDevice, FakeDevice("sfkzq", "nxquc5lb"))
+
+    assert [item.dp_id for item in sensor.get_mapping_by_device(device)] == [7, 12, 9]
+    assert [item.dp_id for item in number.get_mapping_by_device(device)] == [8]
+    assert [item.dp_id for item in switch.get_mapping_by_device(device)] == [14]
+    assert [item.dp_id for item in valve.get_mapping_by_device(device)] == [1]
+
+
+def test_all_product_mappings_use_registered_category() -> None:
+    """Keep product-specific mappings in their registered Tuya category."""
+    mismatches: list[tuple[str, str, str]] = []
+
+    for platform_name, platform in PLATFORMS.items():
+        for category, category_mapping in platform.mapping.items():
+            for product_id in category_mapping.products or {}:
+                product_is_registered = (
+                    category in devices_database
+                    and devices_database[category].products is not None
+                    and product_id in devices_database[category].products
+                )
+                if (
+                    not product_is_registered
+                    and (
+                        category,
+                        product_id,
+                    )
+                    not in CATEGORY_FALLBACK_PRODUCTS
+                ):
+                    mismatches.append((platform_name, category, product_id))
+
+    assert not mismatches, mismatches

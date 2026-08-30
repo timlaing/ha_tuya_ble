@@ -47,7 +47,7 @@ global_connect_lock = asyncio.Lock()
 class TuyaBLEAdvertisementInfo:
     """Identity data decoded from a Tuya BLE advertisement."""
 
-    product_id: str
+    product_id: str | None
     uuid: str
     is_bound: bool
     protocol_version: int
@@ -78,7 +78,6 @@ def decode_tuya_ble_advertisement(
         return None
 
     try:
-        decoded_product_id = product_id.decode("utf-8")
         key = hashlib.md5(product_id).digest()  # noqa: S4790
         cipher = AES.new(key, AES.MODE_CBC, key)  # noqa: S5542
         uuid = cipher.decrypt(encrypted_uuid).rstrip(b"\x00").decode("utf-8")
@@ -87,7 +86,11 @@ def decode_tuya_ble_advertisement(
     if not uuid:
         return None
     return TuyaBLEAdvertisementInfo(
-        product_id=decoded_product_id,
+        product_id=(
+            product_id.decode("utf-8")
+            if product_id.isascii() and product_id.decode("ascii").isprintable()
+            else None
+        ),
         uuid=uuid,
         is_bound=(raw_manufacturer_data[0] & 0x80) != 0,
         protocol_version=raw_manufacturer_data[1],
@@ -226,7 +229,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         if self._device_info is None:
             if self.device_manager:
                 self._device_info = await self.device_manager.get_device_credentials(
-                    self._ble_device.address, False
+                    self._ble_device.address
                 )
             if self._device_info:
                 if len(self._device_info.local_key) < 6:
@@ -357,16 +360,29 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         status_range: list[dict[str, Any]] | None,
     ) -> None:
         """Parse and store function/status_range credential lists."""
-        if function:
-            for f in function:
-                dpcode = f.get("code")
-                if dpcode:
-                    self._function[dpcode] = TuyaBLEDeviceFunction(**f)
-        if status_range:
-            for f in status_range:
-                dpcode = f.get("code")
-                if dpcode:
-                    self._status_range[dpcode] = TuyaBLEDeviceFunction(**f)
+        self._append_function_list(function, self._function, "function")
+        self._append_function_list(status_range, self._status_range, "status")
+
+    def _append_function_list(
+        self,
+        entries: list[dict[str, Any]] | None,
+        target: dict[str, TuyaBLEDeviceFunction],
+        kind: str,
+    ) -> None:
+        """Populate a function/status_range dict, skipping entries with no DP ID."""
+        if not entries:
+            return
+        for f in entries:
+            dpcode = f.get("code")
+            if dpcode and "dp_id" in f:
+                target[dpcode] = TuyaBLEDeviceFunction(**f)
+            elif dpcode:
+                _LOGGER.warning(
+                    "%s: Ignoring %s metadata without a DP ID for %s",
+                    self.address,
+                    kind,
+                    dpcode,
+                )
 
     @property
     def datapoints(self) -> TuyaBLEDataPoints:
@@ -574,7 +590,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             return False
         try:
             await self._client.start_notify(
-                CHARACTERISTIC_NOTIFY, self._notification_handler
+                CHARACTERISTIC_NOTIFY, self._safe_notification_handler
             )
             return True
         except BLE_CONNECTION_EXCEPTIONS:

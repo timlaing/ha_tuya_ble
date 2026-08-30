@@ -422,6 +422,30 @@ mapping: dict[str, TuyaBLECategoryNumberMapping] = {
                 ]
                 for k in ["hfgdqhho", "qycalacn", "fnlw6npo", "jjqi2syk"]
             },
+            "fdrbxxbg": [  # Diivoo WT-05 dual water timer
+                TuyaBLENumberMapping(
+                    dp_id=106,
+                    description=NumberEntityDescription(
+                        key="countdown_zone1",
+                        icon=ICON_TIMER,
+                        native_max_value=1440,
+                        native_min_value=1,
+                        native_unit_of_measurement=UnitOfTime.MINUTES,
+                        native_step=1,
+                    ),
+                ),
+                TuyaBLENumberMapping(
+                    dp_id=103,
+                    description=NumberEntityDescription(
+                        key="countdown_zone2",
+                        icon=ICON_TIMER,
+                        native_max_value=1440,
+                        native_min_value=1,
+                        native_unit_of_measurement=UnitOfTime.MINUTES,
+                        native_step=1,
+                    ),
+                ),
+            ],
         },
     ),
     "sfkzq": TuyaBLECategoryNumberMapping(
@@ -516,37 +540,13 @@ mapping: dict[str, TuyaBLECategoryNumberMapping] = {
             ],
             "nxquc5lb": [  # Smart water timer - SOP10
                 TuyaBLENumberMapping(
-                    dp_id=11,
+                    dp_id=8,
                     description=NumberEntityDescription(
                         key="countdown",
                         icon=ICON_TIMER,
                         native_max_value=86400,
                         native_min_value=60,
                         native_unit_of_measurement=UnitOfTime.SECONDS,
-                        native_step=1,
-                    ),
-                ),
-            ],
-            "fdrbxxbg": [  # Diivoo WT-05 dual water timer
-                TuyaBLENumberMapping(
-                    dp_id=106,
-                    description=NumberEntityDescription(
-                        key="countdown_zone1",
-                        icon=ICON_TIMER,
-                        native_max_value=1440,
-                        native_min_value=1,
-                        native_unit_of_measurement=UnitOfTime.MINUTES,
-                        native_step=1,
-                    ),
-                ),
-                TuyaBLENumberMapping(
-                    dp_id=103,
-                    description=NumberEntityDescription(
-                        key="countdown_zone2",
-                        icon=ICON_TIMER,
-                        native_max_value=1440,
-                        native_min_value=1,
-                        native_unit_of_measurement=UnitOfTime.MINUTES,
                         native_step=1,
                     ),
                 ),

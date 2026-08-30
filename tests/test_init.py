@@ -9,12 +9,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from bleak.backends.device import BLEDevice
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import entity_registry as er
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.tuya_ble import (
     OfflineTuyaBLEDeviceManager,
     _async_update_listener,
+    _remove_legacy_sensor_entities,
     async_setup_entry,
     async_unload_entry,
 )
@@ -133,6 +135,79 @@ async def test_async_setup_entry_success(hass: HomeAssistant) -> None:
 
     # Trigger the HA stop -> device.stop
     await hass.async_stop()
+
+
+def test_remove_legacy_sensor_entities(hass: HomeAssistant) -> None:
+    """Remove only sensor entries duplicated by a correctly typed entity."""
+    entry = MockConfigEntry(domain=DOMAIN, data=_make_entry_data())
+    entry.add_to_hass(hass)
+    registry = er.async_get(hass)
+    legacy = registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        "device123-countdown",
+        config_entry=entry,
+    )
+    replacement = registry.async_get_or_create(
+        "number",
+        DOMAIN,
+        "device123-countdown",
+        config_entry=entry,
+    )
+    valid_sensor = registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        "device123-battery",
+        config_entry=entry,
+    )
+
+    _remove_legacy_sensor_entities(hass, entry)
+
+    assert registry.async_get(legacy.entity_id) is None
+    assert registry.async_get(replacement.entity_id) is not None
+    assert registry.async_get(valid_sensor.entity_id) is not None
+
+
+async def test_setup_removes_legacy_duplicate_before_platforms(
+    hass: HomeAssistant,
+) -> None:
+    """Remove a known legacy entity before forwarding platform setup."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Device",
+        data=_make_entry_data(),
+        entry_id="entry-legacy",
+    )
+    entry.add_to_hass(hass)
+    registry = er.async_get(hass)
+    legacy = registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        "device123-countdown",
+        config_entry=entry,
+    )
+    registry.async_get_or_create(
+        "number",
+        DOMAIN,
+        "device123-countdown",
+        config_entry=entry,
+    )
+    deps = _patch_deps(hass, product_info=MagicMock())
+
+    async def assert_legacy_removed(*args: object) -> None:
+        assert registry.async_get(legacy.entity_id) is None
+
+    with ExitStack() as stack:
+        for dependency_patch in deps["patches"]:
+            stack.enter_context(dependency_patch)
+        stack.enter_context(
+            patch.object(
+                hass.config_entries,
+                "async_forward_entry_setups",
+                side_effect=assert_legacy_removed,
+            )
+        )
+        assert await async_setup_entry(hass, entry) is True
 
 
 async def test_async_setup_entry_device_not_found(hass: HomeAssistant) -> None:

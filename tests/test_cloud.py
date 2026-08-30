@@ -7,7 +7,6 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-from homeassistant.const import CONF_ADDRESS
 from homeassistant.exceptions import ConfigEntryNotReady
 import pytest
 
@@ -43,9 +42,22 @@ def make_device(**overrides: Any) -> Any:
         "name": "Dev",
         "product_name": "Product",
         "function": {
-            "f": SimpleNamespace(code="c", desc="d", name="n", type="t", values="v")
+            "c": SimpleNamespace(code="c", desc="d", name="n", type="t", values="v")
         },
         "status_range": {"s": SimpleNamespace(code="s", type="t", values="v")},
+        "local_strategy": {
+            1: {
+                "status_code": "c",
+                "config_item": {"valueType": "Boolean", "valueDesc": "{}"},
+            },
+            2: {
+                "status_code": "s",
+                "config_item": {
+                    "valueType": "Integer",
+                    "valueDesc": '{"min":0,"max":100}',
+                },
+            },
+        },
     }
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -55,28 +67,82 @@ def test_extract_functions() -> None:
     """Assert that function specs are extracted as dictionaries."""
     dev = make_device()
     result = _extract_functions(dev)
-    assert result == [
-        {"code": "c", "desc": "d", "name": "n", "type": "t", "values": "v"}
-    ]
+    assert result == [{"code": "c", "dp_id": 1, "type": "Boolean", "values": "{}"}]
 
 
 def test_extract_functions_empty() -> None:
     """Assert that an empty function map yields an empty list."""
     dev = make_device(function={})
-    assert _extract_functions(dev) == []
+    assert not _extract_functions(dev)
 
 
 def test_extract_status_range() -> None:
     """Assert that status range specs are extracted as dictionaries."""
     dev = make_device()
     result = _extract_status_range(dev)
-    assert result == [{"code": "s", "type": "t", "values": "v"}]
+    assert result == [
+        {
+            "code": "s",
+            "dp_id": 2,
+            "type": "Integer",
+            "values": '{"min":0,"max":100}',
+        }
+    ]
 
 
 def test_extract_status_range_empty() -> None:
     """Assert that an empty status range map yields an empty list."""
     dev = make_device(status_range={})
-    assert _extract_status_range(dev) == []
+    assert not _extract_status_range(dev)
+
+
+def test_extract_captured_irrigation_local_strategy() -> None:
+    """Map the captured timer's cloud status codes to its BLE DP IDs."""
+    device = make_device(
+        function={"normal_timer": SimpleNamespace()},
+        status_range={
+            "battery_percentage": SimpleNamespace(),
+            "normal_timer": SimpleNamespace(),
+        },
+        local_strategy={
+            11: {
+                "status_code": "battery_percentage",
+                "config_item": {
+                    "valueType": "Integer",
+                    "valueDesc": '{"unit":"%","min":0,"max":100}',
+                },
+            },
+            101: {
+                "status_code": "normal_timer",
+                "config_item": {
+                    "valueType": "String",
+                    "valueDesc": '{"maxlen":255}',
+                },
+            },
+        },
+    )
+    assert _extract_functions(device) == [
+        {
+            "code": "normal_timer",
+            "dp_id": 101,
+            "type": "String",
+            "values": '{"maxlen":255}',
+        }
+    ]
+    assert _extract_status_range(device) == [
+        {
+            "code": "battery_percentage",
+            "dp_id": 11,
+            "type": "Integer",
+            "values": '{"unit":"%","min":0,"max":100}',
+        },
+        {
+            "code": "normal_timer",
+            "dp_id": 101,
+            "type": "String",
+            "values": '{"maxlen":255}',
+        },
+    ]
 
 
 def test_build_credentials() -> None:
@@ -92,9 +158,16 @@ def test_build_credentials() -> None:
     assert creds.product_model is None
     assert creds.product_name == "Product"
     assert creds.functions == [
-        {"code": "c", "desc": "d", "name": "n", "type": "t", "values": "v"}
+        {"code": "c", "dp_id": 1, "type": "Boolean", "values": "{}"}
     ]
-    assert creds.status_range == [{"code": "s", "type": "t", "values": "v"}]
+    assert creds.status_range == [
+        {
+            "code": "s",
+            "dp_id": 2,
+            "type": "Integer",
+            "values": '{"min":0,"max":100}',
+        }
+    ]
 
 
 def test_update_token() -> None:
@@ -124,62 +197,31 @@ async def test_no_match_returns_none() -> None:
     device = make_device()
     mgr = _manager(devices=[device])
     with patch("custom_components.tuya_ble.cloud._LOGGER.warning") as warning:
-        result = await mgr.get_device_credentials(
-            "AA:BB:CC:DD:EE:FF", uuid="other", product_id="pid"
-        )
+        result = await mgr.get_device_credentials_by_uuid("other")
     assert result is None
     warning.assert_called_once_with(
-        "No Tuya credentials found for address %s (uuid=%s, product_id=%s)",
-        "AA:BB:CC:DD:EE:FF",
+        "No Tuya credentials found for UUID %s",
         "other",
-        "pid",
     )
-
-
-async def test_product_id_mismatch_returns_none() -> None:
-    """Assert that a mismatched advertised product ID is rejected."""
-    device = make_device()
-    mgr = _manager(devices=[device])
-    result = await mgr.get_device_credentials(
-        "AA:BB:CC:DD:EE:FF", uuid="uuid", product_id="other"
-    )
-    assert result is None
 
 
 async def test_match_returns_credentials() -> None:
-    """Assert that matching advertised identity yields credentials."""
+    """Assert that a matching decoded UUID yields cloud credentials."""
     device = make_device()
     mgr = _manager(devices=[device])
-    result = await mgr.get_device_credentials(
-        "11:22:33:44:55:66", uuid="uuid", product_id="pid"
-    )
+    result = await mgr.get_device_credentials_by_uuid("uuid")
     assert result is not None
+    assert result.product_id == "pid"
     assert mgr.data == {}
-
-
-async def test_match_saves_address() -> None:
-    """Assert that a matching advertised identity is saved to data when requested."""
-    device = make_device()
-    mgr = _manager(devices=[device])
-    result = await mgr.get_device_credentials(
-        "11:22:33:44:55:66",
-        save_data=True,
-        uuid="uuid",
-        product_id="pid",
-    )
-    assert result is not None
-    assert mgr.data[CONF_ADDRESS] == "11:22:33:44:55:66"
 
 
 async def test_force_update_calls_update_cache() -> None:
     """Assert that force_update refreshes the device cache."""
     device = make_device()
     mgr = _manager(devices=[device])
-    result = await mgr.get_device_credentials(
-        "11:22:33:44:55:66",
+    result = await mgr.get_device_credentials_by_uuid(
+        "uuid",
         force_update=True,
-        uuid="uuid",
-        product_id="pid",
     )
     assert result is not None
 
@@ -212,8 +254,8 @@ async def test_initialize_builds_manager() -> None:
     fake_manager.update_device_cache.assert_called_once()
 
 
-async def test_get_device_credentials_lazy_init() -> None:
-    """Assert that get_device_credentials initializes when needed."""
+async def test_get_device_credentials_by_uuid_lazy_init() -> None:
+    """Assert that UUID credential lookup initializes when needed."""
     hass = FakeHass()
     mgr = HASSTuyaBLEDeviceManager(hass, {})  # type: ignore[arg-type]
     fake_manager = MagicMock()
@@ -223,19 +265,17 @@ async def test_get_device_credentials_lazy_init() -> None:
         patch("custom_components.tuya_ble.cloud.Manager", return_value=fake_manager),
         patch("custom_components.tuya_ble.cloud._LOGGER.warning") as warning,
     ):
-        result = await mgr.get_device_credentials("AA:BB:CC:DD:EE:FF")
+        result = await mgr.get_device_credentials_by_uuid("missing")
     assert result is None
     assert mgr._manager is fake_manager  # pylint: disable=protected-access
     fake_manager.update_device_cache.assert_called_once()
     warning.assert_called_once_with(
-        "No Tuya BLE identity decoded for address %s (uuid=%s, product_id=%s)",
-        "AA:BB:CC:DD:EE:FF",
-        None,
-        None,
+        "No Tuya credentials found for UUID %s",
+        "missing",
     )
 
 
-async def test_get_device_credentials_no_manager_raises() -> None:
+async def test_get_device_credentials_by_uuid_no_manager_raises() -> None:
     """Assert that a failed initialization raises ConfigEntryNotReady."""
     hass = FakeHass()
     mgr = HASSTuyaBLEDeviceManager(hass, {})  # type: ignore[arg-type]
@@ -247,4 +287,4 @@ async def test_get_device_credentials_no_manager_raises() -> None:
         patch.object(mgr, "initialize", new=noop_initialize),
         pytest.raises(ConfigEntryNotReady),
     ):
-        await mgr.get_device_credentials("AA:BB:CC:DD:EE:FF")
+        await mgr.get_device_credentials_by_uuid("uuid")

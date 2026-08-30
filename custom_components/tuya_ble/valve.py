@@ -90,10 +90,6 @@ mapping: dict[str, TuyaBLECategoryValveMapping] = {
                 ]
                 for k in ["qycalacn", "fnlw6npo", "jjqi2syk"]
             },
-        },
-    ),
-    "sfkzq": TuyaBLECategoryValveMapping(
-        products={
             "fdrbxxbg": [  # Diivoo WT-05 dual water timer
                 TuyaBLEValveMapping(
                     dp_id=105,
@@ -112,6 +108,10 @@ mapping: dict[str, TuyaBLECategoryValveMapping] = {
                     ),
                 ),
             ],
+        },
+    ),
+    "sfkzq": TuyaBLECategoryValveMapping(
+        products={
             **{
                 k: [
                     TuyaBLEValveMapping(

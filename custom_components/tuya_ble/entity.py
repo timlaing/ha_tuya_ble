@@ -5,10 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.entity import (
-    EntityDescription,
-    generate_entity_id,
-)
+from homeassistant.helpers.entity import EntityDescription
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .base import EnumTypeData, IntegerTypeData
@@ -18,7 +15,7 @@ from .const import (
     DPCode,
     DPType,
 )
-from .products import TuyaBLEProductInfo, get_product_info_by_ids, get_short_address
+from .products import TuyaBLEProductInfo, get_product_info_by_ids
 from .tuya_ble import (
     TuyaBLEDataPointType,
     TuyaBLEDevice,
@@ -35,18 +32,26 @@ def get_device_info(device: TuyaBLEDevice) -> DeviceInfo | None:
     product_info = None
     if device.category and device.product_id:
         product_info = get_product_info_by_ids(device.category, device.product_id)
-    product_name: str
-    product_name = product_info.name if product_info else device.name
+    device_name = device.name
+    model = (
+        device.product_name
+        or device.product_model
+        or (product_info.name if product_info else "")
+        or device.product_id
+    )
+    sw_version = device.device_version or None
+    if sw_version and device.protocol_version:
+        sw_version = f"{sw_version} (protocol {device.protocol_version})"
     result = DeviceInfo(
         connections={("bluetooth", device.address)},
-        hw_version=device.hardware_version,
+        hw_version=device.hardware_version or None,
         identifiers={(DOMAIN, device.address)},
         manufacturer=(
             product_info.manufacturer if product_info else DEVICE_DEF_MANUFACTURER
         ),
-        model=(f"{device.product_model or product_name} ({device.product_id})"),
-        name=(f"{product_name} {get_short_address(device.address)}"),
-        sw_version=(f"{device.device_version} (protocol {device.protocol_version})"),
+        model=model or None,
+        name=device_name,
+        sw_version=sw_version,
     )
     return result
 
@@ -56,7 +61,7 @@ class TuyaBLEEntity(CoordinatorEntity["TuyaBLECoordinator"]):
 
     def __init__(
         self,
-        hass: HomeAssistant,
+        _hass: HomeAssistant,
         coordinator: TuyaBLECoordinator,
         device: TuyaBLEDevice,
         product: TuyaBLEProductInfo,
@@ -72,9 +77,6 @@ class TuyaBLEEntity(CoordinatorEntity["TuyaBLECoordinator"]):
         self._attr_has_entity_name = True
         self._attr_device_info = get_device_info(self.device)
         self._attr_unique_id = f"{self.device.device_id}-{description.key}"
-        self.entity_id = generate_entity_id(
-            "sensor.{}", self._attr_unique_id, hass=hass
-        )
 
     @property
     def available(self) -> bool:
