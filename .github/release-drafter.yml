@@ -13,7 +13,6 @@ categories:
       - conventional:
           type: "feat"
       - labels:
-          - "feature"
           - "enhancement"
 
   - title: "🐛 Bug Fixes"
@@ -23,16 +22,12 @@ categories:
           type: "fix"
       - labels:
           - "bug"
-          - "fix"
 
   - title: "🧰 Maintenance"
     exclusive: true
     when:
-      - conventional:
-          type: "chore"
-      - labels:
-          - "maintenance"
-          - "chore"
+      conventional:
+        type: "chore"
 
   - title: "⬆️ Dependencies"
     collapse-after: 0
@@ -74,10 +69,6 @@ autolabeler:
       - "/feature\/.+/"
     title:
       - "/feat/i"
-  - label: "maintenance"
-    title:
-      - "/chore/i"
-      - "/refactor/i"
   - label: "dependencies"
     title:
       - "/deps/i"
@@ -88,6 +79,7 @@ exclude-contributors:
 
 change-template: "- $TITLE (#$NUMBER) @$AUTHOR"
 change-title-escapes: '\<*_&'
+no-changes-template: "* No notable changes in this release."
 sort-by: "title"
 sort-direction: "ascending"
 
