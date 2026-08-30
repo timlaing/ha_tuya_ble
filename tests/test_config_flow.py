@@ -565,6 +565,62 @@ async def test_async_scan_device_waits_for_complete_tuya_identity(
     assert result is cast(Any, discovery)
 
 
+async def test_async_scan_device_accepts_block_aligned_extra_manufacturer_bytes(
+    hass: HomeAssistant,
+) -> None:
+    """Scan predicate must accept manufacturer payloads with extra aligned bytes."""
+    flow = build_flow(hass)
+    discovery = FakeDiscovery()
+    discovery.manufacturer_data = {
+        MANUFACTURER_DATA_ID: b"\x80\x02" + b"\x00" * 4 + b"\x00" * 48
+    }
+
+    async def process_advertisements(
+        hass_arg: HomeAssistant,
+        predicate: Any,
+        matcher: dict[str, Any],
+        mode: Any,
+        timeout: float,
+    ) -> FakeDiscovery:
+        assert predicate(discovery) is True
+        return discovery
+
+    with patch(
+        "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements",
+        side_effect=process_advertisements,
+    ):
+        result = await flow._async_scan_device(discovery.address)
+    assert result is cast(Any, discovery)
+
+
+async def test_async_scan_device_rejects_non_block_aligned_manufacturer_bytes(
+    hass: HomeAssistant,
+) -> None:
+    """Scan predicate must reject manufacturer payloads that aren't block aligned."""
+    flow = build_flow(hass)
+    discovery = FakeDiscovery()
+    discovery.manufacturer_data = {
+        MANUFACTURER_DATA_ID: b"\x80\x02" + b"\x00" * 4 + b"\x00" * 17
+    }
+
+    async def process_advertisements(
+        hass_arg: HomeAssistant,
+        predicate: Any,
+        matcher: dict[str, Any],
+        mode: Any,
+        timeout: float,
+    ) -> FakeDiscovery:
+        assert predicate(discovery) is False
+        return discovery
+
+    with patch(
+        "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements",
+        side_effect=process_advertisements,
+    ):
+        result = await flow._async_scan_device(discovery.address)
+    assert result is cast(Any, discovery)
+
+
 async def test_async_step_bluetooth_discovered(hass: HomeAssistant) -> None:
     """Test the bluetooth discovery step."""
     flow = build_flow(hass)

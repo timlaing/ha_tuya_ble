@@ -231,7 +231,8 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             return (
                 SERVICE_UUID in service_info.service_data
                 and manufacturer_data is not None
-                and len(manufacturer_data) == 6 + 16
+                and len(manufacturer_data) > 6
+                and (len(manufacturer_data) - 6) % 16 == 0
             )
 
         try:
