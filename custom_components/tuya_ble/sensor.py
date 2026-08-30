@@ -1000,47 +1000,48 @@ mapping: dict[str, TuyaBLECategorySensorMapping] = {
                         ),
                     ),
                 ]
-                for k in ["hfgdqhho", "qycalacn", "fnlw6npo", "jjqi2syk"]
+                for k in ["hfgdqhho", "fnlw6npo", "jjqi2syk"]
             },
-            "fdrbxxbg": [  # Diivoo WT-05 dual water timer
-                TuyaBLEBatteryMapping(dp_id=11),
-                TuyaBLESensorMapping(
-                    dp_id=110,
-                    description=SensorEntityDescription(
-                        key="last_use_time_zone1",
-                        icon="mdi:clock-outline",
-                        device_class=SensorDeviceClass.DURATION,
-                        native_unit_of_measurement=UnitOfTime.SECONDS,
-                        state_class=SensorStateClass.MEASUREMENT,
+            **{
+                k: [  # Dual water timer (Diivoo WT-05 family)
+                    TuyaBLEBatteryMapping(dp_id=11),
+                    TuyaBLESensorMapping(
+                        dp_id=111,
+                        description=SensorEntityDescription(
+                            key="last_use_time_zone1",
+                            icon="mdi:clock-outline",
+                            device_class=SensorDeviceClass.DURATION,
+                            native_unit_of_measurement=UnitOfTime.SECONDS,
+                            state_class=SensorStateClass.MEASUREMENT,
+                        ),
                     ),
-                ),
-                TuyaBLESensorMapping(
-                    dp_id=111,
-                    description=SensorEntityDescription(
-                        key="last_use_time_zone2",
-                        icon="mdi:clock-outline",
-                        device_class=SensorDeviceClass.DURATION,
-                        native_unit_of_measurement=UnitOfTime.SECONDS,
-                        state_class=SensorStateClass.MEASUREMENT,
+                    TuyaBLESensorMapping(
+                        dp_id=110,
+                        description=SensorEntityDescription(
+                            key="last_use_time_zone2",
+                            icon="mdi:clock-outline",
+                            device_class=SensorDeviceClass.DURATION,
+                            native_unit_of_measurement=UnitOfTime.SECONDS,
+                            state_class=SensorStateClass.MEASUREMENT,
+                        ),
                     ),
-                ),
-                TuyaBLESensorMapping(
-                    dp_id=112,
-                    description=SensorEntityDescription(
-                        key="work_states_zone1",
-                        device_class=SensorDeviceClass.ENUM,
-                        options=["off", "manual", "auto"],
+                    TuyaBLESensorMapping(
+                        dp_id=112,
+                        description=SensorEntityDescription(
+                            key="work_state_zone1",
+                            entity_category=EntityCategory.DIAGNOSTIC,
+                        ),
                     ),
-                ),
-                TuyaBLESensorMapping(
-                    dp_id=113,
-                    description=SensorEntityDescription(
-                        key="work_states_zone2",
-                        device_class=SensorDeviceClass.ENUM,
-                        options=["off", "manual", "auto"],
+                    TuyaBLESensorMapping(
+                        dp_id=113,
+                        description=SensorEntityDescription(
+                            key="work_state_zone2",
+                            entity_category=EntityCategory.DIAGNOSTIC,
+                        ),
                     ),
-                ),
-            ],
+                ]
+                for k in ["fdrbxxbg", "jntxv3q4", "qycalacn"]
+            },
         },
     ),
     "sfkzq": TuyaBLECategorySensorMapping(

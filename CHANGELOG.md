@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning].
 ### Changed
 
 - **SOP10 config**: re-aligned the water timer device config (product IDs `nxquc5lb`, `c8800fd30884068f`, `so5ybnw9`) with the reference, moving the countdown to DP 11 (was DP 8) and last use time to DP 15; weather-delay select now uses the `cancel`/`24h`/`48h`/`72h` string values; work state is surfaced as a plain string.
+- **Dual water timer config**: align the Diivoo WT-05 family device config (product IDs `fdrbxxbg`, `jntxv3q4`, `qycalacn`) with the reference. Fix the zone 1/zone 2 last-use-time DP swap (111/110), set operation-mode DPs 112/113 as plain string sensors (`manual`/`auto`/`idle`), and make the weather-delay selects (117/114) write the device's string day values (`OFF`/`1`–`7`, shown as `Off`/`1 day`..`7 days`). The countdown range now starts at 0 min.
+- **Dual water timer devices**: add product ID `jntxv3q4` (Insoma) and extend `qycalacn` (Yohgee) so the whole family shares the dual water timer mapping across valve, switch, number, select and sensor platforms.
 
 ### Added
 

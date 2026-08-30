@@ -51,13 +51,13 @@ Supports lock/unlock, alarm events, fingerprint/card/password unlock tracking, a
 ## Irrigation computer (category_id `ggq`)
 
 - Irrigation computer (product_ids `6pahkcau`, `hfgdqhho`).
-- Dual-outlet irrigation computer (product_ids `qycalacn`, `fnlw6npo`, `jjqi2syk`): separate water valve and countdown entities for each outlet.
+- Dual-outlet irrigation computer (product_ids `fnlw6npo`, `jjqi2syk`): separate water valve and countdown entities for each outlet.
+- Dual water timer (product_ids `fdrbxxbg`, `jntxv3q4`, `qycalacn`): separate water valve and countdown entities for each outlet.
 
 ## Water valve controllers (category_id `sfkzq`)
 
 - Aldi/Ferrex Smart Water Valve (product_id `16wgjvck`).
-- Diivoo WT-05 dual water timer (product_id `fdrbxxbg`).
-- SIP10 water timer (product_id `nxquc5lb`, `c8800fd30884068f`, `so5ybnw9`).
+- SOP10 water timer (product_ids `nxquc5lb`, `c8800fd30884068f`, `so5ybnw9`).
 - Valve controller (product_ids `svhikeyq`, `0axr5s0b`).
 - Water valve controller (product_ids `46zia2nz`, `1fcnd8xk`).
 - ZX-7378 Smart Irrigation Controller (product_id `ldcdnigc`).

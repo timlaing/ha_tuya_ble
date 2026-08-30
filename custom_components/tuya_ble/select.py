@@ -190,46 +190,51 @@ mapping: dict[str, TuyaBLECategorySelectMapping] = {
     ),
     "ggq": TuyaBLECategorySelectMapping(
         products={
-            "fdrbxxbg": [  # Diivoo WT-05 dual water timer
-                TuyaBLESelectMapping(
-                    dp_id=117,
-                    description=SelectEntityDescription(
-                        key="weather_delay_zone1",
-                        icon=ICON_WEATHER_PARTLY_CLOUDY,
-                        options=[
-                            "off",
-                            "1h",
-                            "2h",
-                            "4h",
-                            "8h",
-                            "12h",
-                            "24h",
-                            "48h",
-                            "72h",
-                        ],
-                        entity_category=EntityCategory.CONFIG,
+            **{
+                k: [  # Dual water timer (Diivoo WT-05 family)
+                    TuyaBLESelectMapping(
+                        dp_id=117,
+                        description=SelectEntityDescription(
+                            key="weather_delay_zone1",
+                            icon=ICON_WEATHER_PARTLY_CLOUDY,
+                            options=[
+                                "Off",
+                                "1 day",
+                                "2 days",
+                                "3 days",
+                                "4 days",
+                                "5 days",
+                                "6 days",
+                                "7 days",
+                            ],
+                            entity_category=EntityCategory.CONFIG,
+                        ),
+                        values=["OFF", "1", "2", "3", "4", "5", "6", "7"],
+                        dp_type=TuyaBLEDataPointType.DT_STRING,
                     ),
-                ),
-                TuyaBLESelectMapping(
-                    dp_id=114,
-                    description=SelectEntityDescription(
-                        key="weather_delay_zone2",
-                        icon=ICON_WEATHER_PARTLY_CLOUDY,
-                        options=[
-                            "off",
-                            "1h",
-                            "2h",
-                            "4h",
-                            "8h",
-                            "12h",
-                            "24h",
-                            "48h",
-                            "72h",
-                        ],
-                        entity_category=EntityCategory.CONFIG,
+                    TuyaBLESelectMapping(
+                        dp_id=114,
+                        description=SelectEntityDescription(
+                            key="weather_delay_zone2",
+                            icon=ICON_WEATHER_PARTLY_CLOUDY,
+                            options=[
+                                "Off",
+                                "1 day",
+                                "2 days",
+                                "3 days",
+                                "4 days",
+                                "5 days",
+                                "6 days",
+                                "7 days",
+                            ],
+                            entity_category=EntityCategory.CONFIG,
+                        ),
+                        values=["OFF", "1", "2", "3", "4", "5", "6", "7"],
+                        dp_type=TuyaBLEDataPointType.DT_STRING,
                     ),
-                ),
-            ],
+                ]
+                for k in ["fdrbxxbg", "jntxv3q4", "qycalacn"]
+            },
         },
     ),
     "sfkzq": TuyaBLECategorySelectMapping(

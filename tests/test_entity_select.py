@@ -70,6 +70,21 @@ async def test_current_option_value(hass: HomeAssistant) -> None:
     assert entity.current_option == "48h"
 
 
+async def test_current_option_value_day_range(hass: HomeAssistant) -> None:
+    """Verify a string datapoint maps to its display option."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(
+        hass,
+        device,
+        coordinator,
+        product,
+        options=["Off", "1 day", "2 days"],
+        values=["OFF", "1", "2"],
+    )
+    add_dp(device, 3, TuyaBLEDataPointType.DT_STRING, "2")
+    assert entity.current_option == "2 days"
+
+
 async def test_select_option_values(hass: HomeAssistant) -> None:
     """Verify select_option writes the mapped string value."""
     device, coordinator, product = build_context(hass)
@@ -87,6 +102,25 @@ async def test_select_option_values(hass: HomeAssistant) -> None:
     assert dp is not None
     assert dp.dp_type == TuyaBLEDataPointType.DT_STRING
     assert dp.value == "24h"
+
+
+async def test_select_option_values_day_range(hass: HomeAssistant) -> None:
+    """Verify select_option writes the mapped string value."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(
+        hass,
+        device,
+        coordinator,
+        product,
+        options=["Off", "1 day", "2 days"],
+        values=["OFF", "1", "2"],
+    )
+    entity.select_option("1 day")
+    await hass.async_block_till_done()
+    dp = device.datapoints[3]
+    assert dp is not None
+    assert dp.dp_type == TuyaBLEDataPointType.DT_STRING
+    assert dp.value == "1"
 
 
 async def test_current_option_none(hass: HomeAssistant) -> None:
