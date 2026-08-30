@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog],
 and this project adheres to [Semantic Versioning].
 
+## [2.0.4] - 2026-08-30
+
+### Changed
+
+- **Device identity**: match Tuya devices by their stable Bluetooth UUID rather than requiring an ASCII-decodable product ID, enabling support for devices (e.g. the Diivoo) whose product ID cannot be decoded from the advertisement.
+- **Cloud metadata**: skip device function/status metadata that lacks a DP ID instead of failing setup, and refactor `append_functions` into a shared helper.
+- **Device config**: re-categorize Diivoo/SOP10 water timer config from `sfkzq` to `ggq` with updated DP re-maps.
+
+### Fixed
+
+- **BLE notifications**: broaden `_safe_notification_handler` so malformed frames (`struct.error`, `ValueError` from AES) are caught and logged instead of leaking into the Bleak callback.
+
 ## [2.0.3] - 2026-08-29
 
 ### Fixed
