@@ -438,7 +438,7 @@ mapping: dict[str, TuyaBLECategorySwitchMapping] = {
                     "jjqi2syk",
                     "fdrbxxbg",
                     "jntxv3q4",
-                ]  # dual water timer (Diivoo WT-05 family)
+                ]  # shared ggq water valve mapping
             },
         },
     ),

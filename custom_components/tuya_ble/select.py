@@ -300,8 +300,10 @@ class TuyaBLESelect(TuyaBLEEntity, SelectEntity):
         datapoint = self.device.datapoints[self._mapping.dp_id]
         if datapoint:
             value = str(datapoint.value)
-            if self._mapping.values and value in self._mapping.values:
-                return self._attr_options[self._mapping.values.index(value)]
+            if self._mapping.values:
+                for index, mapped_value in enumerate(self._mapping.values):
+                    if mapped_value == value and index < len(self._attr_options):
+                        return self._attr_options[index]
             if (
                 isinstance(datapoint.value, int)
                 and datapoint.value >= 0
@@ -316,14 +318,15 @@ class TuyaBLESelect(TuyaBLEEntity, SelectEntity):
         if option in self._attr_options:
             int_value = self._attr_options.index(option)
             if self._mapping.values:
+                if int_value >= len(self._mapping.values):
+                    return
+                option_value = self._mapping.values[int_value]
                 datapoint = self.device.datapoints.get_or_create(
                     self._mapping.dp_id,
                     TuyaBLEDataPointType.DT_STRING,
-                    self._mapping.values[int_value],
+                    option_value,
                 )
-                self.hass.create_task(
-                    datapoint.set_value(self._mapping.values[int_value])
-                )
+                self.hass.create_task(datapoint.set_value(option_value))
             else:
                 datapoint = self.device.datapoints.get_or_create(
                     self._mapping.dp_id,

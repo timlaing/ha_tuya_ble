@@ -85,6 +85,37 @@ async def test_current_option_value_day_range(hass: HomeAssistant) -> None:
     assert entity.current_option == "2 days"
 
 
+async def test_current_option_value_out_of_range(hass: HomeAssistant) -> None:
+    """Verify an out-of-range mapped value falls back to the raw value."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(
+        hass,
+        device,
+        coordinator,
+        product,
+        options=["Off"],
+        values=["OFF", "1"],
+    )
+    add_dp(device, 3, TuyaBLEDataPointType.DT_STRING, "1")
+    assert entity.current_option == "1"
+
+
+async def test_select_option_values_out_of_range(hass: HomeAssistant) -> None:
+    """Verify an option beyond the mapped values does not create a datapoint."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(
+        hass,
+        device,
+        coordinator,
+        product,
+        options=["Off", "1 day", "2 days"],
+        values=["OFF", "1"],
+    )
+    entity.select_option("2 days")
+    await hass.async_block_till_done()
+    assert device.datapoints[3] is None
+
+
 async def test_select_option_values(hass: HomeAssistant) -> None:
     """Verify select_option writes the mapped string value."""
     device, coordinator, product = build_context(hass)
