@@ -65,9 +65,11 @@ jobs:
             PR_FILE="$(mktemp)"
             gh pr list --state open --json number,headRefName,headRefOid,baseRefName > "$PR_FILE"
             PR_MATCH="$(jq -c ".[] | select(.headRefOid == \"$HEAD_SHA\")" "$PR_FILE" | head -n 1)"
-            PR_NUMBER="$(jq -r '.number' <<< "$PR_MATCH")"
-            HEAD_REF="$(jq -r '.headRefName' <<< "$PR_MATCH")"
-            BASE_REF="$(jq -r '.baseRefName' <<< "$PR_MATCH")"
+            if [[ -n "$PR_MATCH" ]]; then
+              PR_NUMBER="$(jq -r '.number' <<< "$PR_MATCH")"
+              HEAD_REF="$(jq -r '.headRefName' <<< "$PR_MATCH")"
+              BASE_REF="$(jq -r '.baseRefName' <<< "$PR_MATCH")"
+            fi
           else
             HEAD_REF="${{ github.event.workflow_run.pull_requests[0].head.ref }}"
             BASE_REF="${{ github.event.workflow_run.pull_requests[0].base.ref }}"
