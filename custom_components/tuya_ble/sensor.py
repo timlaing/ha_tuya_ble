@@ -1028,14 +1028,14 @@ mapping: dict[str, TuyaBLECategorySensorMapping] = {
                     TuyaBLESensorMapping(
                         dp_id=112,
                         description=SensorEntityDescription(
-                            key="work_state_zone1",
+                            key="work_states_zone1",
                             entity_category=EntityCategory.DIAGNOSTIC,
                         ),
                     ),
                     TuyaBLESensorMapping(
                         dp_id=113,
                         description=SensorEntityDescription(
-                            key="work_state_zone2",
+                            key="work_states_zone2",
                             entity_category=EntityCategory.DIAGNOSTIC,
                         ),
                     ),
