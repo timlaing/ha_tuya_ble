@@ -308,6 +308,15 @@ def test_state_class_and_precision_passthrough() -> None:
     assert desc.suggested_display_precision == 2
 
 
+def test_parse_yaml_non_mapping_root_raises(tmp_path: Path) -> None:
+    """A YAML root that is not a mapping raises DeviceRegistryError."""
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("- just\n- a\n- list\n", encoding="utf-8")
+
+    with pytest.raises(DeviceRegistryError, match="must be a mapping"):
+        dr._parse_yaml(bad)
+
+
 def test_device_entities_get_specific_over_default() -> None:
     """Specific platform entries take precedence over category defaults."""
     de = DeviceEntities(category="c", product_id="p")

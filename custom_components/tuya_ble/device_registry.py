@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from homeassistant.const import EntityCategory
 import yaml
@@ -270,7 +270,12 @@ def _validate_descriptor(data: dict[str, Any]) -> None:
 
 def _parse_yaml(path: Path) -> dict[str, Any]:
     """Parse a YAML file into a dict."""
-    return cast(dict[str, Any], yaml.safe_load(path.read_text(encoding="utf-8")))
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise DeviceRegistryError(
+            f"Device descriptor {path} must be a mapping, got {type(data).__name__}"
+        )
+    return data
 
 
 @lru_cache(maxsize=1)
