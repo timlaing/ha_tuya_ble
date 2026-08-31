@@ -67,7 +67,7 @@ model_name: 16wgjvck
 
 **text**: `pattern` (regex validation pattern)
 
-**switch**: `bitmap_mask` (binary mask for splitting one bitmap DP into multiple switches)
+**switch**: `bitmap_mask` (binary mask for splitting one bitmap DP into multiple switches — must be YAML `!!binary` bytes, e.g. `AQ==` for `0b00000001`)
 
 **climate**: `hvac_mode_dp_id`, `hvac_switch_dp_id`, `hvac_switch_mode`, `hvac_modes`, `current_temperature_dp_id`, `current_temperature_coefficient`, `target_temperature_dp_id`, `target_temperature_coefficient`, `target_temperature_step`, `target_temperature_min`, `target_temperature_max`, `temperature_unit`, `current_humidity_dp_id`, `current_humidity_coefficient`, `target_humidity_dp_id`, `target_humidity_coefficient`, `target_humidity_min`, `target_humidity_max`, `preset_mode_dp_ids`
 
