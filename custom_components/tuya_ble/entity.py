@@ -28,7 +28,6 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
     from .coordinator import TuyaBLECoordinator
-    from .device_registry import EntityDescriptor
 
 
 _HASS_DATA_LEGACY_KEYS = "legacy_unique_id_suffixes"
@@ -70,23 +69,15 @@ def _find_legacy_keys(
     """Return legacy alias keys for *key* from the product descriptor, if any."""
     from .device_registry import get_registry  # pylint: disable=C0415
 
-    reg = get_registry()
-    product = reg.get(device.category or "", device.product_id or "")
+    product = get_registry().get(device.category or "", device.product_id or "")
     if product is None:
         return []
 
-    def _scan(descriptors: list[EntityDescriptor]) -> list[str] | None:
+    sources = [*product.entities.values(), *product.category_defaults.values()]
+    for descriptors in sources:
         for desc in descriptors:
             if (desc.translation_key or str(desc.dp_id)) == key:
                 return desc.legacy_keys or []
-        return None
-
-    for _, items in product.entities.items():
-        if (found := _scan(items)) is not None:
-            return found
-    for _, defaults in product.category_defaults.items():
-        if (found := _scan(defaults)) is not None:
-            return found
     return []
 
 
