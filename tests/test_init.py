@@ -189,6 +189,26 @@ def test_unique_id_adopt_legacy(hass: HomeAssistant) -> None:
     assert uid == "device123-countdown_duration_z1"
 
 
+def test_unique_id_adopt_ignores_other_integration(hass: HomeAssistant) -> None:
+    """A legacy unique_id owned by another integration is not adopted."""
+    data = _make_entry_data()
+    data[CONF_PRODUCT_ID] = "qycalacn"
+    entry = MockConfigEntry(domain=DOMAIN, data=data)
+    entry.add_to_hass(hass)
+    registry = er.async_get(hass)
+    registry.async_get_or_create(
+        "number", "other_component", "device123-countdown_duration_z1"
+    )
+
+    device = MagicMock()
+    device.device_id = "device123"
+    device.category = "ggq"
+    device.product_id = "qycalacn"
+
+    uid = _resolve_unique_id(hass, device, "countdown_zone1")
+    assert uid == "device123-countdown_zone1"
+
+
 def test_unique_id_fallback_new(hass: HomeAssistant) -> None:
     """Entity uses the new unique_id when no legacy entry exists."""
     device = MagicMock()

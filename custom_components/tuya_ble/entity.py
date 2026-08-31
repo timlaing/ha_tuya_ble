@@ -92,7 +92,7 @@ def _resolve_unique_id(
         existing = {
             entry.unique_id[len(prefix) :]
             for entry in registry.entities.values()
-            if entry.unique_id.startswith(prefix)
+            if entry.platform == DOMAIN and entry.unique_id.startswith(prefix)
         }
         for old_key in legacy_keys:
             if old_key in existing:

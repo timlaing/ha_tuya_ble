@@ -139,6 +139,30 @@ def test_parse_entity_non_dict_handlers_raises() -> None:
         raise AssertionError("expected DeviceRegistryError")
 
 
+def test_parse_entity_legacy_keys_string_coerced() -> None:
+    """A single-string legacy_keys is coerced to a list."""
+    registry = DeviceRegistry()
+    _load_product(
+        registry,
+        {"sensor": [{"dp_id": 5, "translation_key": "new", "legacy_keys": "old"}]},
+    )
+    products = registry.get("ms", "foo")
+    assert products is not None
+    desc = products.get("sensor")[0]
+    assert desc.legacy_keys == ["old"]
+
+
+def test_parse_entity_legacy_keys_invalid_type_raises() -> None:
+    """An unsupported legacy_keys type is rejected."""
+    registry = DeviceRegistry()
+    try:
+        _load_product(registry, {"sensor": [{"dp_id": 5, "legacy_keys": 42}]})
+    except DeviceRegistryError as exc:
+        assert "legacy_keys" in str(exc)
+    else:
+        raise AssertionError("expected DeviceRegistryError")
+
+
 def test_validate_descriptor_missing_product_id_raises() -> None:
     """A descriptor without product_id is rejected."""
     registry = DeviceRegistry()

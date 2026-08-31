@@ -112,7 +112,7 @@ def _parse_entity(platform: str, raw: dict[str, Any]) -> EntityDescriptor:
             legacy_keys_raw = [legacy_keys_raw]
         elif not isinstance(legacy_keys_raw, list):
             raise DeviceRegistryError(
-                f"Entity {raw['dp_id']} legacy_keys must be a list or string"
+                f"Entity {raw.get('dp_id', '?')} legacy_keys must be a list or string"
             )
     return EntityDescriptor(
         platform=platform,
