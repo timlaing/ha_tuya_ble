@@ -78,7 +78,7 @@ def _find_legacy_keys(
     def _scan(descriptors: list[EntityDescriptor]) -> list[str] | None:
         for desc in descriptors:
             if (desc.translation_key or str(desc.dp_id)) == key:
-                return desc.legacy_keys
+                return desc.legacy_keys or []
         return None
 
     for _, items in product.entities.items():
