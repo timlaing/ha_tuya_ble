@@ -163,6 +163,17 @@ def test_parse_entity_legacy_keys_invalid_type_raises() -> None:
         raise AssertionError("expected DeviceRegistryError")
 
 
+def test_parse_entity_legacy_keys_non_string_item_raises() -> None:
+    """A list item that is not a string is rejected."""
+    registry = DeviceRegistry()
+    try:
+        _load_product(registry, {"sensor": [{"dp_id": 5, "legacy_keys": [123]}]})
+    except DeviceRegistryError as exc:
+        assert "legacy_keys" in str(exc)
+    else:
+        raise AssertionError("expected DeviceRegistryError")
+
+
 def test_validate_descriptor_missing_product_id_raises() -> None:
     """A descriptor without product_id is rejected."""
     registry = DeviceRegistry()
