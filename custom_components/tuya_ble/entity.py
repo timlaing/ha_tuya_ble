@@ -95,12 +95,14 @@ def _resolve_unique_id(
     if legacy_keys:
         registry = async_get_entity_registry(hass)
         prefix = f"{device.device_id}-"
+        targets = set(legacy_keys)
         existing = {
             entry.unique_id[len(prefix) :]
             for entry in registry.entities.values()
             if entry.platform == DOMAIN
             and entry.unique_id is not None
             and entry.unique_id.startswith(prefix)
+            and entry.unique_id[len(prefix) :] in targets
         }
         for old_key in legacy_keys:
             if old_key in existing:

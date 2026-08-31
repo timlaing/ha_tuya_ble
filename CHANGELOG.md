@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning].
 
 - **SOP10**: weather forecast (DP 13), last use time (DP 15), soak schedule (DP 16) and irrigation schedule (DP 17) sensors, plus a fault-code problem binary sensor (DP 4), for water timer products `nxquc5lb`, `c8800fd30884068f` and `so5ybnw9`.
 
-## [2.1.0] - 2026-08-29
+## [2.1.0]
 
 ### Changed
 
