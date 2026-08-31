@@ -46,6 +46,7 @@ class EntityDescriptor:
     entity_category: str | None = None
     options: list[str] | None = None
     values: list[str] | None = None
+    suggested_display_precision: int | None = None
     enabled_by_default: bool | None = None
     dp_type: int | None = None
     coefficient: float = 1.0

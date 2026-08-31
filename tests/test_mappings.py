@@ -303,7 +303,7 @@ def test_build_switch_mapping_dp_type() -> None:
         platform="switch",
         dp_id=1,
         translation_key="water_valve",
-        dp_type=4,  # type: ignore[arg-type]
+        dp_type=4,
     )
     built = switch._build_switch_mapping(desc)
     assert built.dp_type == TuyaBLEDataPointType.DT_ENUM
@@ -357,7 +357,7 @@ def test_build_number_mapping_dp_type_and_handlers() -> None:
         platform="number",
         dp_id=121,
         translation_key="program_idle_position",
-        dp_type=4,  # type: ignore[arg-type]
+        dp_type=4,
         handlers={
             "read": "fingerbot.program.get_position",
             "write": "fingerbot.program.set_position",
