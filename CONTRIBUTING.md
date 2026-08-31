@@ -42,19 +42,19 @@ model_name: 16wgjvck
 
 #### Entity fields (common)
 
-| Field                | Required | Description                                                                 |
-| -------------------- | -------- | --------------------------------------------------------------------------- |
-| `dp_id`              | Yes*     | Data-point ID on the device (*not required for `climate`, `cover`, `light`) |
-| `translation_key`    | No       | Translation key / entity ID (also accepts `key`)                            |
-| `name`               | No       | Display name override                                                       |
-| `icon`               | No       | MDI icon override (e.g. `mdi:valve`)                                        |
-| `device_class`       | No       | HA device class (e.g. `battery`, `temperature`, `carbon_dioxide`)           |
-| `unit`               | No       | Unit of measurement (e.g. `%`, `°C`, `ppm`, `s`)                            |
-| `state_class`        | No       | HA state class (`measurement`, `total_increasing`, `total`)                 |
-| `entity_category`    | No       | `config` or `diagnostic`                                                    |
-| `enabled_by_default` | No       | Set to `false` to hide the entity by default                                |
-| `kind`               | No       | Entity kind selector for built-in handler resolution                        |
-| `handlers`           | No       | Mapping of role → handler path (see [Handlers](#handlers))                  |
+| Field                | Required | Description                                                                                     |
+| -------------------- | -------- | ----------------------------------------------------------------------------------------------- |
+| `dp_id`              | Yes*     | Data-point ID on the device (*not required for `climate`, `cover`, `light`)                     |
+| `translation_key`    | No       | Translation key / entity ID (also accepts `key`)                                                |
+| `name`               | No       | Display name override                                                                           |
+| `icon`               | No       | MDI icon override (e.g. `mdi:valve`)                                                            |
+| `device_class`       | No       | HA device class (e.g. `battery`, `temperature`, `carbon_dioxide`)                               |
+| `unit`               | No       | Unit of measurement (e.g. `%`, `°C`, `ppm`, `s`)                                                |
+| `state_class`        | No       | HA state class (`measurement`, `total_increasing`, `total`)                                     |
+| `entity_category`    | No       | `config` or `diagnostic`                                                                        |
+| `enabled_by_default` | No       | Set to `false` to hide the entity by default                                                    |
+| `kind`               | No       | Selects a built-in mapping class for the platform (e.g. `battery` or `temperature` in `sensor`) |
+| `handlers`           | No       | Mapping of role → handler path (see [Handlers](#handlers))                                      |
 
 #### Entity fields (by platform)
 
@@ -64,7 +64,7 @@ model_name: 16wgjvck
 
 **text**: `pattern` (regex validation pattern)
 
-**binary_sensor**: `bitmap_mask` (binary mask for bitmap DPs)
+**switch**: `bitmap_mask` (binary mask for splitting one bitmap DP into multiple switches)
 
 **climate**: `hvac_switch_dp_id`, `hvac_switch_mode`, `hvac_modes`, `current_temperature_dp_id`, `current_temperature_coefficient`, `target_temperature_dp_id`, `target_temperature_coefficient`, `target_temperature_step`, `target_temperature_min`, `target_temperature_max`, `preset_mode_dp_ids`
 
@@ -79,20 +79,23 @@ model_name: 16wgjvck
 Handlers are callables referenced by dotted path under `device_descriptors/handlers/`. They customise read, write, or availability (`when`) behaviour for an entity:
 
 ```yaml
-switch:
-  - dp_id: 1
-    translation_key: water_valve
-    handlers:
-      write: water_valve.set_16wgjvck_water_valve
+entities:
+  switch:
+    - dp_id: 1
+      translation_key: water_valve
+      handlers:
+        write: water_valve.set_16wgjvck_water_valve
 ```
 
-Three roles are supported:
+Three roles are supported. Note that handler signatures vary by platform:
 
-| Role    | Signature                         | Purpose                            |
-| ------- | --------------------------------- | ---------------------------------- |
-| `read`  | `(entity, product)` → value       | Custom DP value reader             |
-| `write` | `(entity, product, value)` → None | Custom DP value writer             |
-| `when`  | `(entity, product)` → bool        | Whether the entity should be added |
+| Role    | Sensor / binary_sensor             | Other platforms                   | Purpose                            |
+| ------- | ---------------------------------- | --------------------------------- | ---------------------------------- |
+| `read`  | `(entity)` — sets the entity value | `(entity, product)` → value       | Custom DP value reader             |
+| `write` | `(entity, product, value)` → None  | `(entity, product, value)` → None | Custom DP value writer             |
+| `when`  | `(entity, product)` → bool         | `(entity, product)` → bool        | Whether the entity should be added |
+
+`read` handlers on `sensor` and `binary_sensor` platforms are called with only the entity and must set its value directly (returning `None`); on `switch`, `number`, `text`, `valve`, and `lock` platforms they receive `(entity, product)` and return the value. `write` and `when` handlers use the same `(entity, product)` / `(entity, product, value)` signatures on every platform.
 
 Available handler modules:
 
@@ -108,7 +111,7 @@ Invalid handler paths or unknown roles are **rejected at load time** — typos f
 
 ### 4. Category defaults
 
-Create a `_category_<category>.yaml` file (e.g. `_category_cl.yaml`) to define entities shared by all products in a category. Product descriptors inherit these defaults and can override individual entities by matching `dp_id`:
+Create a `_category_<category>.yaml` file (e.g. `_category_cl.yaml`) to define entities shared by all products in a category. A product inherits a platform's category defaults, but **only if it defines no entities for that platform** — if a product lists any entities for a platform, those replace the category defaults for that platform entirely (there is no per-entity merge):
 
 ```yaml
 # _category_cl.yaml — shared by all blind/curtain controllers
