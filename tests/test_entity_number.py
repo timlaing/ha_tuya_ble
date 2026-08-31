@@ -332,7 +332,7 @@ def _make_dp(dp_id: int, value: Any) -> SimpleNamespace:
     return SimpleNamespace(dp_id=dp_id, value=value, set_value=lambda v: None)
 
 
-def _make_number(dp_dict: dict[int, Any]) -> SimpleNamespace:
+def _make_number(dp_dict: dict[int, Any]) -> Any:
     """Build a fake number entity with the given datapoints."""
     return SimpleNamespace(
         device=SimpleNamespace(datapoints=_FakeDatapointDict(dp_dict)),
@@ -343,7 +343,7 @@ def _make_number(dp_dict: dict[int, Any]) -> SimpleNamespace:
 def _make_product(
     mode_dp: int | None = None,
     program_dp: int | None = None,
-) -> SimpleNamespace:
+) -> Any:
     """Build a fake product info with optional fingerbot."""
     fingerbot = None
     if mode_dp is not None or program_dp is not None:

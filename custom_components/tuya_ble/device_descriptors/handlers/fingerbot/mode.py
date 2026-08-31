@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ...entity import TuyaBLEEntity
-    from ...products import TuyaBLEProductInfo
+    from ....entity import TuyaBLEEntity
+    from ....products import TuyaBLEProductInfo
 
 
 def in_program_mode(entity: TuyaBLEEntity, product: TuyaBLEProductInfo) -> bool:
