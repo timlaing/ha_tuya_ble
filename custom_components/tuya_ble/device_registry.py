@@ -105,7 +105,9 @@ def _parse_entity(platform: str, raw: dict[str, Any]) -> EntityDescriptor:
         raise DeviceRegistryError(f"Entity in {platform!r} missing 'dp_id': {raw}")
     handlers_raw = raw.get("handlers", {})
     if not isinstance(handlers_raw, dict):
-        raise DeviceRegistryError(f"Entity {raw['dp_id']} handlers must be a mapping")
+        raise DeviceRegistryError(
+            f"Entity {raw.get('dp_id', '?')} handlers must be a mapping"
+        )
     legacy_keys_raw = raw.get("legacy_keys")
     if legacy_keys_raw is not None:
         if isinstance(legacy_keys_raw, str):

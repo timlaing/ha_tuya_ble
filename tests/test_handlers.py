@@ -134,6 +134,20 @@ def test_battery_enum_ignores_non_int() -> None:
     assert owner.set_native_value_calls == []
 
 
+def test_battery_enum_ignores_bool() -> None:
+    """battery_enum ignores a boolean datapoint value."""
+    owner = make_fake_owner({104: make_datapoint(True)})
+    battery.battery_enum(owner)
+    assert owner.set_native_value_calls == []
+
+
+def test_battery_enum_clamps_range() -> None:
+    """battery_enum clamps the enum value to the 1..5 range."""
+    owner = make_fake_owner({104: make_datapoint(9)})
+    battery.battery_enum(owner)
+    assert owner.set_native_value_calls == [100.0]
+
+
 def test_battery_enum_missing_datapoint() -> None:
     """battery_enum handles a missing datapoint gracefully."""
     owner = make_fake_owner({})

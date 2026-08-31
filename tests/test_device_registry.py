@@ -139,6 +139,19 @@ def test_parse_entity_non_dict_handlers_raises() -> None:
         raise AssertionError("expected DeviceRegistryError")
 
 
+def test_parse_entity_non_dict_handlers_raises_without_dp_id() -> None:
+    """A single-entity platform without dp_id still reports a valid error."""
+    registry = DeviceRegistry()
+    try:
+        _load_product(
+            registry, {"light": [{"translation_key": "x", "handlers": "bad"}]}
+        )
+    except DeviceRegistryError as exc:
+        assert "handlers" in str(exc)
+    else:
+        raise AssertionError("expected DeviceRegistryError")
+
+
 def test_parse_entity_legacy_keys_string_coerced() -> None:
     """A single-string legacy_keys is coerced to a list."""
     registry = DeviceRegistry()

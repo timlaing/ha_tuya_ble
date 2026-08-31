@@ -11,8 +11,17 @@ if TYPE_CHECKING:
 _BATTERY_ENUM_DP_ID = 104
 
 
+def _clamp(value: int, low: int, high: int) -> int:
+    """Clamp *value* into the inclusive [low, high] range."""
+    return max(low, min(value, high))
+
+
 def battery_enum(sensor: TuyaBLESensor) -> None:
     """Read the battery enum datapoint and convert it to a percentage."""
     datapoint = sensor.device.datapoints[_BATTERY_ENUM_DP_ID]
-    if datapoint and isinstance(datapoint.value, int):
-        sensor.set_native_value(datapoint.value * 20.0)
+    if (
+        datapoint
+        and isinstance(datapoint.value, int)
+        and not isinstance(datapoint.value, bool)
+    ):
+        sensor.set_native_value(_clamp(datapoint.value, 1, 5) * 20.0)
