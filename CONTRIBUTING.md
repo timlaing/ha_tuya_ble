@@ -51,6 +51,7 @@ model_name: 16wgjvck
 | `device_class`       | No       | HA device class (e.g. `battery`, `temperature`, `carbon_dioxide`)                               |
 | `unit`               | No       | Unit of measurement (e.g. `%`, `°C`, `ppm`, `s`)                                                |
 | `state_class`        | No       | HA state class (`measurement`, `total_increasing`, `total`)                                     |
+| `dp_type`            | No       | Data-point type override (used by all platforms except `climate`, `cover`, `light`)             |
 | `entity_category`    | No       | `config` or `diagnostic`                                                                        |
 | `enabled_by_default` | No       | Set to `false` to hide the entity by default                                                    |
 | `kind`               | No       | Selects a built-in mapping class for the platform (e.g. `battery` or `temperature` in `sensor`) |
@@ -62,17 +63,17 @@ model_name: 16wgjvck
 
 **number**: `min_value`, `max_value`, `step`, `mode` (`box` or `slider`)
 
-**select**: `options` (display values), `values` (raw DP values), `dp_type` (DP type override)
+**select**: `options` (display values), `values` (raw DP values)
 
 **text**: `pattern` (regex validation pattern)
 
 **switch**: `bitmap_mask` (binary mask for splitting one bitmap DP into multiple switches)
 
-**climate**: `hvac_switch_dp_id`, `hvac_switch_mode`, `hvac_modes`, `current_temperature_dp_id`, `current_temperature_coefficient`, `target_temperature_dp_id`, `target_temperature_coefficient`, `target_temperature_step`, `target_temperature_min`, `target_temperature_max`, `preset_mode_dp_ids`
+**climate**: `hvac_mode_dp_id`, `hvac_switch_dp_id`, `hvac_switch_mode`, `hvac_modes`, `current_temperature_dp_id`, `current_temperature_coefficient`, `target_temperature_dp_id`, `target_temperature_coefficient`, `target_temperature_step`, `target_temperature_min`, `target_temperature_max`, `temperature_unit`, `current_humidity_dp_id`, `current_humidity_coefficient`, `target_humidity_dp_id`, `target_humidity_coefficient`, `target_humidity_min`, `target_humidity_max`, `preset_mode_dp_ids`
 
-**cover**: `state_dp_id`, `position_set_dp_id`, `position_dp_id`
+**cover**: `state_dp_id`, `position_set_dp_id`, `position_dp_id`, `tilt_dp_id`
 
-**light**: `switch_dp_id`, `color_mode_dp_id`, `brightness_dp_id`, `color_temp_dp_id`, `color_data_dp_id`, `brightness_min`, `brightness_max`
+**light**: `switch_dp_id`, `color_mode_dp_id`, `brightness_dp_id`, `brightness_min`, `brightness_max`, `color_temp_dp_id`, `color_temp_min`, `color_temp_max`, `color_data_dp_id`
 
 **lock**: `door_dp_id` (DP ID for door status sensor)
 
