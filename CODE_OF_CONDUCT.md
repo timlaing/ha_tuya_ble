@@ -59,9 +59,12 @@ representative at an online or offline event.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement at:
+reported to the community leaders responsible for enforcement through a private
+channel:
 
-- **GitHub:** Reach out to the repository maintainers via the [issue tracker](https://github.com/timlaing/ha_tuya_ble/issues)
+- **GitHub:** Contact the repository maintainers privately. Please do **not**
+  report Code of Conduct incidents or share personal details via public GitHub
+  issues.
 
 All complaints will be reviewed and investigated promptly and fairly.
 
