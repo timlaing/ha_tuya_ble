@@ -256,6 +256,35 @@ def test_find_legacy_keys_from_category_default(
         "custom_components.tuya_ble.device_registry.get_registry", return_value=reg
     ):
         assert _find_legacy_keys(device, "countdown_zone1") == ["countdown_duration_z1"]
+    assert "number" not in entities.entities
+
+
+def test_unique_id_adopt_handles_none_unique_id(
+    hass: HomeAssistant,
+) -> None:
+    """A registry entry without a unique_id does not break adoption matching."""
+    data = _make_entry_data()
+    data[CONF_PRODUCT_ID] = "qycalacn"
+    entry = MockConfigEntry(domain=DOMAIN, data=data)
+    entry.add_to_hass(hass)
+    registry = er.async_get(hass)
+    registry.async_get_or_create(
+        "number", DOMAIN, "device123-countdown_duration_z1", config_entry=entry
+    )
+    fake = MagicMock()
+    fake.platform = DOMAIN
+    fake.unique_id = None
+    registry.entities["fake-none"] = fake
+    try:
+        device = MagicMock()
+        device.device_id = "device123"
+        device.category = "ggq"
+        device.product_id = "qycalacn"
+
+        uid = _resolve_unique_id(hass, device, "countdown_zone1")
+    finally:
+        registry.entities.pop("fake-none", None)
+    assert uid == "device123-countdown_duration_z1"
 
 
 async def test_setup_removes_legacy_duplicate_before_platforms(

@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
     from .coordinator import TuyaBLECoordinator
+    from .device_registry import EntityDescriptor
 
 
 def get_device_info(device: TuyaBLEDevice) -> DeviceInfo | None:
@@ -70,9 +71,11 @@ def _find_legacy_keys(
     product = reg.get(device.category or "", device.product_id or "")
     if product is None:
         return []
-    platforms = dict(product.entities)
+    platforms: dict[str, list[EntityDescriptor]] = {
+        platform: list(items) for platform, items in product.entities.items()
+    }
     for platform, defaults in product.category_defaults.items():
-        platforms.setdefault(platform, []).extend(defaults)
+        platforms.setdefault(platform, []).extend(list(defaults))
     for platform_entities in platforms.values():
         for desc in platform_entities:
             dk = desc.translation_key or str(desc.dp_id)
@@ -95,7 +98,9 @@ def _resolve_unique_id(
         existing = {
             entry.unique_id[len(prefix) :]
             for entry in registry.entities.values()
-            if entry.platform == DOMAIN and entry.unique_id.startswith(prefix)
+            if entry.platform == DOMAIN
+            and entry.unique_id is not None
+            and entry.unique_id.startswith(prefix)
         }
         for old_key in legacy_keys:
             if old_key in existing:
