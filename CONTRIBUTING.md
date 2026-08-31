@@ -56,6 +56,8 @@ model_name: 16wgjvck
 | `kind`               | No       | Selects a built-in mapping class for the platform (e.g. `battery` or `temperature` in `sensor`) |
 | `handlers`           | No       | Mapping of role → handler path (see [Handlers](#handlers))                                      |
 
+> **Translations**: `translation_key` values are looked up against `entity.<platform>.<translation_key>` in `strings.json` / `translations/en.json`. When you introduce a new `translation_key`, add the corresponding `name` entry there too — otherwise use a literal `name:` instead.
+
 #### Entity fields (by platform)
 
 **number**: `min_value`, `max_value`, `step`, `mode` (`box` or `slider`)
