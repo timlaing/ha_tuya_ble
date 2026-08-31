@@ -79,7 +79,13 @@ class EntityDescriptor:
         path = self.handlers.get(role)
         if path is None:
             return None
-        return resolve_handler(path)
+        try:
+            return resolve_handler(path)
+        except (ImportError, AttributeError, TypeError, ValueError) as exc:
+            raise DeviceRegistryError(
+                f"Failed to resolve {role} handler {path!r} for "
+                f"{self.platform} entity dp_id {self.dp_id}"
+            ) from exc
 
 
 @dataclass
@@ -106,6 +112,12 @@ def _parse_entity(platform: str, raw: dict[str, Any]) -> EntityDescriptor:
     if not isinstance(handlers_raw, dict):
         raise DeviceRegistryError(
             f"Entity {raw.get('dp_id', '?')} handlers must be a mapping"
+        )
+    unknown_roles = set(handlers_raw) - _HANDLER_ROLES
+    if unknown_roles:
+        raise DeviceRegistryError(
+            f"Entity {raw.get('dp_id', '?')} has unknown handler roles: "
+            f"{sorted(unknown_roles)} (expected one of {sorted(_HANDLER_ROLES)})"
         )
     legacy_keys_raw = raw.get("legacy_keys")
     if legacy_keys_raw is not None:
@@ -144,9 +156,7 @@ def _parse_entity(platform: str, raw: dict[str, Any]) -> EntityDescriptor:
         pattern=raw.get("pattern"),
         door_dp_id=raw.get("door_dp_id"),
         legacy_keys=legacy_keys_raw,
-        handlers={
-            role: path for role, path in handlers_raw.items() if role in _HANDLER_ROLES
-        },
+        handlers=dict(handlers_raw),
         extra={
             k: v for k, v in raw.items() if k not in _BASE_ENTITY_KEYS and k != "dp_id"
         },

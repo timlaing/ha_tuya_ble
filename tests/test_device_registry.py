@@ -152,6 +152,25 @@ def test_parse_entity_non_dict_handlers_raises_without_dp_id() -> None:
         raise AssertionError("expected DeviceRegistryError")
 
 
+def test_parse_entity_unknown_handler_role_raises() -> None:
+    """An unrecognised handler role (e.g. a typo) is rejected, not silently dropped."""
+    registry = DeviceRegistry()
+    try:
+        _load_product(
+            registry,
+            {
+                "sensor": [
+                    {"dp_id": 5, "handlers": {"unknown_key": "co2.alarm_enabled"}}
+                ]
+            },
+        )
+    except DeviceRegistryError as exc:
+        assert "unknown handler roles" in str(exc)
+        assert "unknown_key" in str(exc)
+    else:
+        raise AssertionError("expected DeviceRegistryError")
+
+
 def test_parse_entity_legacy_keys_string_coerced() -> None:
     """A single-string legacy_keys is coerced to a list."""
     registry = DeviceRegistry()
@@ -292,6 +311,21 @@ def test_resolved_handler_none_when_unset() -> None:
     """Handlers that are not set resolve to None."""
     assert _descriptor().resolved_handler("read") is None
     assert _descriptor().resolved_handler("when") is None
+
+
+def test_resolved_handler_bad_path_raises_descriptor_error() -> None:
+    """A bad handler path surfaces as a descriptor-scoped DeviceRegistryError."""
+    desc = EntityDescriptor(
+        platform="sensor", dp_id=7, handlers={"read": "battery.does_not_exist"}
+    )
+    try:
+        desc.resolved_handler("read")
+    except DeviceRegistryError as exc:
+        assert "read" in str(exc)
+        assert "battery.does_not_exist" in str(exc)
+        assert "sensor" in str(exc)
+    else:
+        raise AssertionError("expected DeviceRegistryError")
 
 
 def test_load_skips_schema_and_loads_category_defaults(
