@@ -60,6 +60,7 @@ class EntityDescriptor:
     handlers: dict[str, str] = field(default_factory=dict)
     pattern: str | None = None
     door_dp_id: int | None = None
+    legacy_keys: list[str] | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     def resolved_entity_category(self) -> EntityCategory | None:
@@ -129,6 +130,7 @@ def _parse_entity(platform: str, raw: dict[str, Any]) -> EntityDescriptor:
         kind=raw.get("kind"),
         pattern=raw.get("pattern"),
         door_dp_id=raw.get("door_dp_id"),
+        legacy_keys=raw.get("legacy_keys"),
         handlers={
             role: path for role, path in handlers_raw.items() if role in _HANDLER_ROLES
         },
@@ -163,6 +165,7 @@ _BASE_ENTITY_KEYS = {
     "handlers",
     "pattern",
     "door_dp_id",
+    "legacy_keys",
 }
 
 

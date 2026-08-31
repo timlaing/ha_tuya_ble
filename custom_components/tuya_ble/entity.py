@@ -6,6 +6,9 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityDescription
+from homeassistant.helpers.entity_registry import (
+    async_get as async_get_entity_registry,
+)
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .base import EnumTypeData, IntegerTypeData
@@ -56,6 +59,44 @@ def get_device_info(device: TuyaBLEDevice) -> DeviceInfo | None:
     return result
 
 
+def _find_legacy_keys(
+    device: TuyaBLEDevice,
+    key: str,
+) -> list[str]:
+    """Return legacy alias keys for *key* from the product descriptor, if any."""
+    from .device_registry import get_registry  # pylint: disable=C0415
+
+    reg = get_registry()
+    product = reg.get(device.category or "", device.product_id or "")
+    if product is None:
+        return []
+    for platform_entities in product.entities.values():
+        for desc in platform_entities:
+            dk = desc.translation_key or str(desc.dp_id)
+            if dk == key and desc.legacy_keys:
+                return desc.legacy_keys
+    return []
+
+
+def _resolve_unique_id(
+    hass: HomeAssistant,
+    device: TuyaBLEDevice,
+    key: str,
+) -> str:
+    """Resolve the unique-id, preferring a legacy id when one exists in the registry."""
+    uid = f"{device.device_id}-{key}"
+    legacy_keys = _find_legacy_keys(device, key)
+    if legacy_keys:
+        registry = async_get_entity_registry(hass)
+        existing_ids = {entry.unique_id for entry in registry.entities.values()}
+        for old_key in legacy_keys:
+            candidate = f"{device.device_id}-{old_key}"
+            if candidate in existing_ids:
+                uid = candidate
+                break
+    return uid
+
+
 class TuyaBLEEntity(CoordinatorEntity["TuyaBLECoordinator"]):
     """Tuya BLE base entity."""
 
@@ -76,7 +117,7 @@ class TuyaBLEEntity(CoordinatorEntity["TuyaBLECoordinator"]):
         self.entity_description = description
         self._attr_has_entity_name = True
         self._attr_device_info = get_device_info(self.device)
-        self._attr_unique_id = f"{self.device.device_id}-{description.key}"
+        self._attr_unique_id = _resolve_unique_id(_hass, device, description.key)
 
     @property
     def available(self) -> bool:
