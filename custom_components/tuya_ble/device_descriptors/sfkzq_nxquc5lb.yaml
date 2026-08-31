@@ -1,0 +1,80 @@
+category: sfkzq
+product_id: nxquc5lb
+entities:
+  sensor:
+    - dp_id: 7
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+      kind: battery
+    - dp_id: 12
+      translation_key: work_state
+    - dp_id: 9
+      translation_key: time_use
+      device_class: duration
+      unit: s
+      state_class: measurement
+    - dp_id: 13
+      translation_key: weather
+      icon: mdi:weather-cloudy-alert
+      device_class: enum
+      options:
+        - no_forecast
+        - sunny
+        - cloudy
+        - rainy
+    - dp_id: 15
+      translation_key: last_use_time
+      device_class: duration
+      unit: s
+      state_class: measurement
+      entity_category: diagnostic
+    - dp_id: 16
+      translation_key: soak_schedule
+      entity_category: diagnostic
+    - dp_id: 17
+      translation_key: irrigation_schedule
+      entity_category: diagnostic
+  binary_sensor:
+    - dp_id: 4
+      translation_key: fault_code
+      device_class: problem
+      entity_category: diagnostic
+  number:
+    - dp_id: 11
+      translation_key: countdown
+      icon: mdi:timer
+      unit: s
+      mode: box
+      min_value: 0
+      max_value: 86400
+      step: 1
+  switch:
+    - dp_id: 14
+      translation_key: weather_switch
+      icon: mdi:cloud-question
+      kind: TuyaBLEWaterValveWeatherSwitchMapping
+  valve:
+    - dp_id: 1
+      translation_key: valve
+      device_class: water
+  select:
+    - dp_id: 10
+      translation_key: weather_delay
+      icon: mdi:weather-partly-cloudy
+      entity_category: config
+      dp_type: 3
+      options:
+        - cancel
+        - 24h
+        - 48h
+        - 72h
+      values:
+        - cancel
+        - 24h
+        - 48h
+        - 72h
+device_name: Water valve controller
+model_name: nxquc5lb

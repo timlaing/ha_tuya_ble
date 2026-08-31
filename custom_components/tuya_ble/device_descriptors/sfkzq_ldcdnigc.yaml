@@ -1,0 +1,52 @@
+category: sfkzq
+product_id: ldcdnigc
+entities:
+  sensor:
+    - dp_id: 12
+      translation_key: work_state
+      device_class: enum
+      options:
+        - auto
+        - manual
+        - idle
+      dp_type: 4
+    - dp_id: 8
+      translation_key: battery_state
+      device_class: enum
+      entity_category: diagnostic
+      options:
+        - low
+        - middle
+        - high
+      dp_type: 4
+    - dp_id: 7
+      translation_key: battery_percentage
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      dp_type: 2
+    - dp_id: 15
+      translation_key: use_time_one
+      device_class: duration
+      unit: s
+      state_class: measurement
+      entity_category: diagnostic
+  number:
+    - dp_id: 11
+      translation_key: countdown
+      icon: mdi:timer
+      unit: s
+      mode: box
+      min_value: 0
+      max_value: 86400
+      step: 1
+  switch:
+    - dp_id: 1
+      translation_key: water_valve
+      icon: mdi:valve
+  valve:
+    - dp_id: 1
+      translation_key: valve
+      device_class: water
+device_name: ZX-7378 Smart Irrigation Controller
+model_name: ldcdnigc

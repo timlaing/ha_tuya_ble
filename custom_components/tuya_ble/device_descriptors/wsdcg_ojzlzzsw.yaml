@@ -1,0 +1,61 @@
+category: wsdcg
+product_id: ojzlzzsw
+entities:
+  sensor:
+    - dp_id: 1
+      translation_key: temperature
+      device_class: temperature
+      unit: °C
+      state_class: measurement
+      coefficient: 10.0
+      kind: temperature
+    - dp_id: 2
+      translation_key: moisture
+      device_class: moisture
+      unit: "%"
+      state_class: measurement
+    - dp_id: 3
+      translation_key: battery_state
+      icon: mdi:battery
+      device_class: enum
+      entity_category: diagnostic
+      options:
+        - low
+        - normal
+        - high
+      icons:
+        - mdi:battery-alert
+        - mdi:battery-50
+        - mdi:battery-check
+    - dp_id: 4
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+      kind: battery
+  number:
+    - dp_id: 17
+      translation_key: reporting_period
+      icon: mdi:timer
+      unit: min
+      entity_category: config
+      mode: box
+      min_value: 1
+      max_value: 120
+      step: 1
+  select:
+    - dp_id: 9
+      translation_key: temperature_unit
+      options:
+        - °C
+        - °F
+      enabled_by_default: false
+  switch:
+    - dp_id: 21
+      translation_key: switch
+      icon: mdi:thermometer
+      entity_category: config
+      enabled_by_default: false
+device_name: Soil moisture sensor
+model_name: ojzlzzsw

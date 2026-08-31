@@ -1,0 +1,17 @@
+category: wsdcg
+product_id: tv6peegl
+entities:
+  sensor:
+    - dp_id: 101
+      translation_key: temperature
+      device_class: temperature
+      unit: °C
+      state_class: measurement
+      kind: temperature
+    - dp_id: 102
+      translation_key: moisture
+      device_class: moisture
+      unit: "%"
+      state_class: measurement
+device_name: Soil Thermo-Hygrometer
+model_name: tv6peegl

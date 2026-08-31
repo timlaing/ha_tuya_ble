@@ -1,0 +1,42 @@
+category: ms
+product_id: k53ok3u9
+entities:
+  sensor:
+    - dp_id: 21
+      translation_key: alarm_lock
+      device_class: enum
+      options:
+        - wrong_finger
+        - wrong_password
+        - wrong_card
+        - wrong_face
+        - tongue_bad
+        - too_hot
+        - unclosed_time
+        - tongue_not_out
+        - pry
+        - key_in
+        - low_battery
+        - power_off
+        - shock
+    - dp_id: 8
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+      kind: battery
+    - dp_id: 40
+      translation_key: lock_door_status
+      device_class: enum
+      entity_category: diagnostic
+      options:
+        - door_status_unknown
+        - door_status_open
+        - door_status_closed
+  lock:
+    - dp_id: 47
+      translation_key: lock
+      door_dp_id: 40
+device_name: Fingerprint Smart Lock
+model_name: k53ok3u9

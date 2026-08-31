@@ -1,0 +1,84 @@
+category: szjqr
+product_id: 3yqdo5yt
+entities:
+  sensor:
+    - dp_id: 7
+      translation_key: battery_charging
+      device_class: enum
+      entity_category: diagnostic
+      options:
+        - not_charging
+        - charging
+        - charged
+      icons:
+        - mdi:battery
+        - mdi:power-plug-battery
+        - mdi:battery-check
+    - dp_id: 8
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+      kind: battery
+  button:
+    - dp_id: 1
+      translation_key: push
+      handlers:
+        when: fingerbot.mode.in_push_mode
+      kind: fingerbot_mode
+  number:
+    - dp_id: 3
+      translation_key: hold_time
+      mode: box
+      handlers:
+        when: fingerbot.mode.in_push_mode
+      kind: hold_time
+      min_value: 0
+      max_value: 10
+      step: 1
+      icon: mdi:timer
+      unit: s
+      entity_category: config
+    - dp_id: 5
+      translation_key: up_position
+      mode: box
+      min_value: 0
+      max_value: 100
+      step: 1
+      icon: mdi:arrow-up-bold
+      unit: "%"
+      entity_category: config
+    - dp_id: 6
+      translation_key: down_position
+      mode: box
+      min_value: 0
+      max_value: 100
+      step: 1
+      icon: mdi:arrow-down-bold
+      unit: "%"
+      entity_category: config
+  select:
+    - dp_id: 2
+      translation_key: fingerbot_mode
+      entity_category: config
+      options:
+        - push
+        - switch
+        - program
+      kind: fingerbot_mode
+  switch:
+    - dp_id: 1
+      translation_key: switch
+      handlers:
+        when: fingerbot.mode.in_switch_mode
+      kind: TuyaBLEFingerbotSwitchMapping
+    - dp_id: 4
+      translation_key: reverse_positions
+      icon: mdi:arrow-up-down-bold
+      entity_category: config
+      handlers:
+        when: fingerbot.mode.in_switch_mode
+      kind: TuyaBLEReversePositionsMapping
+device_name: CUBETOUCH 1s
+model_name: 3yqdo5yt

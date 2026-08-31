@@ -6,6 +6,9 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityDescription
+from homeassistant.helpers.entity_registry import (
+    async_get as async_get_entity_registry,
+)
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .base import EnumTypeData, IntegerTypeData
@@ -25,6 +28,9 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
     from .coordinator import TuyaBLECoordinator
+
+
+_HASS_DATA_LEGACY_KEYS = "legacy_unique_id_suffixes"
 
 
 def get_device_info(device: TuyaBLEDevice) -> DeviceInfo | None:
@@ -56,6 +62,60 @@ def get_device_info(device: TuyaBLEDevice) -> DeviceInfo | None:
     return result
 
 
+def _find_legacy_keys(
+    device: TuyaBLEDevice,
+    key: str,
+) -> list[str]:
+    """Return legacy alias keys for *key* from the product descriptor, if any."""
+    from .device_registry import get_registry  # pylint: disable=C0415
+
+    product = get_registry().get(device.category or "", device.product_id or "")
+    if product is None:
+        return []
+
+    sources = [*product.entities.values(), *product.category_defaults.values()]
+    for descriptors in sources:
+        for desc in descriptors:
+            if (desc.translation_key or str(desc.dp_id)) == key:
+                return desc.legacy_keys or []
+    return []
+
+
+def _legacy_suffixes(hass: HomeAssistant, device_id: str) -> set[str]:
+    """Return existing legacy unique-id suffixes for a device, cached per setup."""
+    cache: dict[str, set[str]] = hass.data.setdefault(DOMAIN, {}).setdefault(
+        _HASS_DATA_LEGACY_KEYS, {}
+    )
+    if device_id not in cache:
+        registry = async_get_entity_registry(hass)
+        prefix = f"{device_id}-"
+        cache[device_id] = {
+            entry.unique_id[len(prefix) :]
+            for entry in registry.entities.values()
+            if entry.platform == DOMAIN
+            and entry.unique_id is not None
+            and entry.unique_id.startswith(prefix)
+        }
+    return cache[device_id]
+
+
+def _resolve_unique_id(
+    hass: HomeAssistant,
+    device: TuyaBLEDevice,
+    key: str,
+) -> str:
+    """Resolve the unique-id, preferring a legacy id when one exists in the registry."""
+    uid = f"{device.device_id}-{key}"
+    legacy_keys = _find_legacy_keys(device, key)
+    if legacy_keys:
+        existing = _legacy_suffixes(hass, device.device_id)
+        for old_key in legacy_keys:
+            if old_key in existing:
+                uid = f"{device.device_id}-{old_key}"
+                break
+    return uid
+
+
 class TuyaBLEEntity(CoordinatorEntity["TuyaBLECoordinator"]):
     """Tuya BLE base entity."""
 
@@ -76,7 +136,7 @@ class TuyaBLEEntity(CoordinatorEntity["TuyaBLECoordinator"]):
         self.entity_description = description
         self._attr_has_entity_name = True
         self._attr_device_info = get_device_info(self.device)
-        self._attr_unique_id = f"{self.device.device_id}-{description.key}"
+        self._attr_unique_id = _resolve_unique_id(_hass, device, description.key)
 
     @property
     def available(self) -> bool:

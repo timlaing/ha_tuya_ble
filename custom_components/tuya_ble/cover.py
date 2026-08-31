@@ -18,6 +18,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
+from .device_registry import EntityDescriptor, get_registry
 from .devices import (
     TuyaBLECoordinator,
     TuyaBLEData,
@@ -49,57 +50,62 @@ class TuyaBLECategoryCoverMapping:
     mapping: list[TuyaBLECoverMapping] | None = None
 
 
-mapping: dict[str, TuyaBLECategoryCoverMapping] = {
-    "cl": TuyaBLECategoryCoverMapping(
-        products={
-            **{
-                k: [
-                    TuyaBLECoverMapping(
-                        description=CoverEntityDescription(key="ble_blind_controller"),
-                        state_dp_id=1,
-                        position_set_dp_id=2,
-                        position_dp_id=3,
-                        battery_dp_id=13,
-                        speed_dp_id=105,
-                    )
-                ]
-                for k in ["4pbr8eig", "vlwf3ud6"]
-            },
-            "kcy0x4pi": [
-                TuyaBLECoverMapping(
-                    description=CoverEntityDescription(
-                        key="ble_curtain_controller",
-                    ),
-                    state_dp_id=1,
-                    position_set_dp_id=2,
-                    position_dp_id=3,
-                    battery_dp_id=13,
-                ),
-            ],
-            "dy4dh1q0": [
-                TuyaBLECoverMapping(
-                    description=CoverEntityDescription(
-                        key="ble_venetian_blind_motor",
-                    ),
-                    state_dp_id=1,
-                    position_set_dp_id=2,
-                    position_dp_id=3,
-                    tilt_dp_id=101,
-                ),
-            ],
-        },
-        mapping=[
-            TuyaBLECoverMapping(
-                description=CoverEntityDescription(
-                    key="ble_cover",
-                ),
-                state_dp_id=1,
-                position_set_dp_id=2,
-                position_dp_id=3,
-            ),
-        ],
-    ),
-}
+def _cover_description(desc: EntityDescriptor) -> CoverEntityDescription:
+    """Build a CoverEntityDescription from a registry descriptor."""
+    return CoverEntityDescription(
+        key=desc.translation_key or "cover",
+        icon=desc.icon,
+    )
+
+
+def _build_cover_mapping(desc: EntityDescriptor) -> TuyaBLECoverMapping:
+    """Construct a cover mapping from a registry descriptor."""
+    extra = desc.extra
+    kwargs: dict[str, Any] = {"description": _cover_description(desc)}
+    for field_name in (
+        "state_dp_id",
+        "position_set_dp_id",
+        "position_dp_id",
+        "tilt_dp_id",
+        "battery_dp_id",
+        "work_state_dp_id",
+        "speed_dp_id",
+    ):
+        if field_name in extra:
+            kwargs[field_name] = extra[field_name]
+    return TuyaBLECoverMapping(**kwargs)
+
+
+def _build_mapping() -> dict[str, TuyaBLECategoryCoverMapping]:
+    """Build the cover mappings dict from the device registry."""
+    registry = get_registry()
+    result: dict[str, TuyaBLECategoryCoverMapping] = {}
+    for device_entities in registry.products.values():
+        descriptors = device_entities.get("cover")
+        if not descriptors:
+            continue
+        category_mapping = result.setdefault(
+            device_entities.category,
+            TuyaBLECategoryCoverMapping(products={}),
+        )
+        assert category_mapping.products is not None
+        category_mapping.products[device_entities.product_id] = [
+            _build_cover_mapping(desc) for desc in descriptors
+        ]
+    for category, defaults in registry.category_defaults.items():
+        default_descriptors = defaults.get("cover")
+        if not default_descriptors:
+            continue
+        category_mapping = result.setdefault(
+            category, TuyaBLECategoryCoverMapping(products={})
+        )
+        category_mapping.mapping = [
+            _build_cover_mapping(desc) for desc in default_descriptors
+        ]
+    return result
+
+
+mapping: dict[str, TuyaBLECategoryCoverMapping] = _build_mapping()
 
 
 def get_mapping_by_device(device: TuyaBLEDevice) -> list[TuyaBLECoverMapping]:

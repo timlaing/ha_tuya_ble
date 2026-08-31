@@ -1,25 +1,31 @@
 # Security Policy
 
-## Reporting a Vulnerability
+## Reporting a vulnerability
 
-If you discover a security vulnerability in this integration, please report it responsibly.
+Please **do not** report security vulnerabilities in the public issue tracker.
+Instead, report vulnerabilities privately through **GitHub's private
+vulnerability reporting**, which goes directly to the maintainers:
 
-**Do not open a public GitHub issue for security vulnerabilities.**
+> **Report a security vulnerability** → **https://github.com/timlaing/ha_tuya_ble/security/advisories**
 
-Instead, please email: [timlaing@users.noreply.github.com](mailto:timlaing@users.noreply.github.com)
+You can also use **GitHub Security Advisories** from the repository's
+**Security** tab (if enabled for this repository).
 
-Include:
+### What to include
 
 - Description of the vulnerability
 - Steps to reproduce
 - Potential impact
 - Suggested fix (if any)
 
-## Response Timeline
+### What happens next
 
-- **Acknowledgement**: within 48 hours
-- **Initial assessment**: within 1 week
-- **Fix or mitigation**: depends on severity, but typically within 2 weeks for critical issues
+- We aim to acknowledge receipt of security reports within a reasonable
+  timeframe and to keep you informed as we triage.
+- We will coordinate on a fix and release before the issue is publicly
+  disclosed wherever possible.
+- We ask that reporters allow time for a fix and release before public
+  disclosure, and credit the reporter if they wish.
 
 ## Scope
 
@@ -44,3 +50,15 @@ This integration handles BLE encryption keys and device credentials. Key securit
 | -------- | --------- |
 | Latest   | Yes       |
 | < Latest | No        |
+
+## Security tooling
+
+This project uses a number of automated checks to help keep the codebase secure:
+
+- GitHub **CodeQL** analysis runs in CI ([`.github/workflows/codeql.yml`](.github/workflows/codeql.yml)).
+- **SonarQube Cloud** reports security ratings and vulnerabilities
+  (`sonar.projectKey=timlaing_ha_tuya_ble`).
+- GitHub **Dependabot** monitors dependency updates and known-vulnerability
+  advisories.
+- `prek run --all-files` runs hooks including `detect-private-key` and
+  `detect-secrets`-class checks to prevent committing secrets.

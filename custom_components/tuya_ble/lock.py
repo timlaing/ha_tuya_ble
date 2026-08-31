@@ -14,6 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
+from .device_registry import EntityDescriptor, get_registry
 from .devices import (
     TuyaBLECoordinator,
     TuyaBLEData,
@@ -49,84 +50,53 @@ class TuyaBLECategoryLockMapping:
     mapping: list[TuyaBLELockMapping] | None = None
 
 
-mapping: dict[str, TuyaBLECategoryLockMapping] = {
-    "ms": TuyaBLECategoryLockMapping(
-        products={
-            **{
-                k: [
-                    TuyaBLELockMapping(
-                        dp_id=47,
-                        description=LockEntityDescription(key="lock"),
-                        door_dp_id=40,
-                    )
-                ]
-                for k in [
-                    "ludzroix",
-                    "isk2p555",
-                    "gumrixyt",
-                    "uamrw6h3",
-                    "sidhzylo",
-                    "mqc2hevy",
-                ]
-            },
-            "a6nttc41": [  # ORION Smart Lock - motor DP 33
-                TuyaBLELockMapping(
-                    dp_id=33,
-                    description=LockEntityDescription(
-                        key="lock",
-                    ),
-                ),
-            ],
-            "okkyfgfs": [  # TEKXDD Fingerprint Smart Lock - motor DP 47
-                TuyaBLELockMapping(
-                    dp_id=47,
-                    description=LockEntityDescription(
-                        key="lock",
-                    ),
-                    door_dp_id=40,
-                ),
-            ],
-            "k53ok3u9": [  # Fingerprint Smart Lock - motor DP 47
-                TuyaBLELockMapping(
-                    dp_id=47,
-                    description=LockEntityDescription(
-                        key="lock",
-                    ),
-                    door_dp_id=40,
-                ),
-            ],
-        },
-        mapping=[
-            TuyaBLELockMapping(
-                dp_id=47,
-                description=LockEntityDescription(
-                    key="lock",
-                ),
-            ),
-        ],
-    ),
-    "jtmspro": TuyaBLECategoryLockMapping(
-        products={
-            **{
-                k: [
-                    TuyaBLELockMapping(
-                        dp_id=47,
-                        description=LockEntityDescription(key="lock"),
-                        door_dp_id=40,
-                    )
-                ]
-                for k in [
-                    "xicdxood",
-                    "rlyxv7pe",
-                    "oyqux5vv",
-                    "ajk32biq",
-                    "z7lj676i",
-                    "hs21i377",
-                ]
-            },
-        },
-    ),
-}
+def _lock_description(desc: EntityDescriptor) -> LockEntityDescription:
+    """Build a LockEntityDescription from a descriptor."""
+    return LockEntityDescription(key=desc.translation_key or str(desc.dp_id))
+
+
+def _build_lock_mapping(desc: EntityDescriptor) -> TuyaBLELockMapping:
+    """Construct a lock mapping from a registry descriptor."""
+    return TuyaBLELockMapping(
+        dp_id=desc.dp_id,
+        description=_lock_description(desc),
+        force_add=desc.force_add,
+        dp_type=(
+            TuyaBLEDataPointType(desc.dp_type) if desc.dp_type is not None else None
+        ),
+        is_available=desc.resolved_handler("when"),
+        getter=desc.resolved_handler("read"),
+        door_dp_id=desc.door_dp_id,
+    )
+
+
+def _build_mapping() -> dict[str, TuyaBLECategoryLockMapping]:
+    """Build the lock mappings dict from the device registry."""
+    registry = get_registry()
+    result: dict[str, TuyaBLECategoryLockMapping] = {}
+    for device_entities in registry.products.values():
+        descriptors = device_entities.get("lock")
+        if not descriptors:
+            continue
+        category_mapping = result.setdefault(
+            device_entities.category,
+            TuyaBLECategoryLockMapping(products={}),
+        )
+        assert category_mapping.products is not None
+        category_mapping.products[device_entities.product_id] = [
+            _build_lock_mapping(desc) for desc in descriptors
+        ]
+    for category, platform_defaults in registry.category_defaults.items():
+        lock_descriptors = platform_defaults.get("lock")
+        if not lock_descriptors:
+            continue
+        result.setdefault(category, TuyaBLECategoryLockMapping(products={})).mapping = [
+            _build_lock_mapping(desc) for desc in lock_descriptors
+        ]
+    return result
+
+
+mapping: dict[str, TuyaBLECategoryLockMapping] = _build_mapping()
 
 
 def get_mapping_by_device(device: TuyaBLEDevice) -> list[TuyaBLELockMapping]:

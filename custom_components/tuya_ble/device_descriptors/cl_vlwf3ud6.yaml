@@ -1,0 +1,36 @@
+category: cl
+product_id: vlwf3ud6
+entities:
+  sensor:
+    - dp_id: 13
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+      kind: battery
+    - dp_id: 7
+      translation_key: cover_work_state
+      device_class: enum
+      entity_category: diagnostic
+      options:
+        - STANDBY
+        - SUCCESS
+        - LEARNING
+  number:
+    - dp_id: 105
+      translation_key: cover_speed
+      icon: mdi:speedometer
+      mode: box
+      min_value: 1
+      max_value: 40
+      step: 1
+  cover:
+    - translation_key: ble_blind_controller
+      state_dp_id: 1
+      position_set_dp_id: 2
+      position_dp_id: 3
+      battery_dp_id: 13
+      speed_dp_id: 105
+device_name: Blind Controller
+model_name: vlwf3ud6

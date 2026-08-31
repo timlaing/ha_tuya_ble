@@ -1,0 +1,43 @@
+category: jtmspro
+product_id: z7lj676i
+entities:
+  sensor:
+    - dp_id: 21
+      translation_key: alarm_lock
+      device_class: enum
+      options:
+        - wrong_finger
+        - wrong_password
+        - wrong_card
+        - wrong_face
+        - tongue_bad
+        - too_hot
+        - unclosed_time
+        - tongue_not_out
+        - pry
+        - key_in
+        - low_battery
+        - power_off
+        - shock
+    - dp_id: 12
+      translation_key: unlock_fingerprint
+      icon: mdi:fingerprint
+    - dp_id: 15
+      translation_key: unlock_card
+      icon: mdi:nfc-variant
+    - dp_id: 13
+      translation_key: unlock_password
+      icon: mdi:keyboard-outline
+    - dp_id: 8
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+      kind: battery
+  lock:
+    - dp_id: 47
+      translation_key: lock
+      door_dp_id: 40
+device_name: Smart Cylinder Lock
+model_name: z7lj676i

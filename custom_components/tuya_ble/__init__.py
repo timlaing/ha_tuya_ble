@@ -102,32 +102,6 @@ def _remove_legacy_sensor_entities(hass: HomeAssistant, entry: ConfigEntry) -> N
             registry.async_remove(entity.entity_id)
 
 
-_QYCALACN_UNIQUE_ID_RENAMES = {
-    "countdown_duration_z1": "countdown_zone1",
-    "countdown_duration_z2": "countdown_zone2",
-    "use_time_z1": "last_use_time_zone1",
-    "use_time_z2": "last_use_time_zone2",
-}
-
-
-@callback
-def _migrate_qycalacn_unique_ids(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Rename legacy qycalacn entity unique_ids to the new mapping keys."""
-    if entry.data.get(CONF_PRODUCT_ID) != "qycalacn":
-        return
-    registry = er.async_get(hass)
-    prefix = f"{entry.data[CONF_DEVICE_ID]}-"
-    for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
-        if entity.platform != DOMAIN or not entity.unique_id.startswith(prefix):
-            continue
-        if new_key := _QYCALACN_UNIQUE_ID_RENAMES.get(
-            entity.unique_id.removeprefix(prefix)
-        ):
-            registry.async_update_entity(
-                entity.entity_id, new_unique_id=f"{prefix}{new_key}"
-            )
-
-
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Tuya BLE from a config entry."""
     address: str = entry.data[CONF_ADDRESS]
@@ -178,10 +152,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         manager,
         coordinator,
     )
-
-    # Rename legacy qycalacn unique_ids before platforms forward, so the newly
-    # created entities reuse the registry entries (history/automations kept).
-    _migrate_qycalacn_unique_ids(hass, entry)
 
     # Remove known legacy-domain duplicates before platforms can load them.
     # Keep the second pass for an entry's first setup with the corrected domains,

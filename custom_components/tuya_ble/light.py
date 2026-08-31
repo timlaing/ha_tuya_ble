@@ -19,6 +19,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import color as color_util
 
 from .const import DOMAIN
+from .device_registry import EntityDescriptor, get_registry
 from .devices import (
     TuyaBLECoordinator,
     TuyaBLEData,
@@ -53,42 +54,65 @@ class TuyaBLECategoryLightMapping:
     mapping: list[TuyaBLELightMapping] | None = None
 
 
-mapping: dict[str, TuyaBLECategoryLightMapping] = {
-    "dd": TuyaBLECategoryLightMapping(
-        products={
-            "nvfrtxlq": [
-                TuyaBLELightMapping(
-                    description=LightEntityDescription(
-                        key="switch_led",
-                        name=None,
-                    ),
-                    switch_dp_id=1,
-                    color_mode_dp_id=2,
-                    brightness_dp_id=3,
-                    color_temp_dp_id=4,
-                    color_data_dp_id=5,
-                    brightness_min=0,
-                    brightness_max=1000,
-                ),
-            ],
-        },
-        mapping=[
-            TuyaBLELightMapping(
-                description=LightEntityDescription(
-                    key="switch_led",
-                    name=None,
-                ),
-                switch_dp_id=1,
-                color_mode_dp_id=2,
-                brightness_dp_id=3,
-                color_temp_dp_id=4,
-                color_data_dp_id=5,
-                brightness_min=0,
-                brightness_max=1000,
-            ),
-        ],
-    ),
-}
+def _light_description(desc: EntityDescriptor) -> LightEntityDescription:
+    """Build a LightEntityDescription from a registry descriptor."""
+    return LightEntityDescription(
+        key=desc.translation_key or "light",
+        name=None,
+        icon=desc.icon,
+    )
+
+
+def _build_light_mapping(desc: EntityDescriptor) -> TuyaBLELightMapping:
+    """Construct a light mapping from a registry descriptor."""
+    extra = desc.extra
+    kwargs: dict[str, Any] = {"description": _light_description(desc)}
+    for field_name in (
+        "switch_dp_id",
+        "brightness_dp_id",
+        "color_temp_dp_id",
+        "color_data_dp_id",
+        "color_mode_dp_id",
+        "brightness_min",
+        "brightness_max",
+        "color_temp_min",
+        "color_temp_max",
+    ):
+        if field_name in extra:
+            kwargs[field_name] = extra[field_name]
+    return TuyaBLELightMapping(**kwargs)
+
+
+def _build_mapping() -> dict[str, TuyaBLECategoryLightMapping]:
+    """Build the light mappings dict from the device registry."""
+    registry = get_registry()
+    result: dict[str, TuyaBLECategoryLightMapping] = {}
+    for device_entities in registry.products.values():
+        descriptors = device_entities.get("light")
+        if not descriptors:
+            continue
+        category_mapping = result.setdefault(
+            device_entities.category,
+            TuyaBLECategoryLightMapping(products={}),
+        )
+        assert category_mapping.products is not None
+        category_mapping.products[device_entities.product_id] = [
+            _build_light_mapping(desc) for desc in descriptors
+        ]
+    for category, defaults in registry.category_defaults.items():
+        default_descriptors = defaults.get("light")
+        if not default_descriptors:
+            continue
+        category_mapping = result.setdefault(
+            category, TuyaBLECategoryLightMapping(products={})
+        )
+        category_mapping.mapping = [
+            _build_light_mapping(desc) for desc in default_descriptors
+        ]
+    return result
+
+
+mapping: dict[str, TuyaBLECategoryLightMapping] = _build_mapping()
 
 
 def get_mapping_by_device(device: TuyaBLEDevice) -> list[TuyaBLELightMapping]:

@@ -1,0 +1,25 @@
+category: wsdcg
+product_id: jm6iasmb
+entities:
+  sensor:
+    - dp_id: 1
+      translation_key: va_temperature
+      device_class: temperature
+      unit: °C
+      state_class: measurement
+      coefficient: 10.0
+      kind: temperature
+    - dp_id: 2
+      translation_key: va_moisture
+      device_class: moisture
+      unit: "%"
+      state_class: measurement
+    - dp_id: 4
+      translation_key: battery_percentage
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+      kind: battery
+device_name: Temperature Humidity Sensor
+model_name: jm6iasmb

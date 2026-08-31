@@ -1,0 +1,40 @@
+category: wk
+product_id: zmachryv
+entities:
+  number:
+    - dp_id: 27
+      translation_key: temperature_calibration
+      icon: mdi:thermometer-lines
+      unit: °C
+      entity_category: config
+      mode: box
+      min_value: -6
+      max_value: 6
+      step: 1
+  switch:
+    - dp_id: 8
+      translation_key: window_check
+      icon: mdi:window-closed
+      entity_category: config
+    - dp_id: 10
+      translation_key: antifreeze
+      icon: mdi:snowflake-off
+      entity_category: config
+    - dp_id: 40
+      translation_key: child_lock
+      icon: mdi:account-lock
+      entity_category: config
+    - dp_id: 130
+      translation_key: water_scale_proof
+      icon: mdi:water-check
+      entity_category: config
+    - dp_id: 107
+      translation_key: programming_mode
+      icon: mdi:calendar-edit
+      entity_category: config
+    - dp_id: 108
+      translation_key: programming_switch
+      icon: mdi:calendar-clock
+      entity_category: config
+device_name: Thermostatic Radiator Valve
+model_name: zmachryv

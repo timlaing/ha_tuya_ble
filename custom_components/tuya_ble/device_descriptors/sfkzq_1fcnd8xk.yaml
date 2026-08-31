@@ -1,0 +1,46 @@
+category: sfkzq
+product_id: 1fcnd8xk
+entities:
+  sensor:
+    - dp_id: 7
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+      kind: battery
+    - dp_id: 12
+      translation_key: work_state
+      device_class: enum
+      options:
+        - auto
+        - manual
+        - idle
+    - dp_id: 15
+      translation_key: use_time_one
+      device_class: duration
+      unit: s
+      state_class: measurement
+    - dp_id: 9
+      translation_key: time_use
+      device_class: duration
+      unit: s
+      state_class: measurement
+  number:
+    - dp_id: 11
+      translation_key: countdown_duration
+      icon: mdi:timer
+      unit: s
+      mode: box
+      min_value: 1
+      max_value: 86400
+      step: 1
+  switch:
+    - dp_id: 1
+      translation_key: water_valve
+  valve:
+    - dp_id: 1
+      translation_key: valve
+      device_class: water
+device_name: Water valve controller
+model_name: 1fcnd8xk

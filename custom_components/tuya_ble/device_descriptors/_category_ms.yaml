@@ -1,0 +1,4 @@
+entities:
+  lock:
+    - dp_id: 47
+      translation_key: lock

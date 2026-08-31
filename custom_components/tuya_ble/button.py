@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import cast
 
 from homeassistant.components.button import (
     ButtonEntity,
@@ -15,8 +14,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
+from .device_descriptors.handlers.fingerbot.mode import in_push_mode
+from .device_registry import EntityDescriptor, get_registry
 from .devices import TuyaBLECoordinator, TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
-from .fingerbot import is_fingerbot_in_push_mode
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
 TuyaBLEButtonIsAvailable = Callable[["TuyaBLEButton", TuyaBLEProductInfo], bool] | None
@@ -42,7 +42,7 @@ class TuyaBLEFingerbotModeMapping(TuyaBLEButtonMapping):
             key="push",
         )
     )
-    is_available: TuyaBLEButtonIsAvailable = is_fingerbot_in_push_mode
+    is_available: TuyaBLEButtonIsAvailable = in_push_mode
 
 
 @dataclass
@@ -53,54 +53,53 @@ class TuyaBLECategoryButtonMapping:
     mapping: list[TuyaBLEButtonMapping] | None = None
 
 
-mapping: dict[str, TuyaBLECategoryButtonMapping] = {
-    "szjqr": TuyaBLECategoryButtonMapping(
-        products={
-            k: [
-                cast(TuyaBLEButtonMapping, TuyaBLEFingerbotModeMapping(dp_id=1)),
-            ]
-            for k in ["3yqdo5yt", "xhf790if"]
-        }
-        | {
-            k: [
-                cast(TuyaBLEButtonMapping, TuyaBLEFingerbotModeMapping(dp_id=2)),
-            ]
-            for k in [
-                "blliqpsj",
-                "ndvkgsrm",
-                "yiihr7zh",
-                "neq16kgd",
-            ]
-        }
-        | {
-            k: [
-                cast(TuyaBLEButtonMapping, TuyaBLEFingerbotModeMapping(dp_id=2)),
-            ]
-            for k in [
-                "ltak7e1p",
-                "y6kttvd6",
-                "yrnk7mnn",
-                "nvr2rocq",
-                "bnt7wajf",
-                "rvdceqjh",
-                "5xhbk964",
-            ]
-        },
-    ),
-    "znhsb": TuyaBLECategoryButtonMapping(
-        products={
-            "cdlandip":  # Smart water bottle
-            [
-                TuyaBLEButtonMapping(
-                    dp_id=109,
-                    description=ButtonEntityDescription(
-                        key="bright_lid_screen",
-                    ),
-                ),
-            ],
-        },
-    ),
+_KIND_CLASSES: dict[str, type[TuyaBLEButtonMapping]] = {
+    "fingerbot_mode": TuyaBLEFingerbotModeMapping,
 }
+
+
+def _button_description(desc: EntityDescriptor) -> ButtonEntityDescription:
+    """Build a ButtonEntityDescription from a descriptor."""
+    return ButtonEntityDescription(
+        key=desc.translation_key or str(desc.dp_id),
+        icon=desc.icon,
+        entity_category=desc.resolved_entity_category(),
+    )
+
+
+def _build_button_mapping(desc: EntityDescriptor) -> TuyaBLEButtonMapping:
+    """Construct a button mapping from a registry descriptor."""
+    cls = _KIND_CLASSES.get(desc.kind or "", TuyaBLEButtonMapping)
+    return cls(
+        dp_id=desc.dp_id,
+        description=_button_description(desc),
+        force_add=desc.force_add,
+        dp_type=(
+            TuyaBLEDataPointType(desc.dp_type) if desc.dp_type is not None else None
+        ),
+        is_available=desc.resolved_handler("when"),
+    )
+
+
+def _build_mapping() -> dict[str, TuyaBLECategoryButtonMapping]:
+    """Build the button mappings dict from the device registry."""
+    result: dict[str, TuyaBLECategoryButtonMapping] = {}
+    for device_entities in get_registry().products.values():
+        descriptors = device_entities.get("button")
+        if not descriptors:
+            continue
+        category_mapping = result.setdefault(
+            device_entities.category,
+            TuyaBLECategoryButtonMapping(products={}),
+        )
+        assert category_mapping.products is not None
+        category_mapping.products[device_entities.product_id] = [
+            _build_button_mapping(desc) for desc in descriptors
+        ]
+    return result
+
+
+mapping: dict[str, TuyaBLECategoryButtonMapping] = _build_mapping()
 
 
 def get_mapping_by_device(device: TuyaBLEDevice) -> list[TuyaBLEButtonMapping]:

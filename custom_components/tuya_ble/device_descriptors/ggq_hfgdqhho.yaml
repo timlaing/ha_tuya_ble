@@ -1,0 +1,49 @@
+category: ggq
+product_id: hfgdqhho
+entities:
+  sensor:
+    - dp_id: 11
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+      kind: battery
+    - dp_id: 111
+      translation_key: use_time_z1
+      device_class: duration
+      unit: s
+      state_class: measurement
+    - dp_id: 110
+      translation_key: use_time_z2
+      device_class: duration
+      unit: s
+      state_class: measurement
+  number:
+    - dp_id: 106
+      translation_key: countdown_duration_z1
+      icon: mdi:timer
+      unit: min
+      mode: box
+      min_value: 1
+      max_value: 1440
+      step: 1
+    - dp_id: 103
+      translation_key: countdown_duration_z2
+      icon: mdi:timer
+      unit: min
+      mode: box
+      min_value: 1
+      max_value: 1440
+      step: 1
+  switch:
+    - dp_id: 105
+      translation_key: water_valve_z1
+    - dp_id: 104
+      translation_key: water_valve_z2
+  valve:
+    - dp_id: 1
+      translation_key: water_valve
+      device_class: water
+device_name: Irrigation computer
+model_name: hfgdqhho

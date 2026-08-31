@@ -5,8 +5,10 @@ from __future__ import annotations
 
 from homeassistant.components.lock import LockEntityDescription
 from homeassistant.core import HomeAssistant
+import pytest
 
 from custom_components.tuya_ble import lock
+from custom_components.tuya_ble.device_registry import DeviceRegistry
 from custom_components.tuya_ble.devices import (
     TuyaBLECoordinator,
     TuyaBLEProductInfo,
@@ -43,7 +45,7 @@ def _set_device_credentials(
     device: TuyaBLEDevice, category: str, product_id: str
 ) -> None:
     """Set device credentials for category/product_id lookups."""
-    device._device_info = TuyaBLEDeviceCredentials(  # noqa: SLF001
+    device._device_info = TuyaBLEDeviceCredentials(
         uuid="u",
         local_key="k",
         device_id="dev",
@@ -251,3 +253,22 @@ async def test_get_mapping_by_device_category_no_product(hass: HomeAssistant) ->
     mappings = lock.get_mapping_by_device(device)
     assert len(mappings) == 1
     assert mappings[0].dp_id == 47
+
+
+async def test_get_mapping_by_device_jtmspro_no_product(hass: HomeAssistant) -> None:
+    """Verify jtmspro without category default returns empty for unknown product."""
+    device, _coordinator, _product = build_context(hass)
+    _set_device_credentials(device, "jtmspro", "nonexistent_product")
+    assert lock.get_mapping_by_device(device) == []
+
+
+def test_build_mapping_skips_category_defaults_without_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Categories with defaults for other platforms are skipped quietly."""
+    registry = DeviceRegistry()
+    registry._category_defaults["ggq"] = {
+        "sensor": [],
+    }
+    monkeypatch.setattr(lock, "get_registry", lambda: registry)
+    assert not lock._build_mapping()

@@ -16,7 +16,6 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.tuya_ble import (
     OfflineTuyaBLEDeviceManager,
     _async_update_listener,
-    _migrate_qycalacn_unique_ids,
     _remove_legacy_sensor_entities,
     async_setup_entry,
     async_unload_entry,
@@ -34,6 +33,8 @@ from custom_components.tuya_ble.const import (
     CONF_UUID,
     DOMAIN,
 )
+from custom_components.tuya_ble.device_registry import DeviceEntities, EntityDescriptor
+from custom_components.tuya_ble.entity import _find_legacy_keys, _resolve_unique_id
 
 
 class FakeBLEAddress:
@@ -169,66 +170,10 @@ def test_remove_legacy_sensor_entities(hass: HomeAssistant) -> None:
     assert registry.async_get(valid_sensor.entity_id) is not None
 
 
-def test_migrate_qycalacn_unique_ids(hass: HomeAssistant) -> None:
-    """Rename legacy qycalacn unique_ids to the new mapping keys."""
+def test_unique_id_adopt_legacy(hass: HomeAssistant) -> None:
+    """Entity adopts an existing legacy unique_id when one is found in the registry."""
     data = _make_entry_data()
     data[CONF_PRODUCT_ID] = "qycalacn"
-    entry = MockConfigEntry(domain=DOMAIN, data=data)
-    entry.add_to_hass(hass)
-    registry = er.async_get(hass)
-    for key in ("countdown_duration_z1", "countdown_duration_z2"):
-        registry.async_get_or_create(
-            "number", DOMAIN, f"device123-{key}", config_entry=entry
-        )
-    for key in ("use_time_z1", "use_time_z2"):
-        registry.async_get_or_create(
-            "sensor", DOMAIN, f"device123-{key}", config_entry=entry
-        )
-
-    _migrate_qycalacn_unique_ids(hass, entry)
-
-    assert (
-        registry.async_get_entity_id(
-            "number", DOMAIN, "device123-countdown_duration_z1"
-        )
-        is None
-    )
-    assert (
-        registry.async_get_entity_id(
-            "number", DOMAIN, "device123-countdown_duration_z2"
-        )
-        is None
-    )
-    assert (
-        registry.async_get_entity_id("sensor", DOMAIN, "device123-use_time_z1") is None
-    )
-    assert (
-        registry.async_get_entity_id("sensor", DOMAIN, "device123-use_time_z2") is None
-    )
-    assert (
-        registry.async_get_entity_id("number", DOMAIN, "device123-countdown_zone1")
-        is not None
-    )
-    assert (
-        registry.async_get_entity_id("number", DOMAIN, "device123-countdown_zone2")
-        is not None
-    )
-    assert (
-        registry.async_get_entity_id("sensor", DOMAIN, "device123-last_use_time_zone1")
-        is not None
-    )
-    assert (
-        registry.async_get_entity_id("sensor", DOMAIN, "device123-last_use_time_zone2")
-        is not None
-    )
-
-
-def test_migrate_qycalacn_unique_ids_only_for_qycalacn(
-    hass: HomeAssistant,
-) -> None:
-    """Leave unique_ids untouched for other products sharing the old keys."""
-    data = _make_entry_data()
-    data[CONF_PRODUCT_ID] = "fnlw6npo"
     entry = MockConfigEntry(domain=DOMAIN, data=data)
     entry.add_to_hass(hass)
     registry = er.async_get(hass)
@@ -236,51 +181,177 @@ def test_migrate_qycalacn_unique_ids_only_for_qycalacn(
         "number", DOMAIN, "device123-countdown_duration_z1", config_entry=entry
     )
 
-    _migrate_qycalacn_unique_ids(hass, entry)
+    device = MagicMock()
+    device.device_id = "device123"
+    device.category = "ggq"
+    device.product_id = "qycalacn"
 
-    assert (
-        registry.async_get_entity_id(
-            "number", DOMAIN, "device123-countdown_duration_z1"
-        )
-        is not None
-    )
+    uid = _resolve_unique_id(hass, device, "countdown_zone1")
+    assert uid == "device123-countdown_duration_z1"
 
 
-def test_migrate_qycalacn_unique_ids_ignores_unrelated(hass: HomeAssistant) -> None:
-    """Skip entries outside this device or with unmapped keys."""
+def test_unique_id_adopt_ignores_other_integration(hass: HomeAssistant) -> None:
+    """A legacy unique_id owned by another integration is not adopted."""
     data = _make_entry_data()
     data[CONF_PRODUCT_ID] = "qycalacn"
     entry = MockConfigEntry(domain=DOMAIN, data=data)
     entry.add_to_hass(hass)
     registry = er.async_get(hass)
     registry.async_get_or_create(
-        "number", DOMAIN, "otherdevice-countdown_duration_z1", config_entry=entry
-    )
-    registry.async_get_or_create(
-        "number", DOMAIN, "device123-valve_zone1", config_entry=entry
-    )
-    registry.async_get_or_create(
-        "sensor", "other_component", "device123-use_time_z1", config_entry=entry
+        "number", "other_component", "device123-countdown_duration_z1"
     )
 
-    _migrate_qycalacn_unique_ids(hass, entry)
+    device = MagicMock()
+    device.device_id = "device123"
+    device.category = "ggq"
+    device.product_id = "qycalacn"
 
-    assert (
-        registry.async_get_entity_id(
-            "number", DOMAIN, "otherdevice-countdown_duration_z1"
-        )
-        is not None
+    uid = _resolve_unique_id(hass, device, "countdown_zone1")
+    assert uid == "device123-countdown_zone1"
+
+
+def test_unique_id_fallback_new(hass: HomeAssistant) -> None:
+    """Entity uses the new unique_id when no legacy entry exists."""
+    device = MagicMock()
+    device.device_id = "device123"
+    device.category = "ggq"
+    device.product_id = "qycalacn"
+
+    uid = _resolve_unique_id(hass, device, "countdown_zone1")
+    assert uid == "device123-countdown_zone1"
+
+
+def test_unique_id_no_legacy_for_unknown_product(hass: HomeAssistant) -> None:
+    """Unknown product gets the new unique_id without error."""
+    device = MagicMock()
+    device.device_id = "device123"
+    device.category = "wk"
+    device.product_id = "unknown_product"
+
+    uid = _resolve_unique_id(hass, device, "countdown_zone1")
+    assert uid == "device123-countdown_zone1"
+
+
+def test_find_legacy_keys_from_category_default(
+    hass: HomeAssistant,
+) -> None:
+    """legacy_keys declared in a category-default descriptor are honored."""
+    desc = EntityDescriptor(
+        platform="number",
+        dp_id=1,
+        translation_key="countdown_zone1",
+        legacy_keys=["countdown_duration_z1"],
     )
-    assert (
-        registry.async_get_entity_id("number", DOMAIN, "device123-valve_zone1")
-        is not None
+    entities = DeviceEntities(category="ggq", product_id="qycalacn")
+    entities.category_defaults["number"] = [desc]
+
+    device = MagicMock()
+    device.device_id = "device123"
+    device.category = "ggq"
+    device.product_id = "qycalacn"
+
+    reg = MagicMock()
+    reg.get.return_value = entities
+    with patch(
+        "custom_components.tuya_ble.device_registry.get_registry", return_value=reg
+    ):
+        assert _find_legacy_keys(device, "countdown_zone1") == ["countdown_duration_z1"]
+    assert "number" not in entities.entities
+
+
+def test_find_legacy_keys_product_override_wins(
+    hass: HomeAssistant,
+) -> None:
+    """A product-specific descriptor takes precedence over a category default."""
+    product_desc = EntityDescriptor(
+        platform="number",
+        dp_id=1,
+        translation_key="countdown_zone1",
+        legacy_keys=[],
     )
-    assert (
-        registry.async_get_entity_id(
-            "sensor", "other_component", "device123-use_time_z1"
-        )
-        is not None
+    category_desc = EntityDescriptor(
+        platform="number",
+        dp_id=1,
+        translation_key="countdown_zone1",
+        legacy_keys=["countdown_duration_z1"],
     )
+    entities = DeviceEntities(category="ggq", product_id="qycalacn")
+    entities.entities["number"] = [product_desc]
+    entities.category_defaults["number"] = [category_desc]
+
+    device = MagicMock()
+    device.device_id = "device123"
+    device.category = "ggq"
+    device.product_id = "qycalacn"
+
+    reg = MagicMock()
+    reg.get.return_value = entities
+    with patch(
+        "custom_components.tuya_ble.device_registry.get_registry", return_value=reg
+    ):
+        assert _find_legacy_keys(device, "countdown_zone1") == []
+
+
+def test_find_legacy_keys_match_without_legacy_keys_stops_scan(
+    hass: HomeAssistant,
+) -> None:
+    """A matching descriptor with no legacy_keys stops the scan instead of falling
+    through to another descriptor sharing the same key."""
+    product_desc = EntityDescriptor(
+        platform="number",
+        dp_id=1,
+        translation_key="countdown_zone1",
+        legacy_keys=None,
+    )
+    category_desc = EntityDescriptor(
+        platform="number",
+        dp_id=1,
+        translation_key="countdown_zone1",
+        legacy_keys=["countdown_duration_z1"],
+    )
+    entities = DeviceEntities(category="ggq", product_id="qycalacn")
+    entities.entities["number"] = [product_desc]
+    entities.category_defaults["number"] = [category_desc]
+
+    device = MagicMock()
+    device.device_id = "device123"
+    device.category = "ggq"
+    device.product_id = "qycalacn"
+
+    reg = MagicMock()
+    reg.get.return_value = entities
+    with patch(
+        "custom_components.tuya_ble.device_registry.get_registry", return_value=reg
+    ):
+        assert _find_legacy_keys(device, "countdown_zone1") == []
+
+
+def test_unique_id_adopt_handles_none_unique_id(
+    hass: HomeAssistant,
+) -> None:
+    """A registry entry without a unique_id does not break adoption matching."""
+    data = _make_entry_data()
+    data[CONF_PRODUCT_ID] = "qycalacn"
+    entry = MockConfigEntry(domain=DOMAIN, data=data)
+    entry.add_to_hass(hass)
+    registry = er.async_get(hass)
+    registry.async_get_or_create(
+        "number", DOMAIN, "device123-countdown_duration_z1", config_entry=entry
+    )
+    fake = MagicMock()
+    fake.platform = DOMAIN
+    fake.unique_id = None
+    registry.entities["fake-none"] = fake
+    try:
+        device = MagicMock()
+        device.device_id = "device123"
+        device.category = "ggq"
+        device.product_id = "qycalacn"
+
+        uid = _resolve_unique_id(hass, device, "countdown_zone1")
+    finally:
+        registry.entities.pop("fake-none", None)
+    assert uid == "device123-countdown_duration_z1"
 
 
 async def test_setup_removes_legacy_duplicate_before_platforms(

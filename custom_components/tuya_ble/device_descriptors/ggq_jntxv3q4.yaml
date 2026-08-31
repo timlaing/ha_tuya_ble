@@ -1,0 +1,107 @@
+category: ggq
+product_id: jntxv3q4
+entities:
+  sensor:
+    - dp_id: 11
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+      kind: battery
+    - dp_id: 111
+      translation_key: last_use_time_zone1
+      icon: mdi:clock-outline
+      device_class: duration
+      unit: s
+      state_class: measurement
+    - dp_id: 110
+      translation_key: last_use_time_zone2
+      icon: mdi:clock-outline
+      device_class: duration
+      unit: s
+      state_class: measurement
+    - dp_id: 112
+      translation_key: work_states_zone1
+      entity_category: diagnostic
+    - dp_id: 113
+      translation_key: work_states_zone2
+      entity_category: diagnostic
+  number:
+    - dp_id: 106
+      translation_key: countdown_zone1
+      icon: mdi:timer
+      unit: min
+      mode: box
+      min_value: 0
+      max_value: 1440
+      step: 1
+    - dp_id: 103
+      translation_key: countdown_zone2
+      icon: mdi:timer
+      unit: min
+      mode: box
+      min_value: 0
+      max_value: 1440
+      step: 1
+  switch:
+    - dp_id: 105
+      translation_key: water_valve_z1
+    - dp_id: 104
+      translation_key: water_valve_z2
+  select:
+    - dp_id: 117
+      translation_key: weather_delay_zone1
+      icon: mdi:weather-partly-cloudy
+      entity_category: config
+      dp_type: 3
+      options:
+        - "Off"
+        - 1 day
+        - 2 days
+        - 3 days
+        - 4 days
+        - 5 days
+        - 6 days
+        - 7 days
+      values:
+        - "OFF"
+        - "1"
+        - "2"
+        - "3"
+        - "4"
+        - "5"
+        - "6"
+        - "7"
+    - dp_id: 114
+      translation_key: weather_delay_zone2
+      icon: mdi:weather-partly-cloudy
+      entity_category: config
+      dp_type: 3
+      options:
+        - "Off"
+        - 1 day
+        - 2 days
+        - 3 days
+        - 4 days
+        - 5 days
+        - 6 days
+        - 7 days
+      values:
+        - "OFF"
+        - "1"
+        - "2"
+        - "3"
+        - "4"
+        - "5"
+        - "6"
+        - "7"
+  valve:
+    - dp_id: 105
+      translation_key: valve_zone1
+      device_class: water
+    - dp_id: 104
+      translation_key: valve_zone2
+      device_class: water
+device_name: Dual water timer
+model_name: jntxv3q4

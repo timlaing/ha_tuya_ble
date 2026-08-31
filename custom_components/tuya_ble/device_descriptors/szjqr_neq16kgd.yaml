@@ -1,0 +1,128 @@
+category: szjqr
+product_id: neq16kgd
+entities:
+  sensor:
+    - dp_id: 12
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+      kind: battery
+  button:
+    - dp_id: 2
+      translation_key: push
+      handlers:
+        when: fingerbot.mode.in_push_mode
+      kind: fingerbot_mode
+  number:
+    - dp_id: 9
+      translation_key: down_position
+      mode: box
+      handlers:
+        when: fingerbot.mode.not_in_program_mode
+      min_value: 51
+      max_value: 100
+      step: 1
+      icon: mdi:arrow-down-bold
+      unit: "%"
+      entity_category: config
+    - dp_id: 10
+      translation_key: hold_time
+      mode: box
+      handlers:
+        when: fingerbot.mode.in_push_mode
+      kind: hold_time
+      min_value: 0
+      max_value: 10
+      step: 1
+      icon: mdi:timer
+      unit: s
+      entity_category: config
+    - dp_id: 15
+      translation_key: up_position
+      mode: box
+      handlers:
+        when: fingerbot.mode.not_in_program_mode
+      min_value: 0
+      max_value: 50
+      step: 1
+      icon: mdi:arrow-up-bold
+      unit: "%"
+      entity_category: config
+    - dp_id: 121
+      translation_key: program_repeats_count
+      icon: mdi:repeat
+      entity_category: config
+      mode: box
+      handlers:
+        read: fingerbot.program.get_repeat_count
+        write: fingerbot.program.set_repeat_count
+        when: fingerbot.mode.repeat_count_available
+      min_value: 1
+      max_value: 65534
+      step: 1
+    - dp_id: 121
+      translation_key: program_idle_position
+      icon: mdi:repeat
+      unit: "%"
+      entity_category: config
+      mode: box
+      handlers:
+        read: fingerbot.program.get_position
+        write: fingerbot.program.set_position
+        when: fingerbot.mode.in_program_mode
+      min_value: 0
+      max_value: 100
+      step: 1
+  select:
+    - dp_id: 8
+      translation_key: fingerbot_mode
+      entity_category: config
+      options:
+        - push
+        - switch
+        - program
+      kind: fingerbot_mode
+  switch:
+    - dp_id: 2
+      translation_key: switch
+      handlers:
+        when: fingerbot.mode.in_switch_mode
+      kind: TuyaBLEFingerbotSwitchMapping
+    - dp_id: 11
+      translation_key: reverse_positions
+      icon: mdi:arrow-up-down-bold
+      entity_category: config
+      handlers:
+        when: fingerbot.mode.in_switch_mode
+      kind: TuyaBLEReversePositionsMapping
+    - dp_id: 17
+      translation_key: manual_control
+      icon: mdi:gesture-tap-box
+      entity_category: config
+    - dp_id: 2
+      translation_key: program
+      icon: mdi:repeat
+      handlers:
+        when: fingerbot.mode.in_program_mode
+    - dp_id: 121
+      translation_key: program_repeat_forever
+      icon: mdi:repeat
+      entity_category: config
+      handlers:
+        read: fingerbot.program.get_repeat_forever
+        write: fingerbot.program.set_repeat_forever
+        when: fingerbot.mode.in_program_mode
+  text:
+    - dp_id: 121
+      translation_key: program
+      icon: mdi:repeat
+      pattern: ^((\d{1,2}|100)(\/\d{1,2})?)(;((\d{1,2}|100)(\/\d{1,2})?))+$
+      entity_category: config
+      handlers:
+        read: fingerbot.program.get_program
+        write: fingerbot.program.set_program
+        when: fingerbot.mode.in_program_mode
+device_name: Fingerbot Plus
+model_name: neq16kgd

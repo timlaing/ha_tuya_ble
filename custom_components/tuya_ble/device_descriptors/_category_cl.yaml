@@ -1,0 +1,6 @@
+entities:
+  cover:
+    - translation_key: ble_cover
+      state_dp_id: 1
+      position_set_dp_id: 2
+      position_dp_id: 3

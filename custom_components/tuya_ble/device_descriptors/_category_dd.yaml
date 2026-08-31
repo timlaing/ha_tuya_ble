@@ -1,0 +1,10 @@
+entities:
+  light:
+    - translation_key: switch_led
+      switch_dp_id: 1
+      color_mode_dp_id: 2
+      brightness_dp_id: 3
+      color_temp_dp_id: 4
+      color_data_dp_id: 5
+      brightness_min: 0
+      brightness_max: 1000

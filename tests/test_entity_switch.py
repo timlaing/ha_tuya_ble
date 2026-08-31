@@ -11,17 +11,27 @@ from homeassistant.components.switch import SwitchEntityDescription
 from homeassistant.core import HomeAssistant
 
 from custom_components.tuya_ble import switch
+from custom_components.tuya_ble.device_descriptors.handlers.fingerbot.mode import (
+    in_program_mode as is_fingerbot_in_program_mode,
+)
+from custom_components.tuya_ble.device_descriptors.handlers.fingerbot.mode import (
+    in_switch_mode as is_fingerbot_in_switch_mode,
+)
+from custom_components.tuya_ble.device_descriptors.handlers.fingerbot.program import (
+    get_repeat_forever as get_fingerbot_program_repeat_forever,
+)
+from custom_components.tuya_ble.device_descriptors.handlers.fingerbot.program import (
+    set_repeat_forever as set_fingerbot_program_repeat_forever,
+)
+from custom_components.tuya_ble.device_descriptors.handlers.water_valve import (
+    is_water_valve_in_switch_mode,
+    set_16wgjvck_water_valve,
+)
 from custom_components.tuya_ble.devices import (
     TuyaBLECoordinator,
     TuyaBLEFingerbotInfo,
     TuyaBLEProductInfo,
     TuyaBLEWaterValveInfo,
-)
-from custom_components.tuya_ble.fingerbot import (
-    get_fingerbot_program_repeat_forever,
-    is_fingerbot_in_program_mode,
-    is_fingerbot_in_switch_mode,
-    set_fingerbot_program_repeat_forever,
 )
 from custom_components.tuya_ble.switch import TuyaBLESwitch
 from custom_components.tuya_ble.tuya_ble import (
@@ -591,7 +601,7 @@ async def test_is_water_valve_in_switch_mode_true(hass: HomeAssistant) -> None:
         device,
         coordinator,
         product,
-        is_available=switch.is_water_valve_in_switch_mode,
+        is_available=is_water_valve_in_switch_mode,
     )
     await connect(coordinator)
     assert entity.available is True
@@ -605,7 +615,7 @@ async def test_is_water_valve_in_switch_mode_false(hass: HomeAssistant) -> None:
         device,
         coordinator,
         product,
-        is_available=switch.is_water_valve_in_switch_mode,
+        is_available=is_water_valve_in_switch_mode,
     )
     await connect(coordinator)
     assert entity.available is False
@@ -618,7 +628,7 @@ async def test_set_16wgjvck_water_valve_on_default(hass: HomeAssistant) -> None:
     """Verify set_16wgjvck_water_valve on with no datapoints uses defaults."""
     device, coordinator, product = build_context(hass)
     entity = _make_entity(
-        hass, device, coordinator, product, setter=switch.set_16wgjvck_water_valve
+        hass, device, coordinator, product, setter=set_16wgjvck_water_valve
     )
     entity.turn_on()
     await hass.async_block_till_done()
@@ -637,7 +647,7 @@ async def test_set_16wgjvck_water_valve_on_with_dp15(
     device, coordinator, product = build_context(hass)
     add_dp(device, 15, TuyaBLEDataPointType.DT_VALUE, 120)
     entity = _make_entity(
-        hass, device, coordinator, product, setter=switch.set_16wgjvck_water_valve
+        hass, device, coordinator, product, setter=set_16wgjvck_water_valve
     )
     entity.turn_on()
     await hass.async_block_till_done()
@@ -652,7 +662,7 @@ async def test_set_16wgjvck_water_valve_on_with_dp11(
     device, coordinator, product = build_context(hass)
     add_dp(device, 11, TuyaBLEDataPointType.DT_VALUE, 90)
     entity = _make_entity(
-        hass, device, coordinator, product, setter=switch.set_16wgjvck_water_valve
+        hass, device, coordinator, product, setter=set_16wgjvck_water_valve
     )
     entity.turn_on()
     await hass.async_block_till_done()
@@ -667,7 +677,7 @@ async def test_set_16wgjvck_water_valve_on_dp11_zero(
     device, coordinator, product = build_context(hass)
     add_dp(device, 11, TuyaBLEDataPointType.DT_VALUE, 0)
     entity = _make_entity(
-        hass, device, coordinator, product, setter=switch.set_16wgjvck_water_valve
+        hass, device, coordinator, product, setter=set_16wgjvck_water_valve
     )
     entity.turn_on()
     await hass.async_block_till_done()
@@ -682,7 +692,7 @@ async def test_set_16wgjvck_water_valve_on_dp15_zero(
     device, coordinator, product = build_context(hass)
     add_dp(device, 15, TuyaBLEDataPointType.DT_VALUE, 0)
     entity = _make_entity(
-        hass, device, coordinator, product, setter=switch.set_16wgjvck_water_valve
+        hass, device, coordinator, product, setter=set_16wgjvck_water_valve
     )
     entity.turn_on()
     await hass.async_block_till_done()
@@ -697,7 +707,7 @@ async def test_set_16wgjvck_water_valve_on_dp15_negative(
     device, coordinator, product = build_context(hass)
     add_dp(device, 15, TuyaBLEDataPointType.DT_VALUE, -5)
     entity = _make_entity(
-        hass, device, coordinator, product, setter=switch.set_16wgjvck_water_valve
+        hass, device, coordinator, product, setter=set_16wgjvck_water_valve
     )
     entity.turn_on()
     await hass.async_block_till_done()
@@ -712,7 +722,7 @@ async def test_set_16wgjvck_water_valve_on_with_dp2(
     device, coordinator, product = build_context(hass)
     add_dp(device, 2, TuyaBLEDataPointType.DT_VALUE, 75)
     entity = _make_entity(
-        hass, device, coordinator, product, setter=switch.set_16wgjvck_water_valve
+        hass, device, coordinator, product, setter=set_16wgjvck_water_valve
     )
     entity.turn_on()
     await hass.async_block_till_done()
@@ -727,7 +737,7 @@ async def test_set_16wgjvck_water_valve_on_dp2_zero(
     device, coordinator, product = build_context(hass)
     add_dp(device, 2, TuyaBLEDataPointType.DT_VALUE, 0)
     entity = _make_entity(
-        hass, device, coordinator, product, setter=switch.set_16wgjvck_water_valve
+        hass, device, coordinator, product, setter=set_16wgjvck_water_valve
     )
     entity.turn_on()
     await hass.async_block_till_done()
@@ -742,7 +752,7 @@ async def test_set_16wgjvck_water_valve_on_dp2_negative(
     device, coordinator, product = build_context(hass)
     add_dp(device, 2, TuyaBLEDataPointType.DT_VALUE, -10)
     entity = _make_entity(
-        hass, device, coordinator, product, setter=switch.set_16wgjvck_water_valve
+        hass, device, coordinator, product, setter=set_16wgjvck_water_valve
     )
     entity.turn_on()
     await hass.async_block_till_done()
@@ -754,7 +764,7 @@ async def test_set_16wgjvck_water_valve_off(hass: HomeAssistant) -> None:
     """Verify set_16wgjvck_water_valve off sends False."""
     device, coordinator, product = build_context(hass)
     entity = _make_entity(
-        hass, device, coordinator, product, setter=switch.set_16wgjvck_water_valve
+        hass, device, coordinator, product, setter=set_16wgjvck_water_valve
     )
     entity.turn_off()
     await hass.async_block_till_done()

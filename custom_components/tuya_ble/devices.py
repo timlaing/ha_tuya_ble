@@ -4,7 +4,7 @@ All symbols that were previously in this file now live in:
   - products.py    — dataclasses, devices_database, helper functions
   - entity.py      — TuyaBLEEntity, get_device_info
   - coordinator.py — TuyaBLECoordinator
-  - fingerbot.py   — shared Fingerbot helpers
+  - device_descriptors/handlers/ — per-device handlers (e.g. Fingerbot helpers)
 
 This module re-exports everything so that existing imports continue to work.
 """

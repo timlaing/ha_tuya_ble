@@ -17,6 +17,18 @@ and this project adheres to [Semantic Versioning].
 
 - **SOP10**: weather forecast (DP 13), last use time (DP 15), soak schedule (DP 16) and irrigation schedule (DP 17) sensors, plus a fault-code problem binary sensor (DP 4), for water timer products `nxquc5lb`, `c8800fd30884068f` and `so5ybnw9`.
 
+## [2.1.0]
+
+### Changed
+
+- **Data-driven device configuration**: replaced the hardcoded per-platform Python `mapping` dicts across all 12 platforms (binary_sensor, button, climate, number, select, sensor, switch, text, valve, lock, cover, light) with YAML device descriptors (`device_descriptors/`), loaded and validated by the new `device_registry.py`. Device-specific and category-level defaults are expressed declaratively, with shared handler callables (`device_descriptors/handlers/`) replacing inline Fingerbot/sensor helpers. Adds a new device by editing a single YAML file instead of touching multiple platform files.
+- **Fingerbot consolidation**: `fingerbot.py` removed; its helpers moved to `device_descriptors/handlers/fingerbot/` (`mode.py`, `program.py`). `devices.py` is now a pure re-export shim and no longer re-exports the old convenience helpers.
+
+### Added
+
+- New YAML descriptors for NM2-style curtain controller (`cl_dy4dh1q0`) and LED strip light (`dd_nvfrtxlq`).
+- New test files `tests/test_device_registry.py` and `tests/test_handlers.py`.
+
 ## [2.0.4] - 2026-08-30
 
 ### Changed

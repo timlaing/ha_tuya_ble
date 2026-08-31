@@ -1,0 +1,8 @@
+category: kg
+product_id: 4ctjfrzq
+entities:
+  switch:
+    - dp_id: 1
+      translation_key: switch
+device_name: Switch Robot
+model_name: 4ctjfrzq

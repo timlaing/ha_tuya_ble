@@ -22,6 +22,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
+from .device_registry import EntityDescriptor, get_registry
 from .devices import TuyaBLECoordinator, TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
 from .tuya_ble import TuyaBLEDataPoint, TuyaBLEDataPointType, TuyaBLEDevice
 
@@ -65,66 +66,67 @@ class TuyaBLECategoryClimateMapping:
     mapping: list[TuyaBLEClimateMapping] | None = None
 
 
-mapping: dict[str, TuyaBLECategoryClimateMapping] = {
-    "wk": TuyaBLECategoryClimateMapping(
-        products={
-            k: [
-                # Thermostatic Radiator Valve
-                # - [x] 8   - Window
-                # - [x] 10  - Antifreeze
-                # - [x] 27  - Calibration
-                # - [x] 40  - Lock
-                # - [x] 101 - Switch
-                # - [x] 102 - Current
-                # - [x] 103 - Target
-                # - [ ] 104 - Heating time
-                # - [x] 105 - Battery power alarm
-                # - [x] 106 - Away
-                # - [x] 107 - Programming mode
-                # - [x] 108 - Programming switch
-                # - [ ] 109 - Programming data (deprecated - do not delete)
-                # - [ ] 110 - Historical data protocol (Day-Target temperature)
-                # - [ ] 111 - System Time Synchronization
-                # - [ ] 112 - Historical data (Week-Target temperature)
-                # - [ ] 113 - Historical data (Month-Target temperature)
-                # - [ ] 114 - Historical data (Year-Target temperature)
-                # - [ ] 115 - Historical data (Day-Current temperature)
-                # - [ ] 116 - Historical data (Week-Current temperature)
-                # - [ ] 117 - Historical data (Month-Current temperature)
-                # - [ ] 118 - Historical data (Year-Current temperature)
-                # - [ ] 119 - Historical data (Day-motor opening degree)
-                # - [ ] 120 - Historical data (Week-motor opening degree)
-                # - [ ] 121 - Historical data (Month-motor opening degree)
-                # - [ ] 122 - Historical data (Year-motor opening degree)
-                # - [ ] 123 - Programming data (Monday)
-                # - [ ] 124 - Programming data (Tuesday)
-                # - [ ] 125 - Programming data (Wednesday)
-                # - [ ] 126 - Programming data (Thursday)
-                # - [ ] 127 - Programming data (Friday)
-                # - [ ] 128 - Programming data (Saturday)
-                # - [ ] 129 - Programming data (Sunday)
-                # - [x] 130 - Water scale
-                TuyaBLEClimateMapping(
-                    description=ClimateEntityDescription(
-                        key="thermostatic_radiator_valve",
-                    ),
-                    hvac_switch_dp_id=101,
-                    hvac_switch_mode=HVACMode.HEAT,
-                    hvac_modes=[HVACMode.OFF, HVACMode.HEAT],
-                    preset_mode_dp_ids={PRESET_AWAY: 106, PRESET_NONE: 106},
-                    current_temperature_dp_id=102,
-                    current_temperature_coefficient=10.0,
-                    target_temperature_coefficient=10.0,
-                    target_temperature_step=0.5,
-                    target_temperature_dp_id=103,
-                    target_temperature_min=5.0,
-                    target_temperature_max=30.0,
-                ),
-            ]
-            for k in ["drlajpqc", "nhj2j7su"]
-        },
-    ),
-}
+def _climate_description(desc: EntityDescriptor) -> ClimateEntityDescription:
+    """Build a ClimateEntityDescription from a registry descriptor."""
+    return ClimateEntityDescription(
+        key=desc.translation_key or "climate",
+        icon=desc.icon,
+    )
+
+
+def _build_climate_mapping(desc: EntityDescriptor) -> TuyaBLEClimateMapping:
+    """Construct a climate mapping from a registry descriptor."""
+    extra = desc.extra
+    kwargs: dict[str, Any] = {"description": _climate_description(desc)}
+    for field_name in (
+        "hvac_mode_dp_id",
+        "hvac_switch_dp_id",
+        "current_temperature_dp_id",
+        "current_temperature_coefficient",
+        "target_temperature_dp_id",
+        "target_temperature_coefficient",
+        "target_temperature_max",
+        "target_temperature_min",
+        "target_temperature_step",
+        "current_humidity_dp_id",
+        "current_humidity_coefficient",
+        "target_humidity_dp_id",
+        "target_humidity_coefficient",
+        "target_humidity_max",
+        "target_humidity_min",
+    ):
+        if field_name in extra:
+            kwargs[field_name] = extra[field_name]
+    if "hvac_modes" in extra:
+        kwargs["hvac_modes"] = [HVACMode(m) for m in extra["hvac_modes"]]
+    if "hvac_switch_mode" in extra:
+        kwargs["hvac_switch_mode"] = HVACMode(extra["hvac_switch_mode"])
+    if "preset_mode_dp_ids" in extra:
+        kwargs["preset_mode_dp_ids"] = dict(extra["preset_mode_dp_ids"])
+    if "temperature_unit" in extra:
+        kwargs["temperature_unit"] = extra["temperature_unit"]
+    return TuyaBLEClimateMapping(**kwargs)
+
+
+def _build_mapping() -> dict[str, TuyaBLECategoryClimateMapping]:
+    """Build the climate mappings dict from the device registry."""
+    result: dict[str, TuyaBLECategoryClimateMapping] = {}
+    for device_entities in get_registry().products.values():
+        descriptors = device_entities.get("climate")
+        if not descriptors:
+            continue
+        category_mapping = result.setdefault(
+            device_entities.category,
+            TuyaBLECategoryClimateMapping(products={}),
+        )
+        assert category_mapping.products is not None
+        category_mapping.products[device_entities.product_id] = [
+            _build_climate_mapping(desc) for desc in descriptors
+        ]
+    return result
+
+
+mapping: dict[str, TuyaBLECategoryClimateMapping] = _build_mapping()
 
 
 def get_mapping_by_device(device: TuyaBLEDevice) -> list[TuyaBLEClimateMapping]:
