@@ -70,7 +70,10 @@ def _find_legacy_keys(
     product = reg.get(device.category or "", device.product_id or "")
     if product is None:
         return []
-    for platform_entities in product.entities.values():
+    platforms = dict(product.entities)
+    for platform, defaults in product.category_defaults.items():
+        platforms.setdefault(platform, []).extend(defaults)
+    for platform_entities in platforms.values():
         for desc in platform_entities:
             dk = desc.translation_key or str(desc.dp_id)
             if dk == key and desc.legacy_keys:

@@ -33,7 +33,8 @@ from custom_components.tuya_ble.const import (
     CONF_UUID,
     DOMAIN,
 )
-from custom_components.tuya_ble.entity import _resolve_unique_id
+from custom_components.tuya_ble.device_registry import DeviceEntities, EntityDescriptor
+from custom_components.tuya_ble.entity import _find_legacy_keys, _resolve_unique_id
 
 
 class FakeBLEAddress:
@@ -229,6 +230,32 @@ def test_unique_id_no_legacy_for_unknown_product(hass: HomeAssistant) -> None:
 
     uid = _resolve_unique_id(hass, device, "countdown_zone1")
     assert uid == "device123-countdown_zone1"
+
+
+def test_find_legacy_keys_from_category_default(
+    hass: HomeAssistant,
+) -> None:
+    """legacy_keys declared in a category-default descriptor are honored."""
+    desc = EntityDescriptor(
+        platform="number",
+        dp_id=1,
+        translation_key="countdown_zone1",
+        legacy_keys=["countdown_duration_z1"],
+    )
+    entities = DeviceEntities(category="ggq", product_id="qycalacn")
+    entities.category_defaults["number"] = [desc]
+
+    device = MagicMock()
+    device.device_id = "device123"
+    device.category = "ggq"
+    device.product_id = "qycalacn"
+
+    reg = MagicMock()
+    reg.get.return_value = entities
+    with patch(
+        "custom_components.tuya_ble.device_registry.get_registry", return_value=reg
+    ):
+        assert _find_legacy_keys(device, "countdown_zone1") == ["countdown_duration_z1"]
 
 
 async def test_setup_removes_legacy_duplicate_before_platforms(
