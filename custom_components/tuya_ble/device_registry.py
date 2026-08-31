@@ -106,6 +106,14 @@ def _parse_entity(platform: str, raw: dict[str, Any]) -> EntityDescriptor:
     handlers_raw = raw.get("handlers", {})
     if not isinstance(handlers_raw, dict):
         raise DeviceRegistryError(f"Entity {raw['dp_id']} handlers must be a mapping")
+    legacy_keys_raw = raw.get("legacy_keys")
+    if legacy_keys_raw is not None:
+        if isinstance(legacy_keys_raw, str):
+            legacy_keys_raw = [legacy_keys_raw]
+        elif not isinstance(legacy_keys_raw, list):
+            raise DeviceRegistryError(
+                f"Entity {raw['dp_id']} legacy_keys must be a list or string"
+            )
     return EntityDescriptor(
         platform=platform,
         dp_id=int(raw.get("dp_id", 0)),
@@ -130,7 +138,7 @@ def _parse_entity(platform: str, raw: dict[str, Any]) -> EntityDescriptor:
         kind=raw.get("kind"),
         pattern=raw.get("pattern"),
         door_dp_id=raw.get("door_dp_id"),
-        legacy_keys=raw.get("legacy_keys"),
+        legacy_keys=legacy_keys_raw,
         handlers={
             role: path for role, path in handlers_raw.items() if role in _HANDLER_ROLES
         },

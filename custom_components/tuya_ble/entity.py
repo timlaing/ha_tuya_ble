@@ -88,11 +88,15 @@ def _resolve_unique_id(
     legacy_keys = _find_legacy_keys(device, key)
     if legacy_keys:
         registry = async_get_entity_registry(hass)
-        existing_ids = {entry.unique_id for entry in registry.entities.values()}
+        prefix = f"{device.device_id}-"
+        existing = {
+            entry.unique_id[len(prefix) :]
+            for entry in registry.entities.values()
+            if entry.unique_id.startswith(prefix)
+        }
         for old_key in legacy_keys:
-            candidate = f"{device.device_id}-{old_key}"
-            if candidate in existing_ids:
-                uid = candidate
+            if old_key in existing:
+                uid = f"{prefix}{old_key}"
                 break
     return uid
 
