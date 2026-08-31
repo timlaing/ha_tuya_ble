@@ -235,6 +235,34 @@ def test_load_category_defaults_non_dict_entities_raises() -> None:
         raise AssertionError("expected DeviceRegistryError")
 
 
+def test_load_product_non_list_platform_raises() -> None:
+    """A platform whose entities value is not a list is rejected."""
+    registry = DeviceRegistry()
+    try:
+        registry._load_product({
+            "category": "ms",
+            "product_id": "foo",
+            "entities": {"sensor": "oops"},
+        })
+    except DeviceRegistryError as exc:
+        assert "must be a list" in str(exc)
+    else:
+        raise AssertionError("expected DeviceRegistryError")
+
+
+def test_load_category_defaults_non_list_platform_raises() -> None:
+    """A category-default platform whose entities value is not a list is rejected."""
+    registry = DeviceRegistry()
+    try:
+        registry._load_category_defaults(
+            "_category_ggq.yaml", {"entities": {"sensor": "oops"}}
+        )
+    except DeviceRegistryError as exc:
+        assert "must be a list" in str(exc)
+    else:
+        raise AssertionError("expected DeviceRegistryError")
+
+
 def test_resolved_entity_category() -> None:
     """A valid entity_category resolves to an HA enum."""
     resolved = _descriptor().resolved_entity_category()
@@ -325,3 +353,11 @@ def test_device_entities_get_specific_over_default() -> None:
     assert [e.dp_id for e in de.get("sensor")] == [1]
     de.entities = {"sensor": [EntityDescriptor(platform="sensor", dp_id=9)]}
     assert [e.dp_id for e in de.get("sensor")] == [9]
+
+
+def test_device_entities_empty_list_suppresses_default() -> None:
+    """An explicitly empty per-product list suppresses the category default."""
+    de = DeviceEntities(category="c", product_id="p")
+    de.category_defaults = {"sensor": [EntityDescriptor(platform="sensor", dp_id=1)]}
+    de.entities = {"sensor": []}
+    assert de.get("sensor") == []

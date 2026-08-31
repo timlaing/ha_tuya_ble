@@ -93,9 +93,8 @@ class DeviceEntities:
 
     def get(self, platform: str) -> list[EntityDescriptor]:
         """Return descriptors for a platform, falling back to category defaults."""
-        specific = self.entities.get(platform, [])
-        if specific:
-            return specific
+        if platform in self.entities:
+            return self.entities[platform]
         return self.category_defaults.get(platform, [])
 
 
@@ -212,6 +211,11 @@ class DeviceRegistry:
         if not isinstance(entities, dict):
             raise DeviceRegistryError(f"{filename}: 'entities' must be a mapping")
         for platform, es in entities.items():
+            if not isinstance(es, list):
+                raise DeviceRegistryError(
+                    f"{filename}: '{platform}' entities must be a list, "
+                    f"got {type(es).__name__}"
+                )
             self._category_defaults.setdefault(category, {})[platform] = [
                 _parse_entity(platform, e) for e in es
             ]
@@ -223,6 +227,12 @@ class DeviceRegistry:
         entities = data.get("entities", {})
         if not isinstance(entities, dict):
             raise DeviceRegistryError(f"{product_id}: 'entities' must be a mapping")
+        for platform, es in entities.items():
+            if not isinstance(es, list):
+                raise DeviceRegistryError(
+                    f"{product_id}: '{platform}' entities must be a list, "
+                    f"got {type(es).__name__}"
+                )
         device_entities = DeviceEntities(
             category=category,
             product_id=product_id,
