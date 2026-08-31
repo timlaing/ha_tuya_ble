@@ -371,11 +371,14 @@ def test_build_number_mapping_dp_type_and_handlers() -> None:
     assert built.is_available is in_program_mode
 
 
-def test_get_mapping_by_device_category_default() -> None:
+def test_get_mapping_by_device_category_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Category-level default mappings apply for an unknown product id."""
-    original = switch.mapping
-    try:
-        switch.mapping = {
+    monkeypatch.setattr(
+        switch,
+        "mapping",
+        {
             "test_cat": switch.TuyaBLECategorySwitchMapping(
                 products={
                     "known": [
@@ -392,19 +395,16 @@ def test_get_mapping_by_device_category_default() -> None:
                     )
                 ],
             ),
-        }
-        result = switch.get_mapping_by_device(
-            cast(Any, FakeDevice("test_cat", "unknown"))
-        )
-        assert [m.description.key for m in result] == ["default"]
-        assert (
-            switch.get_mapping_by_device(cast(Any, FakeDevice("test_cat", "known")))[
-                0
-            ].description.key
-            == "known"
-        )
-    finally:
-        switch.mapping = original
+        },
+    )
+    result = switch.get_mapping_by_device(cast(Any, FakeDevice("test_cat", "unknown")))
+    assert [m.description.key for m in result] == ["default"]
+    assert (
+        switch.get_mapping_by_device(cast(Any, FakeDevice("test_cat", "known")))[
+            0
+        ].description.key
+        == "known"
+    )
 
 
 def test_build_climate_mapping_full_fields() -> None:
