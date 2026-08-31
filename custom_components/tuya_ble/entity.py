@@ -71,17 +71,22 @@ def _find_legacy_keys(
     product = reg.get(device.category or "", device.product_id or "")
     if product is None:
         return []
-    platforms: dict[str, list[EntityDescriptor]] = {
-        platform: list(items) for platform, items in product.entities.items()
-    }
-    for platform, defaults in product.category_defaults.items():
-        platforms.setdefault(platform, []).extend(list(defaults))
-    for platform_entities in platforms.values():
-        for desc in platform_entities:
-            dk = desc.translation_key or str(desc.dp_id)
-            if dk == key and desc.legacy_keys:
+
+    _missing: list[str] = []
+
+    def _scan(descriptors: list[EntityDescriptor]) -> list[str] | None:
+        for desc in descriptors:
+            if (desc.translation_key or str(desc.dp_id)) == key:
                 return desc.legacy_keys
-    return []
+        return None
+
+    for _, items in product.entities.items():
+        if (found := _scan(items)) is not None:
+            return found
+    for _, defaults in product.category_defaults.items():
+        if (found := _scan(defaults)) is not None:
+            return found
+    return _missing
 
 
 def _resolve_unique_id(

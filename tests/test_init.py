@@ -259,6 +259,39 @@ def test_find_legacy_keys_from_category_default(
     assert "number" not in entities.entities
 
 
+def test_find_legacy_keys_product_override_wins(
+    hass: HomeAssistant,
+) -> None:
+    """A product-specific descriptor takes precedence over a category default."""
+    product_desc = EntityDescriptor(
+        platform="number",
+        dp_id=1,
+        translation_key="countdown_zone1",
+        legacy_keys=[],
+    )
+    category_desc = EntityDescriptor(
+        platform="number",
+        dp_id=1,
+        translation_key="countdown_zone1",
+        legacy_keys=["countdown_duration_z1"],
+    )
+    entities = DeviceEntities(category="ggq", product_id="qycalacn")
+    entities.entities["number"] = [product_desc]
+    entities.category_defaults["number"] = [category_desc]
+
+    device = MagicMock()
+    device.device_id = "device123"
+    device.category = "ggq"
+    device.product_id = "qycalacn"
+
+    reg = MagicMock()
+    reg.get.return_value = entities
+    with patch(
+        "custom_components.tuya_ble.device_registry.get_registry", return_value=reg
+    ):
+        assert _find_legacy_keys(device, "countdown_zone1") == []
+
+
 def test_unique_id_adopt_handles_none_unique_id(
     hass: HomeAssistant,
 ) -> None:
