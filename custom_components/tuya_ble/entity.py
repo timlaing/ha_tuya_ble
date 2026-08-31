@@ -75,8 +75,6 @@ def _find_legacy_keys(
     if product is None:
         return []
 
-    _missing: list[str] = []
-
     def _scan(descriptors: list[EntityDescriptor]) -> list[str] | None:
         for desc in descriptors:
             if (desc.translation_key or str(desc.dp_id)) == key:
@@ -89,7 +87,7 @@ def _find_legacy_keys(
     for _, defaults in product.category_defaults.items():
         if (found := _scan(defaults)) is not None:
             return found
-    return _missing
+    return []
 
 
 def _legacy_suffixes(hass: HomeAssistant, device_id: str) -> set[str]:
