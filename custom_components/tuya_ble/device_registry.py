@@ -290,6 +290,15 @@ def _validate_descriptor(data: dict[str, Any]) -> None:
         raise DeviceRegistryError(
             f"Device descriptor for {data.get('product_id')!r} missing 'category'"
         )
+    for name_field in ("model_name", "device_name"):
+        if data.get(name_field) is not None and not isinstance(
+            data.get(name_field), str
+        ):
+            raise DeviceRegistryError(
+                f"Device descriptor for {data.get('product_id')!r} "
+                f"'{name_field}' must be a string, "
+                f"got {type(data.get(name_field)).__name__}"
+            )
 
 
 def _parse_yaml(path: Path) -> dict[str, Any]:

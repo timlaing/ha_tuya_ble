@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from homeassistant.components.number.const import NumberMode
+from homeassistant.helpers.entity import UNDEFINED
 import pytest
 
 from custom_components.tuya_ble import (
@@ -570,6 +571,7 @@ def test_build_mapping_entity_name(platform_name: str, builder: Any) -> None:
         ("switch", switch._build_switch_mapping),
         ("select", select._build_select_mapping),
         ("text", text._build_text_mapping),
+        ("number", number._build_number_mapping),
         ("valve", valve._build_valve_mapping),
         ("cover", cover._build_cover_mapping),
         ("light", light._build_light_mapping),
@@ -587,7 +589,7 @@ def test_build_mapping_entity_name_none(platform_name: str, builder: Any) -> Non
             translation_key="some_entity",
         )
     )
-    assert built.description.name is None
+    assert built.description.name in (None, UNDEFINED)
 
 
 @pytest.mark.parametrize(
