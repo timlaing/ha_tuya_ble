@@ -38,7 +38,12 @@ def get_device_info(device: TuyaBLEDevice) -> DeviceInfo | None:
     product_info = None
     if device.category and device.product_id:
         product_info = get_product_info_by_ids(device.category, device.product_id)
-    device_name = device.name
+    device_name = (
+        device.cloud_name
+        or _descriptor_device_name(device)
+        or device.advertised_name
+        or device.address
+    )
     model = (
         device.product_name
         or device.product_model
@@ -61,6 +66,16 @@ def get_device_info(device: TuyaBLEDevice) -> DeviceInfo | None:
         sw_version=sw_version,
     )
     return result
+
+
+def _descriptor_device_name(device: TuyaBLEDevice) -> str | None:
+    """Return the descriptor device_name for the device, if any."""
+    from .device_registry import get_registry  # pylint: disable=C0415
+
+    product = get_registry().get(device.category or "", device.product_id or "")
+    if product is not None:
+        return product.device_name
+    return None
 
 
 def _descriptor_model_name(device: TuyaBLEDevice) -> str | None:

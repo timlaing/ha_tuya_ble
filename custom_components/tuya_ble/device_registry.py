@@ -95,6 +95,7 @@ class DeviceEntities:
     category: str
     product_id: str
     model_name: str | None = None
+    device_name: str | None = None
     entities: dict[str, list[EntityDescriptor]] = field(default_factory=dict)
     category_defaults: dict[str, list[EntityDescriptor]] = field(default_factory=dict)
 
@@ -248,6 +249,7 @@ class DeviceRegistry:
             category=category,
             product_id=product_id,
             model_name=data.get("model_name"),
+            device_name=data.get("device_name"),
             entities={
                 platform: [_parse_entity(platform, e) for e in es]
                 for platform, es in entities.items()
