@@ -19,26 +19,31 @@ entities:
       kind: battery
     - dp_id: 19
       translation_key: unlock_ble
+      name: Bluetooth unlock
       icon: mdi:bluetooth
       entity_category: diagnostic
       suggested_display_precision: 0
     - dp_id: 12
       translation_key: unlock_fingerprint
+      name: Fingerprint unlock
       icon: mdi:fingerprint
       entity_category: diagnostic
       suggested_display_precision: 0
     - dp_id: 62
       translation_key: unlock_phone_remote
+      name: App unlock
       icon: mdi:cellphone-lock
       entity_category: diagnostic
       suggested_display_precision: 0
     - dp_id: 13
       translation_key: unlock_password
+      name: Password unlock
       icon: mdi:numeric-0-box-multiple-outline
       entity_category: diagnostic
       suggested_display_precision: 0
     - dp_id: 14
       translation_key: unlock_dynamic
+      name: Dynamic password unlock
       icon: mdi:lock-reset
       entity_category: diagnostic
       suggested_display_precision: 0
@@ -48,6 +53,7 @@ entities:
       kind: TuyaLockMotorStateMapping
     - dp_id: 46
       translation_key: manual_lock
+      name: Manual lock
   lock:
     - dp_id: 47
       translation_key: lock

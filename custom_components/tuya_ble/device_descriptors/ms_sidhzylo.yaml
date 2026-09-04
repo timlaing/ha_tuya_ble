@@ -28,6 +28,7 @@ entities:
       kind: battery
     - dp_id: 40
       translation_key: lock_door_status
+      name: Door status
       device_class: enum
       entity_category: diagnostic
       options:

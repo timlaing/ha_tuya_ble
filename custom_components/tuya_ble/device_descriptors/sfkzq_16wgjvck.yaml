@@ -20,6 +20,7 @@ entities:
       dp_type: 4
     - dp_id: 104
       translation_key: battery_percentage_alt
+      name: Battery level
       device_class: battery
       unit: "%"
       state_class: measurement
@@ -28,6 +29,7 @@ entities:
   number:
     - dp_id: 2
       translation_key: valve_opening_percentage
+      name: Valve opening
       icon: mdi:valve
       unit: "%"
       mode: box
@@ -36,6 +38,7 @@ entities:
       step: 1
     - dp_id: 11
       translation_key: countdown
+      name: Irrigation time
       icon: mdi:timer
       unit: s
       mode: box
@@ -44,6 +47,7 @@ entities:
       step: 1
     - dp_id: 15
       translation_key: use_time
+      name: Accumulated use time
       icon: mdi:timer
       unit: s
       mode: box

@@ -228,6 +228,23 @@ def test_validate_descriptor_missing_category_raises() -> None:
         raise AssertionError("expected DeviceRegistryError")
 
 
+@pytest.mark.parametrize("field", ["model_name", "device_name"])
+def test_validate_descriptor_non_string_name_field_raises(field: str) -> None:
+    """A non-string model_name/device_name is rejected."""
+    registry = DeviceRegistry()
+    try:
+        registry._load_product({
+            "category": "ms",
+            "product_id": "foo",
+            "entities": {},
+            field: ["not", "a", "string"],
+        })
+    except DeviceRegistryError as exc:
+        assert field in str(exc)
+    else:
+        raise AssertionError("expected DeviceRegistryError")
+
+
 def test_load_product_non_dict_entities_raises() -> None:
     """A non-mapping entities value is rejected."""
     registry = DeviceRegistry()

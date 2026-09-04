@@ -24,6 +24,7 @@ entities:
   button:
     - dp_id: 109
       translation_key: bright_lid_screen
+      name: Lid light
   number:
     - dp_id: 103
       translation_key: recommended_water_intake

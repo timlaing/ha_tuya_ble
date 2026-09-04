@@ -18,7 +18,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
-from .device_descriptors.handlers.fingerbot.mode import in_push_mode
 from .device_registry import EntityDescriptor, get_registry
 from .devices import TuyaBLECoordinator, TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
@@ -49,13 +48,6 @@ class TuyaBLENumberMapping:
     getter: TuyaBLENumberGetter = None
     setter: TuyaBLENumberSetter = None
     mode: NumberMode = NumberMode.BOX
-
-
-@dataclass
-class TuyaBLEHoldTimeMapping(TuyaBLENumberMapping):
-    """Number mapping for fingerbot hold time with push-mode availability."""
-
-    is_available: TuyaBLENumberIsAvailable = in_push_mode
 
 
 @dataclass

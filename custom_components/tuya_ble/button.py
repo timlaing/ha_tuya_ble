@@ -62,6 +62,7 @@ def _button_description(desc: EntityDescriptor) -> ButtonEntityDescription:
     """Build a ButtonEntityDescription from a descriptor."""
     return ButtonEntityDescription(
         key=desc.translation_key or str(desc.dp_id),
+        name=desc.name,
         icon=desc.icon,
         entity_category=desc.resolved_entity_category(),
     )

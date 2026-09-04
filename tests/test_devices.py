@@ -199,6 +199,46 @@ def test_get_device_info_no_product() -> None:
     assert info["sw_version"] is None
 
 
+def test_get_device_info_descriptor_model() -> None:
+    """Fall back to the descriptor model_name, outranking product info."""
+    dev = make_device()
+    dev._device_info = TuyaBLEDeviceCredentials(
+        uuid="1234567890abcdef",
+        local_key="abcdef",
+        device_id="device123",
+        category="wk",
+        product_id="drlajpqc",
+        device_name="TestDevice",
+        product_model=None,
+        product_name=None,
+    )
+    with patch(
+        "custom_components.tuya_ble.entity._descriptor_model_name",
+        return_value="Descriptor Model",
+    ):
+        info = get_device_info(dev)
+    assert info is not None
+    assert info["model"] == "Descriptor Model"
+
+
+def test_get_device_info_descriptor_name() -> None:
+    """Fall back to the descriptor device_name when no cloud name is set."""
+    dev = make_device()
+    dev._device_info = TuyaBLEDeviceCredentials(
+        uuid="1234567890abcdef",
+        local_key="abcdef",
+        device_id="device123",
+        category="wk",
+        product_id="drlajpqc",
+        device_name=None,
+        product_model=None,
+        product_name=None,
+    )
+    info = get_device_info(dev)
+    assert info is not None
+    assert info["name"] == "Thermostatic Radiator Valve"
+
+
 def _make_coord(hass: HomeAssistant) -> tuple[TuyaBLECoordinator, TuyaBLEDevice]:
     """Build a coordinator and device wired together for tests."""
     dev = make_device()

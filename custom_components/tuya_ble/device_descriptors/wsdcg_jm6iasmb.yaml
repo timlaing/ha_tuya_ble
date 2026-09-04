@@ -4,6 +4,7 @@ entities:
   sensor:
     - dp_id: 1
       translation_key: va_temperature
+      name: Temperature
       device_class: temperature
       unit: °C
       state_class: measurement
@@ -11,11 +12,13 @@ entities:
       kind: temperature
     - dp_id: 2
       translation_key: va_moisture
+      name: Moisture
       device_class: moisture
       unit: "%"
       state_class: measurement
     - dp_id: 4
       translation_key: battery_percentage
+      name: Battery
       device_class: battery
       unit: "%"
       state_class: measurement

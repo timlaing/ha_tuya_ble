@@ -11,6 +11,7 @@ entities:
       kind: battery
     - dp_id: 7
       translation_key: cover_work_state
+      name: Work state
       device_class: enum
       entity_category: diagnostic
       options:
@@ -20,6 +21,7 @@ entities:
   number:
     - dp_id: 105
       translation_key: cover_speed
+      name: Speed
       icon: mdi:speedometer
       mode: box
       min_value: 1
@@ -27,6 +29,7 @@ entities:
       step: 1
   cover:
     - translation_key: ble_curtain_controller
+      name: Curtain
       state_dp_id: 1
       position_set_dp_id: 2
       position_dp_id: 3

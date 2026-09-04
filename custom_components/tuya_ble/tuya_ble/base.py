@@ -274,6 +274,18 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         return self._ble_device.name or self._ble_device.address
 
     @property
+    def cloud_name(self) -> str:
+        """Get the cloud-configured device name, if any."""
+        if self._device_info:
+            return self._device_info.device_name or ""
+        return ""
+
+    @property
+    def advertised_name(self) -> str:
+        """Get the Bluetooth-advertised device name, if any."""
+        return self._ble_device.name or ""
+
+    @property
     def rssi(self) -> int | None:
         """Return the latest RSSI signal strength from advertisement data, or None."""
         if self._advertisement_data:

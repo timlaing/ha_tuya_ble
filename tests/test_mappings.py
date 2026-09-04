@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from homeassistant.components.number.const import NumberMode
+from homeassistant.helpers.entity import UNDEFINED
 import pytest
 
 from custom_components.tuya_ble import (
@@ -17,6 +18,7 @@ from custom_components.tuya_ble import (
     climate,
     cover,
     light,
+    lock,
     number,
     select,
     sensor,
@@ -528,6 +530,66 @@ def test_fingerbot_info_defaults() -> None:
     )
     assert info.manual_control == 0
     assert info.program == 0
+
+
+@pytest.mark.parametrize(
+    ("platform_name", "builder"),
+    [
+        ("sensor", sensor._build_sensor_mapping),
+        ("binary_sensor", binary_sensor._build_binary_sensor_mapping),
+        ("button", button._build_button_mapping),
+        ("switch", switch._build_switch_mapping),
+        ("select", select._build_select_mapping),
+        ("text", text._build_text_mapping),
+        ("number", number._build_number_mapping),
+        ("valve", valve._build_valve_mapping),
+        ("cover", cover._build_cover_mapping),
+        ("light", light._build_light_mapping),
+        ("climate", climate._build_climate_mapping),
+        ("lock", lock._build_lock_mapping),
+    ],
+)
+def test_build_mapping_entity_name(platform_name: str, builder: Any) -> None:
+    """The optional literal name is carried onto the entity description."""
+
+    desc = EntityDescriptor(
+        platform=platform_name,
+        dp_id=101,
+        translation_key="some_entity",
+        name="Custom Label",
+    )
+    built = cast(Any, builder)(desc)
+    assert built.description.name == "Custom Label"
+
+
+@pytest.mark.parametrize(
+    ("platform_name", "builder"),
+    [
+        ("sensor", sensor._build_sensor_mapping),
+        ("binary_sensor", binary_sensor._build_binary_sensor_mapping),
+        ("button", button._build_button_mapping),
+        ("switch", switch._build_switch_mapping),
+        ("select", select._build_select_mapping),
+        ("text", text._build_text_mapping),
+        ("number", number._build_number_mapping),
+        ("valve", valve._build_valve_mapping),
+        ("cover", cover._build_cover_mapping),
+        ("light", light._build_light_mapping),
+        ("climate", climate._build_climate_mapping),
+        ("lock", lock._build_lock_mapping),
+    ],
+)
+def test_build_mapping_entity_name_none(platform_name: str, builder: Any) -> None:
+    """Without a literal name the description has no override (translation used)."""
+
+    built = cast(Any, builder)(
+        EntityDescriptor(
+            platform=platform_name,
+            dp_id=101,
+            translation_key="some_entity",
+        )
+    )
+    assert built.description.name in (None, UNDEFINED)
 
 
 @pytest.mark.parametrize(

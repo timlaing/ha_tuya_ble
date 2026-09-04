@@ -130,6 +130,7 @@ def _switch_description(desc: EntityDescriptor) -> SwitchEntityDescription:
     """Build a SwitchEntityDescription from a registry descriptor."""
     return SwitchEntityDescription(
         key=desc.translation_key or str(desc.dp_id),
+        name=desc.name,
         icon=desc.icon,
         entity_category=(
             EntityCategory(desc.entity_category)

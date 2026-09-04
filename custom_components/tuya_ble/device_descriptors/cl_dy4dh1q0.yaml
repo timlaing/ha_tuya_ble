@@ -3,6 +3,7 @@ product_id: dy4dh1q0
 entities:
   cover:
     - translation_key: ble_venetian_blind_motor
+      name: Venetian blinds
       state_dp_id: 1
       position_set_dp_id: 2
       position_dp_id: 3

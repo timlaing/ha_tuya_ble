@@ -4,6 +4,7 @@ entities:
   sensor:
     - dp_id: 12
       translation_key: work_state
+      name: Operation
       device_class: enum
       options:
         - auto
@@ -21,12 +22,14 @@ entities:
       dp_type: 4
     - dp_id: 7
       translation_key: battery_percentage
+      name: Battery
       device_class: battery
       unit: "%"
       state_class: measurement
       dp_type: 2
     - dp_id: 15
       translation_key: use_time_one
+      name: Use time
       device_class: duration
       unit: s
       state_class: measurement
@@ -34,6 +37,7 @@ entities:
   number:
     - dp_id: 11
       translation_key: countdown
+      name: Irrigation time
       icon: mdi:timer
       unit: s
       mode: box

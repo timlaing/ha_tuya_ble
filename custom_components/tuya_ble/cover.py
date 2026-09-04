@@ -54,6 +54,7 @@ def _cover_description(desc: EntityDescriptor) -> CoverEntityDescription:
     """Build a CoverEntityDescription from a registry descriptor."""
     return CoverEntityDescription(
         key=desc.translation_key or "cover",
+        name=desc.name,
         icon=desc.icon,
     )
 

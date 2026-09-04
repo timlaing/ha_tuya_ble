@@ -9,6 +9,7 @@ entities:
   number:
     - dp_id: 27
       translation_key: temperature_calibration
+      name: Temperature calibration
       icon: mdi:thermometer-lines
       unit: °C
       entity_category: config
@@ -43,6 +44,7 @@ entities:
       entity_category: config
   climate:
     - translation_key: thermostatic_radiator_valve
+      name: Radiator thermostat
       hvac_switch_dp_id: 101
       hvac_switch_mode: heat
       hvac_modes:
