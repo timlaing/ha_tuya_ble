@@ -32,7 +32,6 @@ entities:
       mode: box
       handlers:
         when: fingerbot.mode.in_push_mode
-      kind: hold_time
       min_value: 0
       max_value: 10
       step: 1

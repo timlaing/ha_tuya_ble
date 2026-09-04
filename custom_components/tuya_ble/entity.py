@@ -42,6 +42,7 @@ def get_device_info(device: TuyaBLEDevice) -> DeviceInfo | None:
     model = (
         device.product_name
         or device.product_model
+        or _descriptor_model_name(device)
         or (product_info.name if product_info else "")
         or device.product_id
     )
@@ -60,6 +61,16 @@ def get_device_info(device: TuyaBLEDevice) -> DeviceInfo | None:
         sw_version=sw_version,
     )
     return result
+
+
+def _descriptor_model_name(device: TuyaBLEDevice) -> str | None:
+    """Return the descriptor model_name for the device, if any."""
+    from .device_registry import get_registry  # pylint: disable=C0415
+
+    product = get_registry().get(device.category or "", device.product_id or "")
+    if product is not None:
+        return product.model_name
+    return None
 
 
 def _find_legacy_keys(
