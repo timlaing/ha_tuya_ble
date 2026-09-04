@@ -70,9 +70,11 @@ def get_device_info(device: TuyaBLEDevice) -> DeviceInfo | None:
 
 def _descriptor_device_name(device: TuyaBLEDevice) -> str | None:
     """Return the descriptor device_name for the device, if any."""
+    if not device.category or not device.product_id:
+        return None
     from .device_registry import get_registry  # pylint: disable=C0415
 
-    product = get_registry().get(device.category or "", device.product_id or "")
+    product = get_registry().get(device.category, device.product_id)
     if product is not None:
         return product.device_name
     return None
@@ -80,9 +82,11 @@ def _descriptor_device_name(device: TuyaBLEDevice) -> str | None:
 
 def _descriptor_model_name(device: TuyaBLEDevice) -> str | None:
     """Return the descriptor model_name for the device, if any."""
+    if not device.category or not device.product_id:
+        return None
     from .device_registry import get_registry  # pylint: disable=C0415
 
-    product = get_registry().get(device.category or "", device.product_id or "")
+    product = get_registry().get(device.category, device.product_id)
     if product is not None:
         return product.model_name
     return None
