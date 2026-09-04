@@ -32,13 +32,13 @@ model_name: 16wgjvck
 
 #### Top-level fields
 
-| Field         | Required | Description                                                                |
-| ------------- | -------- | -------------------------------------------------------------------------- |
-| `category`    | Yes      | Tuya category ID (e.g. `sfkzq`, `ggq`, `ms`)                               |
-| `product_id`  | Yes      | Tuya product ID                                                            |
-| `entities`    | No       | Mapping of platform name → list of entity descriptors                      |
-| `device_name` | No       | Human-readable device name (informational only — not read by the registry) |
-| `model_name`  | No       | Model identifier (informational only — not read by the registry)           |
+| Field         | Required | Description                                                                          |
+| ------------- | -------- | ------------------------------------------------------------------------------------ |
+| `category`    | Yes      | Tuya category ID (e.g. `sfkzq`, `ggq`, `ms`)                                         |
+| `product_id`  | Yes      | Tuya product ID                                                                      |
+| `entities`    | No       | Mapping of platform name → list of entity descriptors                                |
+| `device_name` | No       | Human-readable device name (used as the device-name fallback in the device registry) |
+| `model_name`  | No       | Model identifier (used as the model fallback in the device registry)                 |
 
 #### Entity fields (common)
 
