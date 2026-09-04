@@ -200,7 +200,7 @@ def test_get_device_info_no_product() -> None:
 
 
 def test_get_device_info_descriptor_model() -> None:
-    """Fall back to the descriptor model_name when cloud models are absent."""
+    """Fall back to the descriptor model_name, outranking product info."""
     dev = make_device()
     dev._device_info = TuyaBLEDeviceCredentials(
         uuid="1234567890abcdef",
@@ -212,9 +212,13 @@ def test_get_device_info_descriptor_model() -> None:
         product_model=None,
         product_name=None,
     )
-    info = get_device_info(dev)
+    with patch(
+        "custom_components.tuya_ble.entity._descriptor_model_name",
+        return_value="Descriptor Model",
+    ):
+        info = get_device_info(dev)
     assert info is not None
-    assert info["model"] == "drlajpqc"
+    assert info["model"] == "Descriptor Model"
 
 
 def test_get_device_info_descriptor_name() -> None:
