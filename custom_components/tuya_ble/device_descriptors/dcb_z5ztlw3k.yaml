@@ -17,11 +17,13 @@ entities:
       kind: temperature
     - dp_id: 172
       translation_key: battery_temp_current
+      name: Battery temperature
       device_class: temperature
       unit: °C
       state_class: measurement
     - dp_id: 102
       translation_key: battery_status
+      name: Battery status
       device_class: enum
       options:
         - Ready
@@ -32,174 +34,208 @@ entities:
         - Error
     - dp_id: 2
       translation_key: charge_current
+      name: Charge current
       device_class: current
       unit: mA
       state_class: measurement
       entity_category: diagnostic
     - dp_id: 3
       translation_key: charge_voltage
+      name: Charge voltage
       device_class: voltage
       unit: mV
       state_class: measurement
       entity_category: diagnostic
     - dp_id: 101
       translation_key: discharging_current
+      name: Discharging current
       device_class: current
       unit: mA
       state_class: measurement
     - dp_id: 103
       translation_key: charge_to_full_time
+      name: Charge-to-full time
       device_class: duration
       unit: min
       state_class: measurement
       entity_category: diagnostic
     - dp_id: 104
       translation_key: discharge_to_empty_time
+      name: Discharge-to-empty time
       device_class: duration
       unit: s
       state_class: measurement
       entity_category: diagnostic
     - dp_id: 8
       translation_key: charge_times
+      name: Charge cycles
       icon: mdi:counter
       state_class: total_increasing
       entity_category: diagnostic
     - dp_id: 9
       translation_key: discharge_times
+      name: Discharge cycles
       icon: mdi:counter
       state_class: total_increasing
       entity_category: diagnostic
     - dp_id: 14
       translation_key: use_time
+      name: Accumulated use time
       device_class: duration
       unit: min
       state_class: measurement
       entity_category: diagnostic
     - dp_id: 15
       translation_key: runtime_total
+      name: Runtime total
       device_class: duration
       unit: min
       state_class: total_increasing
       entity_category: diagnostic
     - dp_id: 10
       translation_key: peak_current_times
+      name: Peak current events
       icon: mdi:counter
       state_class: total_increasing
       entity_category: diagnostic
     - dp_id: 21
       translation_key: fault
+      name: Fault
       icon: mdi:alert-circle-outline
       entity_category: diagnostic
     - dp_id: 107
       translation_key: over_voltage_times
+      name: Over-voltage events
       icon: mdi:counter
       state_class: total_increasing
       entity_category: diagnostic
     - dp_id: 108
       translation_key: under_voltage_times
+      name: Under-voltage events
       icon: mdi:counter
       state_class: total_increasing
       entity_category: diagnostic
     - dp_id: 109
       translation_key: overtemp_discharge_times
+      name: Discharge over-temperature events
       icon: mdi:counter
       state_class: total_increasing
       entity_category: diagnostic
     - dp_id: 110
       translation_key: overtemp_charge_times
+      name: Charge over-temperature events
       icon: mdi:counter
       state_class: total_increasing
       entity_category: diagnostic
     - dp_id: 111
       translation_key: undertemp_discharge_times
+      name: Discharge under-temperature events
       icon: mdi:counter
       state_class: total_increasing
       entity_category: diagnostic
     - dp_id: 112
       translation_key: undertemp_charge_times
+      name: Charge under-temperature events
       icon: mdi:counter
       state_class: total_increasing
       entity_category: diagnostic
     - dp_id: 113
       translation_key: short_circuit_times
+      name: Short-circuit events
       icon: mdi:counter
       state_class: total_increasing
       entity_category: diagnostic
     - dp_id: 114
       translation_key: over_current_times
+      name: Over-current events
       icon: mdi:counter
       state_class: total_increasing
       entity_category: diagnostic
     - dp_id: 19
       translation_key: product_type
+      name: Product type
       entity_category: diagnostic
     - dp_id: 150
       translation_key: tool_product_type
+      name: Tool product type
       entity_category: diagnostic
     - dp_id: 152
       translation_key: tool_rotation_speed
+      name: Tool rotation speed
       icon: mdi:rotate-3d-variant
       state_class: measurement
       entity_category: diagnostic
     - dp_id: 153
       translation_key: tool_torque
+      name: Tool torque
       icon: mdi:screw-lag
       state_class: measurement
       entity_category: diagnostic
     - dp_id: 154
       translation_key: tool_runtime_total
+      name: Tool runtime
       device_class: duration
       unit: min
       state_class: total_increasing
       entity_category: diagnostic
     - dp_id: 156
       translation_key: tool_fault
+      name: Tool fault
       icon: mdi:alert-circle-outline
       entity_category: diagnostic
     - dp_id: 157
       translation_key: tools_current
+      name: Tool current
       device_class: current
       state_class: measurement
       entity_category: diagnostic
     - dp_id: 158
       translation_key: tool_ot_times
+      name: Tool over-temperature events
       state_class: total_increasing
       entity_category: diagnostic
     - dp_id: 159
       translation_key: tool_locked_times
+      name: Tool locked events
       state_class: total_increasing
       entity_category: diagnostic
     - dp_id: 160
       translation_key: tool_oc_times
+      name: Tool over-current events
       state_class: total_increasing
       entity_category: diagnostic
   number:
     - dp_id: 116
       translation_key: low_discharge_voltage
+      name: Low discharge voltage
       device_class: voltage
       unit: mV
       entity_category: config
       mode: box
     - dp_id: 117
       translation_key: discharge_current_limit
+      name: Discharge current limit
       device_class: current
       unit: A
       entity_category: config
       mode: box
     - dp_id: 118
       translation_key: power_indicator_time
+      name: Power indicator time
       device_class: duration
       unit: s
       entity_category: config
       mode: box
     - dp_id: 164
       translation_key: lamp_brightness_percentage
+      name: Lamp brightness
       icon: mdi:brightness-percent
       unit: "%"
       entity_category: config
       mode: box
     - dp_id: 165
       translation_key: lamp_delay_time
+      name: Lamp delay time
       icon: mdi:camera-timer
       device_class: duration
       unit: s
@@ -207,11 +243,13 @@ entities:
       mode: box
     - dp_id: 173
       translation_key: kick_back_adjust
+      name: Kick-back adjustment
       icon: mdi:car-esp
       entity_category: config
       mode: box
     - dp_id: 178
       translation_key: speed_percentage
+      name: Speed
       icon: mdi:speedometer
       unit: "%"
       entity_category: config
@@ -219,30 +257,37 @@ entities:
   switch:
     - dp_id: 12
       translation_key: upper_temp_switch
+      name: High temperature protection
       icon: mdi:thermometer-chevron-up
       entity_category: config
     - dp_id: 22
       translation_key: security_switch
+      name: Security switch
       icon: mdi:shield-lock-outline
       entity_category: config
     - dp_id: 155
       translation_key: kick_back_switch
+      name: Kick-back control
       icon: mdi:car-esp
       entity_category: config
     - dp_id: 163
       translation_key: lamp_switch
+      name: Lamp
       icon: mdi:lightbulb
       entity_category: config
     - dp_id: 170
       translation_key: cw_or_ccw_control
+      name: Rotation direction
       icon: mdi:rotate-right
       entity_category: config
     - dp_id: 185
       translation_key: laser_switch
+      name: Laser
       icon: mdi:laser-pointer
       entity_category: config
     - dp_id: 186
       translation_key: laser_pulse_switch
+      name: Laser pulse
       icon: mdi:pulse
       entity_category: config
 device_name: PARKSIDE Smart battery 4Ah

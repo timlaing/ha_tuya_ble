@@ -11,17 +11,20 @@ entities:
       kind: battery
     - dp_id: 111
       translation_key: use_time_z1
+      name: Last use time 1
       device_class: duration
       unit: s
       state_class: measurement
     - dp_id: 110
       translation_key: use_time_z2
+      name: Last use time 2
       device_class: duration
       unit: s
       state_class: measurement
   number:
     - dp_id: 106
       translation_key: countdown_duration_z1
+      name: Irrigation time 1
       icon: mdi:timer
       unit: min
       mode: box
@@ -30,6 +33,7 @@ entities:
       step: 1
     - dp_id: 103
       translation_key: countdown_duration_z2
+      name: Irrigation time 2
       icon: mdi:timer
       unit: min
       mode: box
@@ -39,8 +43,10 @@ entities:
   switch:
     - dp_id: 105
       translation_key: water_valve_z1
+      name: Valve 1
     - dp_id: 104
       translation_key: water_valve_z2
+      name: Valve 2
   valve:
     - dp_id: 1
       translation_key: water_valve

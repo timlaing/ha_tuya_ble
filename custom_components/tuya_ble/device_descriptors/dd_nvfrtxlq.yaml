@@ -4,6 +4,7 @@ model_name: nvfrtxlq
 entities:
   light:
     - translation_key: switch_led
+      name: Strip light
       switch_dp_id: 1
       color_mode_dp_id: 2
       brightness_dp_id: 3

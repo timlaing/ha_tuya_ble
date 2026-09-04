@@ -11,25 +11,30 @@ entities:
       kind: battery
     - dp_id: 111
       translation_key: last_use_time_zone1
+      name: Last use time 1
       icon: mdi:clock-outline
       device_class: duration
       unit: s
       state_class: measurement
     - dp_id: 110
       translation_key: last_use_time_zone2
+      name: Last use time 2
       icon: mdi:clock-outline
       device_class: duration
       unit: s
       state_class: measurement
     - dp_id: 112
       translation_key: work_states_zone1
+      name: Operation 1
       entity_category: diagnostic
     - dp_id: 113
       translation_key: work_states_zone2
+      name: Operation 2
       entity_category: diagnostic
   number:
     - dp_id: 106
       translation_key: countdown_zone1
+      name: Irrigation time 1
       icon: mdi:timer
       unit: min
       mode: box
@@ -38,6 +43,7 @@ entities:
       step: 1
     - dp_id: 103
       translation_key: countdown_zone2
+      name: Irrigation time 2
       icon: mdi:timer
       unit: min
       mode: box
@@ -47,11 +53,14 @@ entities:
   switch:
     - dp_id: 105
       translation_key: water_valve_z1
+      name: Valve 1
     - dp_id: 104
       translation_key: water_valve_z2
+      name: Valve 2
   select:
     - dp_id: 117
       translation_key: weather_delay_zone1
+      name: Weather delay 1
       icon: mdi:weather-partly-cloudy
       entity_category: config
       dp_type: 3
@@ -75,6 +84,7 @@ entities:
         - "7"
     - dp_id: 114
       translation_key: weather_delay_zone2
+      name: Weather delay 2
       icon: mdi:weather-partly-cloudy
       entity_category: config
       dp_type: 3

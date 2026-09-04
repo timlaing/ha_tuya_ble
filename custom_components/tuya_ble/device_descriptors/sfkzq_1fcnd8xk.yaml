@@ -11,6 +11,7 @@ entities:
       kind: battery
     - dp_id: 12
       translation_key: work_state
+      name: Operation
       device_class: enum
       options:
         - auto
@@ -18,11 +19,13 @@ entities:
         - idle
     - dp_id: 15
       translation_key: use_time_one
+      name: Use time
       device_class: duration
       unit: s
       state_class: measurement
     - dp_id: 9
       translation_key: time_use
+      name: Accumulated use time
       device_class: duration
       unit: s
       state_class: measurement

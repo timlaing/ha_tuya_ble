@@ -4,6 +4,7 @@ entities:
   number:
     - dp_id: 27
       translation_key: temperature_calibration
+      name: Temperature calibration
       icon: mdi:thermometer-lines
       unit: °C
       entity_category: config

@@ -21,12 +21,15 @@ entities:
         - shock
     - dp_id: 12
       translation_key: unlock_fingerprint
+      name: Fingerprint unlock
       icon: mdi:fingerprint
     - dp_id: 15
       translation_key: unlock_card
+      name: Card unlock
       icon: mdi:nfc-variant
     - dp_id: 13
       translation_key: unlock_password
+      name: Password unlock
       icon: mdi:keyboard-outline
     - dp_id: 8
       translation_key: battery

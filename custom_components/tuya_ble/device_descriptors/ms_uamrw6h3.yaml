@@ -28,6 +28,7 @@ entities:
       kind: battery
     - dp_id: 40
       translation_key: lock_door_status
+      name: Door status
       device_class: enum
       entity_category: diagnostic
       options:
@@ -40,6 +41,7 @@ entities:
       kind: TuyaLockMotorStateMapping
     - dp_id: 46
       translation_key: manual_lock
+      name: Manual lock
   lock:
     - dp_id: 47
       translation_key: lock

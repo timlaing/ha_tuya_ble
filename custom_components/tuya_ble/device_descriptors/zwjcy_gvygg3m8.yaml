@@ -4,6 +4,7 @@ entities:
   sensor:
     - dp_id: 5
       translation_key: temp_current
+      name: Soil temperature
       device_class: temperature
       unit: °C
       state_class: measurement
@@ -29,6 +30,7 @@ entities:
         - mdi:battery-check
     - dp_id: 15
       translation_key: battery_percentage
+      name: Battery
       device_class: battery
       unit: "%"
       state_class: measurement

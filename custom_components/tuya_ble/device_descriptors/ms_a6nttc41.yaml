@@ -11,11 +11,13 @@ entities:
       kind: battery
     - dp_id: 19
       translation_key: unlock_ble
+      name: Bluetooth unlock
       icon: mdi:bluetooth
       entity_category: diagnostic
       suggested_display_precision: 0
     - dp_id: 12
       translation_key: unlock_fingerprint
+      name: Fingerprint unlock
       icon: mdi:fingerprint
       entity_category: diagnostic
       suggested_display_precision: 0
