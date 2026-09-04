@@ -53,6 +53,7 @@ def _binary_sensor_description(
     """Build a BinarySensorEntityDescription from a descriptor."""
     return BinarySensorEntityDescription(
         key=desc.translation_key or str(desc.dp_id),
+        name=desc.name,
         icon=desc.icon,
         device_class=(
             BinarySensorDeviceClass(desc.device_class)

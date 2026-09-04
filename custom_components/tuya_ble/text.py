@@ -55,6 +55,7 @@ def _text_description(desc: EntityDescriptor) -> TextEntityDescription:
     """Build a TextEntityDescription from a descriptor."""
     return TextEntityDescription(
         key=desc.translation_key or str(desc.dp_id),
+        name=desc.name,
         icon=desc.icon,
         pattern=desc.pattern,
         entity_category=desc.resolved_entity_category(),

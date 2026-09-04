@@ -56,6 +56,7 @@ def _valve_description(desc: EntityDescriptor) -> ValveEntityDescription:
     # pylint: disable-next=unexpected-keyword-arg
     return ValveEntityDescription(
         key=desc.translation_key or str(desc.dp_id),
+        name=desc.name,
         device_class=(
             ValveDeviceClass(desc.device_class)
             if desc.device_class is not None

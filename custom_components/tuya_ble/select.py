@@ -74,6 +74,7 @@ class _SelectDescriptionKwargs(TypedDict, total=False):
     """Typed kwargs for SelectEntityDescription construction."""
 
     key: str
+    name: str | None
     icon: str | None
     entity_category: EntityCategory | None
     options: list[str] | None
@@ -87,6 +88,7 @@ def _select_description(desc: EntityDescriptor) -> SelectEntityDescription:
         description_class = TemperatureUnitDescription
     kwargs: _SelectDescriptionKwargs = {
         "key": desc.translation_key or str(desc.dp_id),
+        "name": desc.name,
     }
     if desc.icon is not None:
         kwargs["icon"] = desc.icon

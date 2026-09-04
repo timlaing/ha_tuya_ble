@@ -46,7 +46,7 @@ model_name: 16wgjvck
 | -------------------- | -------- | ----------------------------------------------------------------------------------------------- |
 | `dp_id`              | Yes*     | Data-point ID on the device (*not required for `climate`, `cover`, `light`)                     |
 | `translation_key`    | No       | Translation key / entity ID (also accepts `key`)                                                |
-| `name`               | No       | Display name override                                                                           |
+| `name`               | No       | Literal display-name override; when omitted the name comes from `translation_key`               |
 | `icon`               | No       | MDI icon override (e.g. `mdi:valve`)                                                            |
 | `device_class`       | No       | HA device class (e.g. `battery`, `temperature`, `carbon_dioxide`)                               |
 | `unit`               | No       | Unit of measurement (e.g. `%`, `°C`, `ppm`, `s`)                                                |

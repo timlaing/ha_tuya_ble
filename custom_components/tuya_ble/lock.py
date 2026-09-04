@@ -52,7 +52,9 @@ class TuyaBLECategoryLockMapping:
 
 def _lock_description(desc: EntityDescriptor) -> LockEntityDescription:
     """Build a LockEntityDescription from a descriptor."""
-    return LockEntityDescription(key=desc.translation_key or str(desc.dp_id))
+    return LockEntityDescription(
+        key=desc.translation_key or str(desc.dp_id), name=desc.name
+    )
 
 
 def _build_lock_mapping(desc: EntityDescriptor) -> TuyaBLELockMapping:

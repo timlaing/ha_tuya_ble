@@ -58,7 +58,7 @@ def _light_description(desc: EntityDescriptor) -> LightEntityDescription:
     """Build a LightEntityDescription from a registry descriptor."""
     return LightEntityDescription(
         key=desc.translation_key or "light",
-        name=None,
+        name=desc.name,
         icon=desc.icon,
     )
 

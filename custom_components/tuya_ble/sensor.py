@@ -110,6 +110,7 @@ def _sensor_description(desc: EntityDescriptor) -> SensorEntityDescription:
     """Build a SensorEntityDescription from a registry descriptor."""
     return SensorEntityDescription(
         key=desc.translation_key or str(desc.dp_id),
+        name=desc.name,
         icon=desc.icon,
         device_class=(
             SensorDeviceClass(desc.device_class)

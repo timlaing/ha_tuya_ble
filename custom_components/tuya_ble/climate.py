@@ -70,6 +70,7 @@ def _climate_description(desc: EntityDescriptor) -> ClimateEntityDescription:
     """Build a ClimateEntityDescription from a registry descriptor."""
     return ClimateEntityDescription(
         key=desc.translation_key or "climate",
+        name=desc.name,
         icon=desc.icon,
     )
 
