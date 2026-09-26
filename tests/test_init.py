@@ -7,6 +7,8 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from bleak.backends.device import BLEDevice
+from bleak_retry_connector import BleakNotFoundError
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import entity_registry as er
@@ -45,6 +47,12 @@ class FakeBLEAddress:
         self.name = "TestDevice"
 
 
+def _close_background_tasks(deps: dict[str, Any]) -> None:
+    """Close recorded background-task coroutines that the test never awaited."""
+    for task in deps["background_tasks"]:
+        task["target"].close()
+
+
 def _make_entry_data(address: str = "AA:BB:CC:DD:EE:FF") -> dict[str, Any]:
     """Return a full set of config entry data with all credential fields."""
     return {
@@ -78,16 +86,24 @@ def _patch_deps(
 
     ble = ble_device or FakeBLEAddress()
 
+    background_tasks: list[Any] = []
+
+    def _create_background_task(
+        _entry: Any, _hass: HomeAssistant, target: Any, name: str, **kwargs: Any
+    ) -> None:
+        """Record the background task instead of scheduling it."""
+        background_tasks.append({"target": target, "name": name, "kwargs": kwargs})
+
     return {
         "device": device,
         "coordinator": coordinator,
         "ble_device": ble,
+        "background_tasks": background_tasks,
         "patches": [
             patch(
                 "custom_components.tuya_ble.bluetooth.async_ble_device_from_address",
                 return_value=ble,
             ),
-            patch("custom_components.tuya_ble.get_device", return_value=ble),
             patch("custom_components.tuya_ble.TuyaBLEDevice", return_value=device),
             patch(
                 "custom_components.tuya_ble.TuyaBLECoordinator",
@@ -105,6 +121,9 @@ def _patch_deps(
             patch(
                 "custom_components.tuya_ble.bluetooth.async_register_callback",
                 return_value=MagicMock(),
+            ),
+            patch.object(
+                ConfigEntry, "async_create_background_task", _create_background_task
             ),
         ],
     }
@@ -128,7 +147,14 @@ async def test_async_setup_entry_success(hass: HomeAssistant) -> None:
 
     assert result is True
     deps["device"].initialize_with_credentials.assert_awaited_once()
-    deps["device"].update.assert_called_once()
+    assert len(deps["background_tasks"]) == 1
+    assert deps["background_tasks"][0]["name"] == (
+        f"{DOMAIN} AA:BB:CC:DD:EE:FF initial update"
+    )
+    # The initial update is a background task: it must not be awaited during setup.
+    deps["device"].update.assert_not_called()
+    await deps["background_tasks"][0]["target"]
+    deps["device"].update.assert_awaited_once()
     assert hass.data[DOMAIN][entry.entry_id].title == "Device"
 
     # Verify the manager is an OfflineTuyaBLEDeviceManager
@@ -395,9 +421,11 @@ async def test_setup_removes_legacy_duplicate_before_platforms(
         )
         assert await async_setup_entry(hass, entry) is True
 
+    _close_background_tasks(deps)
+
 
 async def test_async_setup_entry_device_not_found(hass: HomeAssistant) -> None:
-    """Assert setup raises ConfigEntryNotReady when no BLE device is found."""
+    """Assert setup still succeeds when the device is not in the bluetooth cache."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Device",
@@ -406,23 +434,60 @@ async def test_async_setup_entry_device_not_found(hass: HomeAssistant) -> None:
     )
     entry.add_to_hass(hass)
 
-    # Force no BLE device found.
+    captured: dict[str, Any] = {}
+
+    def _make_device(_manager: Any, ble_device: Any) -> Any:
+        captured["ble_device"] = ble_device
+        return deps["device"]
+
+    # Force a cache miss so the placeholder BLEDevice path is taken.
     ble_patch = patch(
         "custom_components.tuya_ble.bluetooth.async_ble_device_from_address",
         return_value=None,
     )
-    get_device_patch = patch(
-        "custom_components.tuya_ble.get_device",
-        return_value=None,
+    make_device_patch = patch(
+        "custom_components.tuya_ble.TuyaBLEDevice",
+        side_effect=_make_device,
     )
-    deps = _patch_deps(hass, ble_device=None, product_info=None)
+    deps = _patch_deps(hass, ble_device=None, product_info=MagicMock())
     with ExitStack() as stack:
         for p in deps["patches"]:
             stack.enter_context(p)
         stack.enter_context(ble_patch)
-        stack.enter_context(get_device_patch)
-        with pytest.raises(ConfigEntryNotReady):
-            await async_setup_entry(hass, entry)
+        stack.enter_context(make_device_patch)
+        assert await async_setup_entry(hass, entry) is True
+
+    placeholder = captured["ble_device"]
+    assert isinstance(placeholder, BLEDevice)
+    assert placeholder.address == "AA:BB:CC:DD:EE:FF"
+    assert hass.data[DOMAIN][entry.entry_id].device is deps["device"]
+    _close_background_tasks(deps)
+    await hass.async_stop()
+
+
+async def test_async_setup_entry_initial_update_failure_is_suppressed(
+    hass: HomeAssistant,
+) -> None:
+    """Assert a failed initial update does not escape the background task."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Device",
+        data=_make_entry_data(),
+        entry_id="entry2_update_fail",
+    )
+    entry.add_to_hass(hass)
+
+    deps = _patch_deps(hass, product_info=MagicMock())
+    deps["device"].update = AsyncMock(side_effect=BleakNotFoundError("out of range"))
+    with ExitStack() as stack:
+        for p in deps["patches"]:
+            stack.enter_context(p)
+        assert await async_setup_entry(hass, entry) is True
+
+    # Awaiting the coroutine directly must not raise.
+    await deps["background_tasks"][0]["target"]
+    deps["device"].update.assert_awaited_once()
+    await hass.async_stop()
 
 
 async def test_async_setup_entry_unknown_product(hass: HomeAssistant) -> None:
@@ -487,6 +552,62 @@ async def test_setup_registers_and_calls_ble_callback(hass: HomeAssistant) -> No
         service_info.device, service_info.advertisement
     )
 
+    _close_background_tasks(deps)
+    await hass.async_stop()
+
+
+async def test_setup_uppercases_address_for_lookup_and_matcher(
+    hass: HomeAssistant,
+) -> None:
+    """Assert a lowercase stored address is upper-cased for HA bluetooth lookups."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Device",
+        data=_make_entry_data(address="aa:bb:cc:dd:ee:ff"),
+        entry_id="entry2c_lower",
+    )
+    entry.add_to_hass(hass)
+
+    deps = _patch_deps(hass, product_info=MagicMock())
+    captured: dict[str, Any] = {}
+
+    def from_address(hass_arg: HomeAssistant, address: str, connectable: bool) -> Any:
+        captured["from_address"] = (address, connectable)
+        return deps["ble_device"]
+
+    def register_callback(
+        hass_arg: HomeAssistant,
+        callback: Any,
+        matcher: Any,
+        mode: Any,
+    ) -> Any:
+        captured["matcher"] = matcher
+        return MagicMock()
+
+    with ExitStack() as stack:
+        for p in deps["patches"]:
+            stack.enter_context(p)
+        stack.enter_context(
+            patch(
+                "custom_components.tuya_ble.bluetooth.async_ble_device_from_address",
+                side_effect=from_address,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.tuya_ble.bluetooth.async_register_callback",
+                side_effect=register_callback,
+            )
+        )
+        assert await async_setup_entry(hass, entry) is True
+
+    assert captured["from_address"] == ("AA:BB:CC:DD:EE:FF", True)
+    assert captured["matcher"] == {"address": "AA:BB:CC:DD:EE:FF"}
+    assert deps["background_tasks"][0]["name"] == (
+        f"{DOMAIN} AA:BB:CC:DD:EE:FF initial update"
+    )
+
+    _close_background_tasks(deps)
     await hass.async_stop()
 
 

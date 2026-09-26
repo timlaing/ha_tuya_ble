@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from bleak_retry_connector import get_device
+import logging
+
+from bleak.backends.device import BLEDevice
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth.match import BluetoothCallbackMatcher
 from homeassistant.config_entries import ConfigEntry
@@ -30,10 +32,13 @@ from .const import (
 )
 from .devices import TuyaBLECoordinator, TuyaBLEData, get_device_product_info
 from .tuya_ble import (
+    BLE_CONNECTION_EXCEPTIONS,
     AbstractTuyaBLEDeviceManager,
     TuyaBLEDevice,
     TuyaBLEDeviceCredentials,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [
     Platform.BUTTON,
@@ -104,16 +109,19 @@ def _remove_legacy_sensor_entities(hass: HomeAssistant, entry: ConfigEntry) -> N
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Tuya BLE from a config entry."""
-    address: str = entry.data[CONF_ADDRESS]
-    ble_device = bluetooth.async_ble_device_from_address(
-        hass, address.upper(), True
-    ) or await get_device(address)
-    if not ble_device:
-        raise ConfigEntryNotReady(
-            f"Could not find Tuya BLE device with address {address}"
-        )
-
+    address: str = entry.data[CONF_ADDRESS].upper()
     credentials = _build_credentials_from_entry(entry)
+
+    # Never wait on a BLE scan here. Everything needed to build the entity tree
+    # (category, product id, device id) comes from the stored credentials, so an
+    # out-of-range device must not hold up the whole Home Assistant startup. The
+    # advertisement callback registered below swaps in the real BLEDevice and
+    # advertisement data as soon as the device shows up, and the initial update
+    # runs as a background task so nothing blocks on the connection handshake.
+    ble_device = bluetooth.async_ble_device_from_address(hass, address, True)
+    if ble_device is None:
+        ble_device = BLEDevice(address, credentials.device_name, {})
+
     manager = OfflineTuyaBLEDeviceManager(credentials)
     device = TuyaBLEDevice(manager, ble_device)
     await device.initialize_with_credentials(credentials)
@@ -124,7 +132,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     coordinator = TuyaBLECoordinator(hass, device)
 
-    hass.add_job(device.update())
+    async def _async_initial_update() -> None:
+        """Request the initial device status without blocking setup."""
+        try:
+            await device.update()
+        except BLE_CONNECTION_EXCEPTIONS:
+            # The device may be out of range; the reconnect handling in tuya_ble
+            # takes over from here, so a failed handshake is expected, not fatal.
+            _LOGGER.debug("%s: Initial update failed; awaiting reconnect", address)
+        else:
+            _LOGGER.debug("%s: Initial device update finished", address)
+
+    entry.async_create_background_task(
+        hass,
+        _async_initial_update(),
+        name=f"{DOMAIN} {address} initial update",
+    )
 
     @callback
     def _async_update_ble(
