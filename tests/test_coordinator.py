@@ -17,7 +17,11 @@ from custom_components.tuya_ble.const import (
 )
 from custom_components.tuya_ble.coordinator import TuyaBLECoordinator
 from custom_components.tuya_ble.devices import TuyaBLEFingerbotInfo, TuyaBLEProductInfo
-from custom_components.tuya_ble.tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
+from custom_components.tuya_ble.tuya_ble import (
+    TuyaBLEDataPoint,
+    TuyaBLEDataPointType,
+    TuyaBLEDevice,
+)
 from tests.conftest import make_credentials, make_device
 
 ADDRESS = "AA:BB:CC:DD:EE:FF"
@@ -232,3 +236,171 @@ async def test_shutdown_without_pending_disconnect(
     await coordinator.async_shutdown()
 
     assert coordinator._unsub_disconnect is None
+
+
+def _coord_with_product(
+    hass: HomeAssistant, category: str, product_id: str
+) -> tuple[TuyaBLECoordinator, TuyaBLEDevice]:
+    """Build a coordinator for a device with the given product identity."""
+    device = make_device()
+    device._device_info = make_credentials(category=category, product_id=product_id)
+    return TuyaBLECoordinator(hass, device), device
+
+
+def _receive(
+    device: TuyaBLEDevice,
+    dp_id: int,
+    dp_type: TuyaBLEDataPointType,
+    value: bytes | bool | int | str,
+    raw: bytes,
+) -> list[TuyaBLEDataPoint]:
+    """Feed a data point in as if the device had reported it, returning the batch."""
+    device.datapoints.update_from_device(dp_id, 1.0, 0, dp_type, value, raw)
+    dp = device.datapoints[dp_id]
+    assert dp is not None
+    return [dp]
+
+
+def test_unmapped_dp_is_reported_with_raw_bytes(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An unsupported data point is reported with context and the wire bytes."""
+    coordinator, device = _coord_with_product(hass, "wk", "drlajpqc")
+
+    caplog.set_level(logging.DEBUG)
+    coordinator._async_handle_update(
+        _receive(device, 200, TuyaBLEDataPointType.DT_VALUE, 100, b"\x00\x00\x00\x64")
+    )
+
+    assert (
+        f"{ADDRESS}: Unmapped DP id=200 type=DT_VALUE raw=00000064 decoded=100 "
+        "not used by any entity of wk/drlajpqc" in caplog.text
+    )
+
+
+def test_mapped_dp_is_not_reported_as_unmapped(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A data point the product's entities use is not reported."""
+    coordinator, device = _coord_with_product(hass, "wk", "drlajpqc")
+
+    caplog.set_level(logging.DEBUG)
+    coordinator._async_handle_update(
+        _receive(device, 102, TuyaBLEDataPointType.DT_VALUE, 21, b"\x00\x15")
+    )
+
+    assert "Unmapped DP" not in caplog.text
+
+
+def test_auxiliary_and_disabled_entity_ids_count_as_mapped(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Ids used only by a composite entity or a disabled entity count as mapped."""
+    coordinator, device = _coord_with_product(hass, "cl", "4pbr8eig")
+
+    caplog.set_level(logging.DEBUG)
+    coordinator._async_handle_update(
+        _receive(device, 105, TuyaBLEDataPointType.DT_VALUE, 20, b"\x14")
+    )
+    coordinator._async_handle_update(
+        _receive(device, 7, TuyaBLEDataPointType.DT_ENUM, 0, b"\x00")
+    )
+
+    assert "Unmapped DP" not in caplog.text
+
+
+def test_repeated_unchanged_unmapped_dp_is_suppressed(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Re-reporting the same data point must not flood the log."""
+    coordinator, device = _coord_with_product(hass, "wk", "drlajpqc")
+    updates = _receive(device, 200, TuyaBLEDataPointType.DT_VALUE, 100, b"\x64")
+
+    caplog.set_level(logging.DEBUG)
+    coordinator._async_handle_update(updates)
+    coordinator._async_handle_update(updates)
+    coordinator._async_handle_update(updates)
+
+    assert caplog.text.count("Unmapped DP") == 1
+
+
+def test_changed_unmapped_dp_is_reported_again(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A data point that changes value is reported once more."""
+    coordinator, device = _coord_with_product(hass, "wk", "drlajpqc")
+
+    caplog.set_level(logging.DEBUG)
+    coordinator._async_handle_update(
+        _receive(device, 200, TuyaBLEDataPointType.DT_VALUE, 100, b"\x64")
+    )
+    coordinator._async_handle_update(
+        _receive(device, 200, TuyaBLEDataPointType.DT_VALUE, 101, b"\x65")
+    )
+
+    assert caplog.text.count("Unmapped DP") == 2
+    assert "raw=65 decoded=101" in caplog.text
+
+
+def test_unmapped_dp_type_change_is_reported_again(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A data point that changes type is reported once more."""
+    coordinator, device = _coord_with_product(hass, "wk", "drlajpqc")
+
+    caplog.set_level(logging.DEBUG)
+    coordinator._async_handle_update(
+        _receive(device, 200, TuyaBLEDataPointType.DT_VALUE, 1, b"\x01")
+    )
+    coordinator._async_handle_update(
+        _receive(device, 200, TuyaBLEDataPointType.DT_STRING, "x", b"x")
+    )
+
+    assert caplog.text.count("Unmapped DP") == 2
+
+
+def test_unmapped_dp_for_unknown_product(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A device missing from the registry is called out separately."""
+    coordinator, device = _coord_with_product(hass, "zz", "unknownpid")
+
+    caplog.set_level(logging.DEBUG)
+    coordinator._async_handle_update(
+        _receive(device, 1, TuyaBLEDataPointType.DT_BOOL, True, b"\x01")
+    )
+
+    assert "unknown product zz/unknownpid" in caplog.text
+    assert "Unmapped DP id=1 type=DT_BOOL raw=01 decoded=True" in caplog.text
+
+
+def test_unmapped_report_is_skipped_when_debug_disabled(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """No per-data-point output, and no registry lookup, at INFO level."""
+    coordinator, device = _coord_with_product(hass, "wk", "drlajpqc")
+
+    caplog.set_level(logging.INFO)
+    coordinator._async_handle_update(
+        _receive(device, 200, TuyaBLEDataPointType.DT_VALUE, 100, b"\x64")
+    )
+
+    assert "Unmapped DP" not in caplog.text
+    assert coordinator._mapped_dp_ids is None
+
+
+def test_mapped_dp_ids_are_resolved_once(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The registry is consulted once per coordinator, not once per update."""
+    coordinator, device = _coord_with_product(hass, "wk", "drlajpqc")
+
+    caplog.set_level(logging.DEBUG)
+    for value in (1, 2, 3):
+        coordinator._async_handle_update(
+            _receive(device, 200, TuyaBLEDataPointType.DT_VALUE, value, bytes([value]))
+        )
+
+    resolved = coordinator._resolve_mapped_dp_ids()
+    assert coordinator._resolve_mapped_dp_ids() is resolved
+    assert 102 in resolved

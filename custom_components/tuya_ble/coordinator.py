@@ -17,6 +17,7 @@ from .const import (
     FINGERBOT_BUTTON_EVENT,
     SET_DISCONNECTED_DELAY,
 )
+from .device_registry import get_mapped_dp_ids, get_registry
 from .products import get_device_product_info
 from .tuya_ble import (
     TuyaBLEDataPoint,
@@ -39,6 +40,8 @@ class TuyaBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.device = device
         self._disconnected: bool = True
         self._unsub_disconnect: CALLBACK_TYPE | None = None
+        self._mapped_dp_ids: frozenset[int] | None = None
+        self._reported_unmapped: dict[int, tuple[str, bytes]] = {}
         device.register_connected_callback(self._async_handle_connect)
         device.register_callback(self._async_handle_update)
         device.register_disconnected_callback(self._async_handle_disconnect)
@@ -75,6 +78,7 @@ class TuyaBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
             len(updates),
             [update.dp_id for update in updates],
         )
+        self._log_unmapped_dp(updates)
         info = get_device_product_info(self.device)
         if info and info.fingerbot and info.fingerbot.manual_control != 0:
             for update in updates:
@@ -91,6 +95,61 @@ class TuyaBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             CONF_DEVICE_ID: self.device.device_id,
                         },
                     )
+
+    def _resolve_mapped_dp_ids(self) -> frozenset[int]:
+        """Return the ids this product maps, resolving the registry only once."""
+        if self._mapped_dp_ids is None:
+            self._mapped_dp_ids = get_mapped_dp_ids(
+                self.device.category, self.device.product_id
+            )
+        return self._mapped_dp_ids
+
+    def _log_unmapped_dp(self, updates: list[TuyaBLEDataPoint]) -> None:
+        """Report received data points that no entity of this product uses.
+
+        A data point with no entity is usually harmless, so this only runs at
+        DEBUG. Repeat reports of an unchanged data point are suppressed, and a
+        product missing from the descriptor registry is reported separately,
+        since then every id is effectively unknown.
+        """
+        if not _LOGGER.isEnabledFor(logging.DEBUG):
+            return
+        mapped = self._resolve_mapped_dp_ids()
+        known_product = (
+            get_registry().get(self.device.category, self.device.product_id) is not None
+        )
+        for update in updates:
+            if update.dp_id in mapped:
+                continue
+            signature = (update.dp_type.name, update.raw_value or b"")
+            if self._reported_unmapped.get(update.dp_id) == signature:
+                continue
+            self._reported_unmapped[update.dp_id] = signature
+            if known_product:
+                _LOGGER.debug(
+                    "%s: Unmapped DP id=%s type=%s raw=%s decoded=%s "
+                    "not used by any entity of %s/%s",
+                    self.device.address,
+                    update.dp_id,
+                    update.dp_type.name,
+                    (update.raw_value or b"").hex(),
+                    update.value,
+                    self.device.category,
+                    self.device.product_id,
+                )
+            else:
+                _LOGGER.warning(
+                    "%s: Unmapped DP id=%s type=%s raw=%s decoded=%s received for "
+                    "unknown product %s/%s; support for this device can be added "
+                    "with the data points from these log lines",
+                    self.device.address,
+                    update.dp_id,
+                    update.dp_type.name,
+                    (update.raw_value or b"").hex(),
+                    update.value,
+                    self.device.category,
+                    self.device.product_id,
+                )
 
     @callback
     def _set_disconnected(self, _: Any) -> None:
