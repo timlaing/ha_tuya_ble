@@ -605,12 +605,12 @@ class TuyaBLEDevice(TuyaBLEProtocol):
                 CHARACTERISTIC_NOTIFY, self._safe_notification_handler
             )
             return True
-        except BLE_CONNECTION_EXCEPTIONS:
+        except BLE_CONNECTION_EXCEPTIONS as err:
             self._client = None
-            _LOGGER.exception(
-                "%s: starting notifications failed",
+            _LOGGER.warning(
+                "%s: starting notifications failed, retrying: %s",
                 self.address,
-                exc_info=True,
+                err,
             )
             return False
 

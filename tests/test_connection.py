@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from struct import pack
 from unittest.mock import AsyncMock, patch
 
@@ -193,7 +194,9 @@ async def test_returns_false_when_disconnected() -> None:
     assert await dev._try_start_notifications() is False
 
 
-async def test_returns_false_on_start_notify_error() -> None:
+async def test_returns_false_on_start_notify_error(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """Return False and clear client when start_notify raises."""
     dev = make_device()
     client = FakeBleakClient(is_connected=True)
@@ -203,8 +206,11 @@ async def test_returns_false_on_start_notify_error() -> None:
         raise BleakError("test")
 
     client.start_notify = fail  # type: ignore[method-assign]
-    assert await dev._try_start_notifications() is False
+    with caplog.at_level(logging.WARNING):
+        assert await dev._try_start_notifications() is False
     assert dev._client is None
+    assert "starting notifications failed" in caplog.text
+    assert "retrying" in caplog.text
 
 
 async def test_send_device_info_no_client_returns_false() -> None:
