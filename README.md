@@ -59,13 +59,30 @@ logger:
 Restart Home Assistant (or reload the config entry), reproduce the problem, then read
 `home-assistant.log`.
 
-| Logger                                   | Covers                                                                     |
-| ---------------------------------------- | -------------------------------------------------------------------------- |
-| `custom_components.tuya_ble.config_flow` | Discovery, QR login, active scanning, cloud credential lookup, entry setup |
-| `custom_components.tuya_ble.cloud`       | Token refresh, credential lookup by UUID, device cache refresh             |
-| `custom_components.tuya_ble.coordinator` | Connect/disconnect transitions, idle timeout, received data point batches  |
-| `custom_components.tuya_ble.entity`      | Unique-id resolution, DP-code matching, commands sent to the device        |
-| `custom_components.tuya_ble.tuya_ble`    | Data point values, batch flushes, and the raw BLE protocol (packets, AES)  |
+| Logger                                   | Covers                                                                                          |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `custom_components.tuya_ble.config_flow` | Discovery, QR login, active scanning, cloud credential lookup, entry setup                      |
+| `custom_components.tuya_ble.cloud`       | Token refresh, credential lookup by UUID, device cache refresh                                  |
+| `custom_components.tuya_ble.coordinator` | Connect/disconnect transitions, idle timeout, received data point batches, unmapped data points |
+| `custom_components.tuya_ble.entity`      | Unique-id resolution, DP-code matching, commands sent to the device                             |
+| `custom_components.tuya_ble.tuya_ble`    | Data point values, batch flushes, and the raw BLE protocol (packets, AES)                       |
+
+Each received data point is traced as
+`Received DP id=<id> type=<type> flags=0x<flags> raw=<hex> decoded=<value>`. The `raw=`
+field is the exact payload the device sent, so `raw=00000064` and `raw=64` can be told
+apart even though both decode to `100`.
+
+If a device reports a data point that none of its entities use, the coordinator logs it
+separately:
+
+```
+... : Unmapped DP id=200 type=DT_VALUE raw=00000064 decoded=100 not used by any entity of wk/drlajpqc
+```
+
+A product that is not in the descriptor registry at all is reported as
+`unknown product <category>/<product_id>` instead, because in that case every data point
+is effectively unknown. Repeat reports of an unchanged data point are suppressed; a data
+point is traced again as soon as its type or its bytes change.
 
 **Credentials and tokens are never logged.** Local keys, access/refresh tokens, user codes,
 QR tokens, terminal IDs and cloud endpoints are excluded from every log statement, so a

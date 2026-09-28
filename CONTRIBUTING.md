@@ -136,7 +136,26 @@ The data-point list tells you which dp_ids the device uses and their types. You 
 
 1. **Smart Life / Tuya Smart app** — device info page (some apps show dp codes)
 2. **Tuya IoT platform** — if you have developer access, Device Debug > Data Points
-3. **Tuya BLE debug logs** — enable debug logging for `custom_components.tuya_ble` and look for "Received datapoint update" messages
+3. **Tuya BLE debug logs** — enable debug logging for `custom_components.tuya_ble` and look for the
+   `Received DP id=... type=... flags=... raw=... decoded=...` lines described in the README
+
+### Reporting the data points you found
+
+When you open an issue for a device that is missing entities, include:
+
+1. **The product identity** — the `category` and `product_id`, both of which appear in the
+   `unknown product <category>/<product_id>` warning if the device is not in the registry yet
+2. **What you did** — the app action or physical interaction that produced the change
+3. **The relevant `Received DP` and `Unmapped DP` lines** from the log, copied as text
+4. **The integration version** — from the config entry or `manifest.json`
+
+The `raw=` field is the payload exactly as the device sent it, so a data point's width, signedness
+and leading zero bytes are all preserved. That is often what identifies a device that reports a
+`DT_VALUE` as one byte where a guess would have assumed four.
+
+Review the log before sharing it. The integration never logs credentials, but Home Assistant's
+surrounding log may contain unrelated entries, so trim to the lines you need. See the README for
+the full list of what is safe to share.
 
 ## Development setup
 
