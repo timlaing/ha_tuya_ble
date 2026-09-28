@@ -139,7 +139,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except BLE_CONNECTION_EXCEPTIONS:
             # The device may be out of range; the reconnect handling in tuya_ble
             # takes over from here, so a failed handshake is expected, not fatal.
-            _LOGGER.debug("%s: Initial update failed; awaiting reconnect", address)
+            _LOGGER.debug(
+                "%s: Initial update failed; awaiting reconnect", address, exc_info=True
+            )
         else:
             _LOGGER.debug("%s: Initial device update finished", address)
 
