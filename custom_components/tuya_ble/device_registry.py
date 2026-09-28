@@ -322,3 +322,71 @@ def get_entity_descriptors(
 ) -> list[EntityDescriptor]:
     """Return platform entity descriptors for a product."""
     return get_registry().get_entities(category, product_id, platform)
+
+
+def _iter_dp_reference(value: Any) -> Any:
+    """Yield the data point ids held by a single auxiliary descriptor value."""
+    if isinstance(value, bool):
+        return
+    if isinstance(value, int):
+        if value:
+            yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _iter_dp_reference(item)
+    elif isinstance(value, list | tuple):
+        for item in value:
+            yield from _iter_dp_reference(item)
+
+
+def _descriptor_dp_ids(descriptor: EntityDescriptor) -> set[int]:
+    """Return every data point id referenced by a single entity descriptor.
+
+    Covers the entity's own ``dp_id`` and any auxiliary reference stored in
+    ``extra`` under an ``*_dp_id`` / ``*_dp_ids`` key, which is how composite
+    entities (cover position, lock door, climate targets) point at the data
+    points their handlers read. Keys such as ``bitmap_mask`` or
+    ``brightness_min`` do not match and are correctly ignored, and ``dp_id: 0``
+    is skipped because it is the placeholder used by single-entity platforms.
+    """
+    ids: set[int] = set()
+    if descriptor.dp_id:
+        ids.add(descriptor.dp_id)
+    if descriptor.door_dp_id:
+        ids.add(descriptor.door_dp_id)
+    for key, value in descriptor.extra.items():
+        if key.endswith(("_dp_id", "_dp_ids")):
+            ids.update(_iter_dp_reference(value))
+    return ids
+
+
+def get_mapped_dp_ids(category: str, product_id: str) -> frozenset[int]:
+    """Return every data point id this product's entities are expected to use.
+
+    Used to tell a genuinely unsupported data point apart from one that simply
+    has no entity yet, so diagnostics only report the former. Product-specific
+    overrides take precedence over the category defaults, matching how
+    entities are actually created, and data points referenced only by a shared
+    handler (the fingerbot and water valve specs) are included as well.
+
+    An empty result means the product is unknown to the descriptor registry.
+    """
+    ids: set[int] = set()
+    device = get_registry().get(category, product_id)
+    if device is not None:
+        for platform in {*device.entities, *device.category_defaults}:
+            for descriptor in device.get(platform):
+                ids.update(_descriptor_dp_ids(descriptor))
+
+    from .products import (  # pylint: disable=import-outside-toplevel
+        get_product_info_by_ids,
+    )
+
+    product_info = get_product_info_by_ids(category, product_id)
+    if product_info is not None:
+        for spec in (product_info.fingerbot, product_info.watervalve):
+            if spec is None:
+                continue
+            for value in vars(spec).values():
+                ids.update(_iter_dp_reference(value))
+    return frozenset(ids)

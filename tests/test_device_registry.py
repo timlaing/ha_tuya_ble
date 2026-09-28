@@ -412,3 +412,117 @@ def test_device_entities_empty_list_suppresses_default() -> None:
     de.category_defaults = {"sensor": [EntityDescriptor(platform="sensor", dp_id=1)]}
     de.entities = {"sensor": []}
     assert de.get("sensor") == []
+
+
+def _mapped_ids(device: DeviceEntities) -> frozenset[int]:
+    """Return the mapped ids for a registry entry patched into the singleton."""
+    return dr.get_mapped_dp_ids(device.category, device.product_id)
+
+
+def test_get_mapped_dp_ids_unknown_product_is_empty() -> None:
+    """An unregistered product has no known ids."""
+    assert dr.get_mapped_dp_ids("nope", "missing") == frozenset()
+
+
+def test_get_mapped_dp_ids_collects_entity_and_auxiliary_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Composite descriptors contribute their own and their auxiliary ids."""
+    registry = DeviceRegistry()
+    device = DeviceEntities(category="zz", product_id="zz1")
+    device.entities = {
+        "sensor": [
+            EntityDescriptor(
+                platform="sensor",
+                dp_id=7,
+                extra={"icons": ["mdi:battery"], "battery_dp_id": 13},
+            )
+        ],
+        "cover": [
+            EntityDescriptor(
+                platform="cover",
+                dp_id=0,
+                extra={"state_dp_id": 1, "position_set_dp_id": 2, "position_dp_id": 3},
+            )
+        ],
+        "lock": [EntityDescriptor(platform="lock", dp_id=47, door_dp_id=40)],
+    }
+    registry._products[("zz", "zz1")] = device
+    monkeypatch.setattr(dr, "get_registry", lambda: registry)
+    assert _mapped_ids(device) == frozenset({7, 13, 1, 2, 3, 47, 40})
+
+
+def test_get_mapped_dp_ids_ignores_non_dp_extras() -> None:
+    """Extras that are not data point references must not be collected."""
+    assert dr._descriptor_dp_ids(
+        EntityDescriptor(
+            platform="sensor",
+            dp_id=105,
+            extra={"bitmap_mask": 3, "brightness_min": 1, "brightness_max": 100},
+        )
+    ) == {105}
+
+
+def test_get_mapped_dp_ids_expands_nested_dp_references() -> None:
+    """A dict of preset-mode ids contributes every value it holds."""
+    descriptor = EntityDescriptor(
+        platform="climate",
+        dp_id=0,
+        extra={"preset_mode_dp_ids": {"away": 106, "none": 106}},
+    )
+    assert dr._descriptor_dp_ids(descriptor) == {106}
+
+
+def test_get_mapped_dp_ids_expands_list_dp_references() -> None:
+    """A list of ids contributes each entry."""
+    descriptor = EntityDescriptor(
+        platform="number", dp_id=0, extra={"state_dp_ids": [2, 3]}
+    )
+    assert dr._descriptor_dp_ids(descriptor) == {2, 3}
+
+
+@pytest.mark.parametrize("value", [True, False, "3", 3.5, None])
+def test_descriptor_dp_ids_skips_non_integer_references(value: object) -> None:
+    """Only plain integer data point ids are collected."""
+    descriptor = EntityDescriptor(platform="sensor", dp_id=0, extra={"x_dp_id": value})
+    assert dr._descriptor_dp_ids(descriptor) == set()
+
+
+def test_descriptor_dp_ids_skips_zero_reference() -> None:
+    """A zero id is a placeholder, not a data point."""
+    descriptor = EntityDescriptor(
+        platform="sensor", dp_id=0, extra={"state_dp_id": 0}, door_dp_id=0
+    )
+    assert dr._descriptor_dp_ids(descriptor) == set()
+
+
+def test_get_mapped_dp_ids_uses_category_defaults() -> None:
+    """A product with no per-platform override still inherits its category."""
+    mapped = dr.get_mapped_dp_ids("ms", "bvclwu9b")
+    assert {21, 8, 40} <= mapped
+    assert 47 in mapped
+
+
+def test_get_mapped_dp_ids_prefers_product_over_category_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The category default is not merged in when the product overrides it."""
+    registry = DeviceRegistry()
+    device = DeviceEntities(category="zz2", product_id="zz2")
+    device.category_defaults = {
+        "sensor": [EntityDescriptor(platform="sensor", dp_id=1)]
+    }
+    device.entities = {"sensor": [EntityDescriptor(platform="sensor", dp_id=2)]}
+    registry._products[("zz2", "zz2")] = device
+    monkeypatch.setattr(dr, "get_registry", lambda: registry)
+    assert _mapped_ids(device) == frozenset({2})
+
+
+def test_get_mapped_dp_ids_includes_handler_only_specs() -> None:
+    """Data points known only from a shared handler spec count as mapped."""
+    assert {8, 15, 17, 121} <= dr.get_mapped_dp_ids("szjqr", "riecov42")
+
+
+def test_get_mapped_dp_ids_includes_water_valve_spec() -> None:
+    """The water valve handler's data points count as mapped."""
+    assert {1, 10, 11, 13, 15} <= dr.get_mapped_dp_ids("sfkzq", "16wgjvck")
