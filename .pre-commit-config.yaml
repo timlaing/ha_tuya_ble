@@ -94,8 +94,8 @@ repos:
           # BEGIN GENERATED REQUIREMENTS
           - tuya-device-sharing-sdk
           - aiousbwatcher
-          - homeassistant==2026.8.3
-          - homeassistant-stubs==2026.8.3
+          - homeassistant==2026.9.3
+          - homeassistant-stubs==2026.9.3
           - mypy
           - prek
           - pycryptodome
@@ -103,7 +103,7 @@ repos:
           - pytest
           - pytest-asyncio
           - pytest-cov
-          - pytest-homeassistant-custom-component==0.13.357
+          - pytest-homeassistant-custom-component==0.13.366
           - ruff
           - serialx
           - tuya-device-handlers
@@ -121,8 +121,8 @@ repos:
           # BEGIN GENERATED REQUIREMENTS
           - tuya-device-sharing-sdk
           - aiousbwatcher
-          - homeassistant==2026.8.3
-          - homeassistant-stubs==2026.8.3
+          - homeassistant==2026.9.3
+          - homeassistant-stubs==2026.9.3
           - mypy
           - prek
           - pycryptodome
@@ -130,7 +130,7 @@ repos:
           - pytest
           - pytest-asyncio
           - pytest-cov
-          - pytest-homeassistant-custom-component==0.13.357
+          - pytest-homeassistant-custom-component==0.13.366
           - ruff
           - serialx
           - tuya-device-handlers
@@ -150,8 +150,8 @@ repos:
           # BEGIN GENERATED REQUIREMENTS
           - tuya-device-sharing-sdk
           - aiousbwatcher
-          - homeassistant==2026.8.3
-          - homeassistant-stubs==2026.8.3
+          - homeassistant==2026.9.3
+          - homeassistant-stubs==2026.9.3
           - mypy
           - prek
           - pycryptodome
@@ -159,7 +159,7 @@ repos:
           - pytest
           - pytest-asyncio
           - pytest-cov
-          - pytest-homeassistant-custom-component==0.13.357
+          - pytest-homeassistant-custom-component==0.13.366
           - ruff
           - serialx
           - tuya-device-handlers
