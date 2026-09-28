@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -31,6 +32,8 @@ if TYPE_CHECKING:
 
 
 _HASS_DATA_LEGACY_KEYS = "legacy_unique_id_suffixes"
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def get_device_info(device: TuyaBLEDevice) -> DeviceInfo | None:
@@ -142,7 +145,20 @@ def _resolve_unique_id(
         for old_key in legacy_keys:
             if old_key in existing:
                 uid = f"{device.device_id}-{old_key}"
+                _LOGGER.debug(
+                    "%s: unique id for key %s resolved to legacy key %s",
+                    device.address,
+                    key,
+                    old_key,
+                )
                 break
+    else:
+        _LOGGER.debug(
+            "%s: resolved unique id %s (no legacy key for %s)",
+            device.address,
+            uid,
+            key,
+        )
     return uid
 
 
@@ -181,12 +197,20 @@ class TuyaBLEEntity(CoordinatorEntity["TuyaBLECoordinator"]):
     ) -> None:
         """Send a data point value to the device."""
         if key is None or value is None:
+            _LOGGER.debug(
+                "%s: skipping send of %s, key: %s, value: %s",
+                self.device.address,
+                self.entity_description.key,
+                key,
+                value,
+            )
             return
         datapoint = self.device.datapoints.get_or_create(
             key,
             dp_type,
             value,
         )
+        _LOGGER.debug("%s: sending data point %s = %s", self.device.address, key, value)
         self.hass.create_task(datapoint.set_value(value))
 
     def send_multiple_dp_values(
@@ -198,6 +222,12 @@ class TuyaBLEEntity(CoordinatorEntity["TuyaBLECoordinator"]):
         for key, dp_type, value in updates:
             self.device.datapoints.get_or_create(key, dp_type, value)
             dp_updates[key] = value
+        _LOGGER.debug(
+            "%s: sending %d data point(s): %s",
+            self.device.address,
+            len(dp_updates),
+            dp_updates,
+        )
         self.hass.create_task(self.device.set_multiple_values(dp_updates))
 
     def find_dpid(
@@ -244,6 +274,13 @@ class TuyaBLEEntity(CoordinatorEntity["TuyaBLECoordinator"]):
             if result is not None:
                 return result
 
+        _LOGGER.debug(
+            "%s: no matching DP code found for %s in %s, entity %s will be unavailable",
+            self.device.address,
+            ", ".join(str(code) for code in dpcodes),
+            "/".join(order),
+            self.entity_description.key,
+        )
         return None
 
     def _match_dpcode(
@@ -289,9 +326,18 @@ class TuyaBLEEntity(CoordinatorEntity["TuyaBLECoordinator"]):
 
     def _send_command(self, commands: list[dict[str, Any]]) -> None:
         """Send commands to the device."""
+        _LOGGER.debug("%s: sending %d command(s)", self.device.address, len(commands))
         for command in commands:
             dp_id = command.get("dp_id")
             dp_type = command.get("dp_type")
             value = command.get("value")
             if dp_id is not None and dp_type is not None and value is not None:
                 self.send_dp_value(dp_id, dp_type, value)
+            else:
+                _LOGGER.debug(
+                    "%s: skipping command, dp_id: %s, dp_type: %s, value: %s",
+                    self.device.address,
+                    dp_id,
+                    dp_type,
+                    value,
+                )

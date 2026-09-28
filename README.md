@@ -40,6 +40,38 @@ The integration works locally, but connecting to a Tuya BLE device requires a de
 2. Scan the displayed QR code in your Smart Life / Tuya Smart app
 3. Select your BLE device from the discovered list
 
+## Debug logging
+
+The integration is silent at the `info` level. To capture a detailed trace — useful when a device is not discovered, an entity never appears, or a value looks wrong — raise the relevant loggers to `debug` in `configuration.yaml`:
+
+```yaml
+logger:
+  default: info
+  logs:
+    custom_components.tuya_ble: debug
+    custom_components.tuya_ble.config_flow: debug
+    custom_components.tuya_ble.coordinator: debug
+    custom_components.tuya_ble.entity: debug
+    custom_components.tuya_ble.cloud: debug
+    custom_components.tuya_ble.tuya_ble: debug
+```
+
+Restart Home Assistant (or reload the config entry), reproduce the problem, then read
+`home-assistant.log`.
+
+| Logger                                   | Covers                                                                     |
+| ---------------------------------------- | -------------------------------------------------------------------------- |
+| `custom_components.tuya_ble.config_flow` | Discovery, QR login, active scanning, cloud credential lookup, entry setup |
+| `custom_components.tuya_ble.cloud`       | Token refresh, credential lookup by UUID, device cache refresh             |
+| `custom_components.tuya_ble.coordinator` | Connect/disconnect transitions, idle timeout, received data point batches  |
+| `custom_components.tuya_ble.entity`      | Unique-id resolution, DP-code matching, commands sent to the device        |
+| `custom_components.tuya_ble.tuya_ble`    | Data point values, batch flushes, and the raw BLE protocol (packets, AES)  |
+
+**Credentials and tokens are never logged.** Local keys, access/refresh tokens, user codes,
+QR tokens, terminal IDs and cloud endpoints are excluded from every log statement, so a
+`debug` log can be attached to a bug report as-is. Device addresses, product IDs, data point
+ids and values _are_ logged, since those are what make a trace useful.
+
 ## Supported device platforms
 
 | Platform        | Description                                                             |

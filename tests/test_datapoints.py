@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from custom_components.tuya_ble.tuya_ble.const import TuyaBLEDataPointType
@@ -303,3 +305,175 @@ def test_set_value_dt_enum_wrong_type_raises(datapoints: TuyaBLEDataPoints) -> N
     dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_ENUM, value=1)
     with pytest.raises(TuyaBLEEnumValueError):
         dp._set_enum_value(b"\x01")  # pylint: disable=protected-access
+
+
+# --------------------------------------------------------------------------
+# Debug logging
+# --------------------------------------------------------------------------
+
+
+def test_update_from_device_logs_only_changes(
+    datapoints: TuyaBLEDataPoints, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A value that did not change is not traced as a device update."""
+    dp = make_dp(datapoints, dp_id=5, dp_type=TuyaBLEDataPointType.DT_BOOL, value=True)
+
+    with caplog.at_level(logging.DEBUG):
+        dp.update_from_device(2.0, 0, TuyaBLEDataPointType.DT_BOOL, True)
+    assert "Data point 5 changed by device" not in caplog.text
+
+    with caplog.at_level(logging.DEBUG):
+        dp.update_from_device(3.0, 0, TuyaBLEDataPointType.DT_BOOL, False)
+    assert "Data point 5 changed by device: True -> False" in caplog.text
+
+
+def test_datapoint_creation_does_not_log_a_change(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Creating a data point pre-sets the value, so no change is reported."""
+    dps = TuyaBLEDataPoints(FakeDatapointsOwner())  # type: ignore[arg-type]
+    with caplog.at_level(logging.DEBUG):
+        make_dp(dps, dp_id=9, dp_type=TuyaBLEDataPointType.DT_BOOL, value=True)
+    assert "changed by device" not in caplog.text
+
+
+def test_get_value_unhandled_type_is_warned(
+    datapoints: TuyaBLEDataPoints, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An unknown data point type warns and serializes to an empty value."""
+    dp = make_dp(datapoints, dp_id=3, dp_type=TuyaBLEDataPointType.DT_RAW, value=b"")
+
+    with caplog.at_level(logging.DEBUG):
+        dp._type = "not-a-real-type"  # type: ignore[assignment] # pylint: disable=protected-access
+        assert dp.get_value() == b""
+
+    assert "Unhandled data point type not-a-real-type for data point 3" in caplog.text
+    assert caplog.records[0].levelno == logging.WARNING
+
+
+def test_set_value_no_notify_is_logged(
+    datapoints: TuyaBLEDataPoints, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A local set that does not notify the device is traced."""
+    dp = make_dp(datapoints, dp_id=4, dp_type=TuyaBLEDataPointType.DT_BOOL, value=False)
+
+    with caplog.at_level(logging.DEBUG):
+        dp.set_value_no_notify(True)
+
+    assert "Data point 4 set locally without notifying the device: True" in caplog.text
+    assert dp.changed_by_device is False
+
+
+def test_set_enum_value_logs_int_branch(
+    datapoints: TuyaBLEDataPoints, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An integer enum assignment records that the int branch resolved."""
+    dp = make_dp(datapoints, dp_id=1, dp_type=TuyaBLEDataPointType.DT_ENUM, value=0)
+    with caplog.at_level(logging.DEBUG):
+        dp._set_enum_value(3)  # pylint: disable=protected-access
+    assert "Data point 1 enum set from int: 3" in caplog.text
+    assert dp.value == 3
+
+
+def test_set_enum_value_logs_numeric_string_branch(
+    datapoints: TuyaBLEDataPoints, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A numeric string enum assignment resolves to an int and is traced."""
+    dp = make_dp(datapoints, dp_id=1, dp_type=TuyaBLEDataPointType.DT_ENUM, value=0)
+    with caplog.at_level(logging.DEBUG):
+        dp._set_enum_value("4")  # pylint: disable=protected-access
+    assert "Data point 1 enum set from numeric string: 4" in caplog.text
+    assert dp.value == 4
+
+
+def test_set_enum_value_logs_name_string_branch(
+    datapoints: TuyaBLEDataPoints, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A non-numeric string enum assignment is kept verbatim and is traced."""
+    dp = make_dp(datapoints, dp_id=1, dp_type=TuyaBLEDataPointType.DT_ENUM, value=0)
+    with caplog.at_level(logging.DEBUG):
+        dp._set_enum_value("auto")  # pylint: disable=protected-access
+    assert "Data point 1 enum set from name string: auto" in caplog.text
+    assert dp.value == "auto"
+
+
+def test_get_or_create_logs_creation(
+    datapoints: TuyaBLEDataPoints, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Creating a new data point is traced; returning an existing one is not."""
+    with caplog.at_level(logging.DEBUG):
+        datapoints.get_or_create(6, TuyaBLEDataPointType.DT_BOOL)
+    assert "Creating new data point 6 (TuyaBLEDataPointType.DT_BOOL)" in caplog.text
+
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG):
+        datapoints.get_or_create(6, TuyaBLEDataPointType.DT_BOOL)
+    assert "Creating new data point 6" not in caplog.text
+
+
+async def test_batch_update_logs_open_and_flush(
+    datapoints: TuyaBLEDataPoints,
+    datapoints_owner: FakeDatapointsOwner,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Opening a batch and flushing the queued ids are both traced."""
+    dp = datapoints.get_or_create(1, TuyaBLEDataPointType.DT_BOOL)
+
+    with caplog.at_level(logging.DEBUG):
+        datapoints.begin_update()
+    assert "Batch update opened, nesting depth 1" in caplog.text
+
+    with caplog.at_level(logging.DEBUG):
+        await dp.set_value(True)
+    assert "Data point 1 queued in batch update (nesting depth 1)" in caplog.text
+
+    with caplog.at_level(logging.DEBUG):
+        await datapoints.end_update()
+    assert "Batch update closed, flushing data points: [1]" in caplog.text
+    assert datapoints_owner.sent == [[1]]
+
+
+async def test_nested_batch_update_logs_depth(
+    datapoints: TuyaBLEDataPoints,
+    datapoints_owner: FakeDatapointsOwner,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A nested batch close that does not flush reports the reduced depth."""
+    dp = datapoints.get_or_create(1, TuyaBLEDataPointType.DT_BOOL)
+    datapoints.begin_update()
+    datapoints.begin_update()
+
+    with caplog.at_level(logging.DEBUG):
+        await dp.set_value(True)
+    assert "queued in batch update (nesting depth 2)" in caplog.text
+
+    with caplog.at_level(logging.DEBUG):
+        await datapoints.end_update()
+    assert "Batch update closed, nesting depth 1" in caplog.text
+    assert datapoints_owner.sent == []
+
+    await datapoints.end_update()
+    assert datapoints_owner.sent == [[1]]
+
+
+async def test_update_from_user_logs_immediate_send(
+    datapoints: TuyaBLEDataPoints,
+    datapoints_owner: FakeDatapointsOwner,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A write outside a batch is traced as sent immediately."""
+    dp = datapoints.get_or_create(2, TuyaBLEDataPointType.DT_BOOL)
+    with caplog.at_level(logging.DEBUG):
+        await dp.set_value(True)
+    assert "Data point 2 sent immediately" in caplog.text
+    assert datapoints_owner.sent == [[2]]
+
+
+def test_collection_update_logs_creation(
+    datapoints: TuyaBLEDataPoints, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The first device update for an id is traced as a creation, not a change."""
+    with caplog.at_level(logging.DEBUG):
+        datapoints.update_from_device(8, 1000.0, 0, TuyaBLEDataPointType.DT_BOOL, True)
+    assert "Data point 8 created from device update" in caplog.text
+    assert "changed by device" not in caplog.text

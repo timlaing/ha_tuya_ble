@@ -61,6 +61,7 @@ class TuyaBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._unsub_disconnect()
         if self._disconnected:
             self._disconnected = False
+            _LOGGER.debug("%s: Connected", self.device.address)
             self.async_update_listeners()
 
     @callback
@@ -68,10 +69,21 @@ class TuyaBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Broadcast coordinator listeners and fire fingerbot button events."""
         self._async_handle_connect()
         self.async_set_updated_data({})
+        _LOGGER.debug(
+            "%s: Received update with %d data point(s): %s",
+            self.device.address,
+            len(updates),
+            [update.dp_id for update in updates],
+        )
         info = get_device_product_info(self.device)
         if info and info.fingerbot and info.fingerbot.manual_control != 0:
             for update in updates:
                 if update.dp_id == info.fingerbot.switch and update.changed_by_device:
+                    _LOGGER.debug(
+                        "%s: Fingerbot button event for data point %s",
+                        self.device.address,
+                        update.dp_id,
+                    )
                     self.hass.bus.fire(
                         FINGERBOT_BUTTON_EVENT,
                         {
@@ -85,6 +97,7 @@ class TuyaBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Invoke the idle timeout callback, called when the alarm fires."""
         self._disconnected = True
         self._unsub_disconnect = None
+        _LOGGER.debug("%s: Idle timeout, marked as disconnected", self.device.address)
         self.async_update_listeners()
 
     @callback
@@ -92,6 +105,15 @@ class TuyaBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Schedule a delayed transition to disconnected state."""
         if self._unsub_disconnect is None:
             delay: float = SET_DISCONNECTED_DELAY
+            _LOGGER.debug(
+                "%s: Disconnected, marking as disconnected in %ss",
+                self.device.address,
+                delay,
+            )
             self._unsub_disconnect = async_call_later(
                 self.hass, delay, self._set_disconnected
+            )
+        else:
+            _LOGGER.debug(
+                "%s: Already scheduled to disconnect, skipping", self.device.address
             )

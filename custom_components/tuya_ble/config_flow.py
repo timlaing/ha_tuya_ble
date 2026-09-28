@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import logging
 from typing import Any
 
 from homeassistant.components import bluetooth
@@ -51,6 +52,20 @@ from .tuya_ble.const import MANUFACTURER_DATA_ID
 
 UNKNOWN_ERROR = "Unknown error"
 ACTIVE_SCAN_TIMEOUT = 60
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def _advertisement_hex(discovery_info: BluetoothServiceInfoBleak) -> str:
+    """Render the Tuya-relevant advertisement payloads as hex for diagnostics."""
+    advertisement = discovery_info.advertisement
+    service_data = advertisement.service_data or {}
+    manufacturer_data = advertisement.manufacturer_data or {}
+    return (
+        f"service_data[{SERVICE_UUID}]={service_data.get(SERVICE_UUID, b'').hex()} "
+        f"manufacturer_data[{MANUFACTURER_DATA_ID}]="
+        f"{manufacturer_data.get(MANUFACTURER_DATA_ID, b'').hex()}"
+    )
 
 
 class _QRCodeLoginMixin:
@@ -117,6 +132,13 @@ class _QRCodeLoginMixin:
         if success := response.get(TUYA_RESPONSE_SUCCESS, False):
             self._qr_user_code = user_code
             self._qr_code = response[TUYA_RESPONSE_RESULT][TUYA_RESPONSE_QR_CODE]
+            _LOGGER.debug("QR code issued")
+        else:
+            _LOGGER.debug(
+                "QR code request rejected: %s (code %s)",
+                response.get(TUYA_RESPONSE_MSG, UNKNOWN_ERROR),
+                response.get(TUYA_RESPONSE_CODE, 0),
+            )
         return success, response
 
     async def async_step_qr(
@@ -140,6 +162,11 @@ class _QRCodeLoginMixin:
             self._qr_user_code,
         )
         if not ret:
+            _LOGGER.debug(
+                "QR code login not completed, re-issuing QR code: %s (code %s)",
+                info.get(TUYA_RESPONSE_MSG, UNKNOWN_ERROR),
+                info.get(TUYA_RESPONSE_CODE, 0),
+            )
             await self._async_fetch_qr_code(self._qr_user_code)
             return self._qr_code_form(
                 "qr",
@@ -182,6 +209,12 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         self, discovery_info: BluetoothServiceInfoBleak
     ) -> ConfigFlowResult:
         """Handle the bluetooth discovery step."""
+        _LOGGER.debug(
+            "Bluetooth discovery started: %s (name: %s, RSSI: %s)",
+            discovery_info.address,
+            discovery_info.name,
+            discovery_info.rssi,
+        )
         await self.async_set_unique_id(discovery_info.address)
         self._abort_if_unique_id_configured()
         self.discovery_info = discovery_info
@@ -207,6 +240,11 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
                 TUYA_RESPONSE_MSG: response.get(TUYA_RESPONSE_MSG, UNKNOWN_ERROR),
                 TUYA_RESPONSE_CODE: response.get(TUYA_RESPONSE_CODE, "0"),
             }
+            _LOGGER.debug(
+                "Login failed: %s (code %s)",
+                placeholders[TUYA_RESPONSE_MSG],
+                placeholders[TUYA_RESPONSE_CODE],
+            )
         else:
             user_input = {}
 
@@ -239,6 +277,9 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         self, address: str
     ) -> BluetoothServiceInfoBleak | None:
         """Actively scan until Tuya service and manufacturer data are available."""
+        _LOGGER.debug(
+            "%s: active scan started, timeout %ss", address, ACTIVE_SCAN_TIMEOUT
+        )
 
         try:
             return await bluetooth.async_process_advertisements(
@@ -249,6 +290,7 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
                 ACTIVE_SCAN_TIMEOUT,
             )
         except TimeoutError:
+            _LOGGER.debug("%s: active scan timed out", address)
             return None
 
     async def _async_setup_address(
@@ -258,14 +300,23 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         await self.async_set_unique_id(address, raise_on_progress=False)
         self._abort_if_unique_id_configured()
         if self._manager is None:
+            _LOGGER.warning(
+                "%s: cannot set up device, cloud manager is not initialised", address
+            )
             return self.async_abort(reason="unknown"), None
 
         discovery_info = await self._async_scan_device(address)
         if discovery_info is None:
+            _LOGGER.debug("%s: bluetooth_scan_failed", address)
             return None, "bluetooth_scan_failed"
 
         advertisement = decode_tuya_ble_advertisement(discovery_info.advertisement)
         if advertisement is None:
+            _LOGGER.debug(
+                "%s: identity_not_decoded, %s",
+                address,
+                _advertisement_hex(discovery_info),
+            )
             return None, "identity_not_decoded"
 
         credentials = await self._manager.get_device_credentials_by_uuid(
@@ -273,6 +324,13 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             force_update=self._get_device_info_error,
         )
         if credentials is None:
+            _LOGGER.warning(
+                "%s: device_not_registered, no cloud credentials for uuid %s "
+                "(force_update: %s)",
+                address,
+                advertisement.uuid,
+                self._get_device_info_error,
+            )
             self._get_device_info_error = True
             return None, "device_not_registered"
 
@@ -289,6 +347,13 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             CONF_FUNCTIONS: credentials.functions,
             CONF_STATUS_RANGE: credentials.status_range,
         }
+        _LOGGER.debug(
+            "%s: config entry created (category: %s, product_id: %s, device_name: %s)",
+            address,
+            credentials.category,
+            credentials.product_id,
+            credentials.device_name,
+        )
         return (
             self.async_create_entry(
                 title=credentials.device_name or discovery_info.name or address,
@@ -339,6 +404,7 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         self._refresh_discovered_devices()
 
         if not self._discovered_devices:
+            _LOGGER.debug("No unconfigured Tuya BLE devices discovered")
             return self.async_abort(reason="no_unconfigured_devices")
 
         def_address: str
@@ -375,6 +441,12 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             ):
                 continue
             self._discovered_devices[discovery.address] = discovery
+            _LOGGER.debug(
+                "Discovered Tuya BLE device %s (name: %s, total: %d)",
+                discovery.address,
+                discovery.name,
+                len(self._discovered_devices),
+            )
 
     async def _async_qr_login_store_and_advance(
         self, login_info: dict[str, Any]
@@ -392,9 +464,13 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
 
         self._manager = HASSTuyaBLEDeviceManager(self.hass, self._data)
         await self._manager.initialize()
-
         if self.discovery_info is not None:
+            _LOGGER.debug(
+                "Login complete, setting up discovered device %s directly",
+                self.discovery_info.address,
+            )
             return await self.async_step_discovered_device(user_input={})
+        _LOGGER.debug("Login complete, selecting a device to set up")
         return await self.async_step_device()
 
     @staticmethod
@@ -441,6 +517,11 @@ class TuyaBLEOptionsFlow(OptionsFlowWithConfigEntry, _QRCodeLoginMixin):
                 TUYA_RESPONSE_MSG: response.get(TUYA_RESPONSE_MSG, UNKNOWN_ERROR),
                 TUYA_RESPONSE_CODE: response.get(TUYA_RESPONSE_CODE, "0"),
             }
+            _LOGGER.debug(
+                "Re-authentication rejected (code %s): %s",
+                placeholders[TUYA_RESPONSE_CODE],
+                placeholders[TUYA_RESPONSE_MSG],
+            )
         else:
             user_input = {}
             user_input[CONF_USER_CODE] = self.config_entry.options.get(

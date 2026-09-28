@@ -27,6 +27,8 @@ A pytest unit-test suite lives in `tests/` (721 tests, 98% branch coverage of `c
 - `products.py`'s `devices_database` is a pure registry: `get_product_info_by_ids`, `get_device_product_info`, `get_short_address`, `get_device_info` are unit-tested directly (via the `devices.py` shim in `test_devices.py`).
 - The `hass` fixture comes from `pytest-homeassistant-custom-component`; config-flow tests build flow objects directly and drive `async_step_*`, patching `config_flow.HASSTuyaBLEDeviceManager` and the (name-mangled) `login_control`/`qr_code`/`login_result` with fakes.
 - Tests that mock `asyncio.create_task` or `asyncio.sleep` should use a module-level `pytestmark = pytest.mark.filterwarnings("ignore::RuntimeWarning")` and a `_close_task()` helper that calls `coro.close()` on the mocked coroutine to prevent unawaited-coroutine warnings from leaking into other tests via `gc.collect()`.
+- Most modules log at `debug`, and pytest's `caplog` does **not** capture `DEBUG` unless the level is raised. Every assertion against a debug message needs `caplog.at_level(logging.DEBUG)` (as a context manager, or `caplog.set_level(logging.DEBUG)` for the whole test) — the warning-level pattern in `test_protocol.py` does not transfer. Use `caplog.clear()` between two phases of one test, since the text accumulates.
+- Logging conventions for the integration: module-level `_LOGGER = logging.getLogger(__name__)`, lazy `%`-style formatting only (never f-strings, to match the existing call sites), `debug` for happy-path traces, `warning` for recoverable anomalies, `error` only where the user is shown a failure form. **Never log** `local_key`, `access_token`, `refresh_token`, `terminal_id`, `user_code`, QR tokens, or `endpoint`.
 
 ### Coverage requirements
 
@@ -56,6 +58,8 @@ If a file falls below the threshold, add tests until it passes before committing
 | `tests/test_device.py`                                                     | `TuyaBLEDevice` connection/state (mocked connect flow)                                            |
 | `tests/test_connection.py`                                                 | BLE connection lifecycle, error paths, protocol edge cases                                        |
 | `tests/test_cloud.py`                                                      | `cloud.py`                                                                                        |
+| `tests/test_coordinator.py`                                                | `coordinator.py` connect/disconnect transitions, update batches, delayed-disconnect timer         |
+| `tests/test_entity.py`                                                     | `entity.py` unique-id resolution, DP-code matching, data point sends                              |
 | `tests/test_devices.py`                                                    | pure devices.py functions                                                                         |
 | `tests/test_mappings.py`                                                   | per-platform `get_mapping_by_device` + pure Fingerbot/sensor helpers                              |
 | `tests/test_device_registry.py`                                            | `device_registry.py` (load/validate/resolve, `EntityDescriptor`)                                  |

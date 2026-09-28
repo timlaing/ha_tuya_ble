@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from struct import pack
 import time
 from typing import TYPE_CHECKING
@@ -11,6 +12,8 @@ from .exceptions import TuyaBLEDataFormatError, TuyaBLEEnumValueError
 
 if TYPE_CHECKING:
     from .base import TuyaBLEDevice
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class TuyaBLEDataPoint:
@@ -43,9 +46,17 @@ class TuyaBLEDataPoint:
         self._flags = flags
         self._type = dp_type
         self._changed_by_device = self._value != value
+        if self._changed_by_device:
+            _LOGGER.debug(
+                "Data point %s changed by device: %s -> %s (%s)",
+                self._id,
+                self._value,
+                value,
+                dp_type,
+            )
         self._value = value
 
-    def get_value(self) -> bytes:
+    def get_value(self) -> bytes:  # pylint: disable=too-many-branches
         """Return the serialized value as bytes."""
         result = b""
         match self._type:
@@ -72,6 +83,13 @@ class TuyaBLEDataPoint:
                 if not isinstance(self._value, str):
                     raise TuyaBLEDataFormatError()
                 result = self._value.encode()
+            case _:
+                _LOGGER.warning(
+                    "Unhandled data point type %s for data point %s, "
+                    "serializing to empty value",
+                    self._type,
+                    self._id,
+                )
         return result
 
     @property
@@ -120,6 +138,11 @@ class TuyaBLEDataPoint:
             case TuyaBLEDataPointType.DT_STRING:
                 self._value = str(value)
         self._changed_by_device = False
+        _LOGGER.debug(
+            "Data point %s set locally without notifying the device: %s",
+            self._id,
+            self._value,
+        )
 
     async def set_value(self, value: bytes | bool | int | str) -> None:
         """Set the data point value and send the update to the device."""
@@ -131,6 +154,7 @@ class TuyaBLEDataPoint:
         if isinstance(value, int):
             if value >= 0:
                 self._value = value
+                _LOGGER.debug("Data point %s enum set from int: %s", self._id, value)
             else:
                 raise TuyaBLEEnumValueError()
         elif isinstance(value, str):
@@ -138,10 +162,18 @@ class TuyaBLEDataPoint:
                 int_val = int(value)
                 if int_val >= 0:
                     self._value = int_val
+                    _LOGGER.debug(
+                        "Data point %s enum set from numeric string: %s",
+                        self._id,
+                        value,
+                    )
                 else:
                     raise TuyaBLEEnumValueError()
             except ValueError:
                 self._value = value
+                _LOGGER.debug(
+                    "Data point %s enum set from name string: %s", self._id, value
+                )
         else:
             raise TuyaBLEEnumValueError()
 
@@ -177,6 +209,7 @@ class TuyaBLEDataPoints:
         datapoint = self._datapoints.get(dp_id)
         if datapoint:
             return datapoint
+        _LOGGER.debug("Creating new data point %s (%s)", dp_id, dp_type)
         datapoint = TuyaBLEDataPoint(self, dp_id, time.time(), 0, dp_type, value or b"")
         self._datapoints[dp_id] = datapoint
         return datapoint
@@ -184,14 +217,23 @@ class TuyaBLEDataPoints:
     def begin_update(self) -> None:
         """Begin a batch update, deferring outgoing data point writes."""
         self._update_started += 1
+        _LOGGER.debug("Batch update opened, nesting depth %d", self._update_started)
 
     async def end_update(self) -> None:
         """End a batch update, sending any deferred data point writes."""
         if self._update_started > 0:
             self._update_started -= 1
             if self._update_started == 0 and len(self._updated_datapoints) > 0:
+                _LOGGER.debug(
+                    "Batch update closed, flushing data points: %s",
+                    self._updated_datapoints,
+                )
                 await self._owner.send_datapoints(self._updated_datapoints)
                 self._updated_datapoints = []
+            else:
+                _LOGGER.debug(
+                    "Batch update closed, nesting depth %d", self._update_started
+                )
 
     def update_from_device(
         self,
@@ -206,6 +248,7 @@ class TuyaBLEDataPoints:
         if dp:
             dp.update_from_device(timestamp, flags, dp_type, value)
         else:
+            _LOGGER.debug("Data point %s created from device update", dp_id)
             self._datapoints[dp_id] = TuyaBLEDataPoint(
                 self, dp_id, timestamp, flags, dp_type, value
             )
@@ -216,5 +259,11 @@ class TuyaBLEDataPoints:
             if dp_id in self._updated_datapoints:
                 self._updated_datapoints.remove(dp_id)
             self._updated_datapoints.append(dp_id)
+            _LOGGER.debug(
+                "Data point %s queued in batch update (nesting depth %d)",
+                dp_id,
+                self._update_started,
+            )
         else:
+            _LOGGER.debug("Data point %s sent immediately", dp_id)
             await self._owner.send_datapoints([dp_id])
