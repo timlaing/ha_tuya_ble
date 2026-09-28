@@ -193,7 +193,7 @@ async def test_sensor_update_string_datapoint(hass: HomeAssistant) -> None:
 
 
 async def test_sensor_enum_no_options(hass: HomeAssistant) -> None:
-    """Verify sensor handles enum with no options list."""
+    """Verify an enum without an options list falls back to its raw value."""
     device, coordinator, product = build_context(hass)
     mapping = sensor.TuyaBLESensorMapping(
         dp_id=1,
@@ -204,7 +204,22 @@ async def test_sensor_enum_no_options(hass: HomeAssistant) -> None:
     add_dp(device, 1, TuyaBLEDataPointType.DT_ENUM, 1)
     coordinator.async_set_updated_data({})
     await hass.async_block_till_done()
-    assert entity.native_value is None
+    assert entity.native_value == "1"
+
+
+async def test_sensor_enum_no_options_non_int(hass: HomeAssistant) -> None:
+    """Verify a non-int enum without options is reported as a string."""
+    device, coordinator, product = build_context(hass)
+    mapping = sensor.TuyaBLESensorMapping(
+        dp_id=1,
+        description=SensorEntityDescription(key="e"),
+    )
+    entity = _make_entity(hass, device, coordinator, product, mapping)
+    await entity.async_added_to_hass()
+    add_dp(device, 1, TuyaBLEDataPointType.DT_ENUM, "auto")
+    coordinator.async_set_updated_data({})
+    await hass.async_block_till_done()
+    assert entity.native_value == "auto"
 
 
 async def test_sensor_enum_with_icons(hass: HomeAssistant) -> None:

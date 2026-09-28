@@ -246,15 +246,15 @@ class TuyaBLESensor(TuyaBLEEntity, SensorEntity):
     @callback
     def _update_enum_value(self, datapoint: TuyaBLEDataPoint) -> None:
         """Update attributes from an enum datapoint."""
-        if self.entity_description.options is not None:
-            if isinstance(datapoint.value, int) and 0 <= datapoint.value < len(
-                self.entity_description.options
-            ):
-                self._attr_native_value = self.entity_description.options[
-                    datapoint.value
-                ]
-            else:
-                self._attr_native_value = str(datapoint.value)
+        options = self.entity_description.options
+        if (
+            options is not None
+            and isinstance(datapoint.value, int)
+            and 0 <= datapoint.value < len(options)
+        ):
+            self._attr_native_value = options[datapoint.value]
+        else:
+            self._attr_native_value = str(datapoint.value)
         if (
             self._mapping.icons is not None
             and isinstance(datapoint.value, int)
