@@ -124,6 +124,15 @@ async def test_scan_device_timeout_is_logged(
     assert "AA:BB:CC:DD:EE:FF: active scan timed out" in caplog.text
 
 
+def _warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
+    """Return every captured warning message, independent of capture order."""
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.levelno == logging.WARNING
+    ]
+
+
 async def test_setup_address_without_manager_is_warned(
     hass: HomeAssistant, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -135,9 +144,11 @@ async def test_setup_address_without_manager_is_warned(
     assert error is None
     assert result is not None
     assert result["reason"] == "unknown"
-    assert "AA:BB:CC:DD:EE:FF: cannot set up device" in caplog.text
-    assert "cloud manager is not initialised" in caplog.text
-    assert caplog.records[0].levelno == logging.WARNING
+    assert any(
+        "AA:BB:CC:DD:EE:FF: cannot set up device" in message
+        and "cloud manager is not initialised" in message
+        for message in _warnings(caplog)
+    )
 
 
 async def test_setup_address_scan_failure_is_logged(
@@ -191,10 +202,12 @@ async def test_setup_address_unregistered_device_is_warned(
     ):
         _result, error = await flow._async_setup_address(discovery.address)
     assert error == "device_not_registered"
-    assert "DC:23:4D:CD:E0:34: device_not_registered" in caplog.text
-    assert "0237f144b99142e6" in caplog.text
-    assert "force_update: False" in caplog.text
-    assert caplog.records[0].levelno == logging.WARNING
+    assert any(
+        "DC:23:4D:CD:E0:34: device_not_registered" in message
+        and "0237f144b99142e6" in message
+        and "force_update: False" in message
+        for message in _warnings(caplog)
+    )
 
 
 async def test_setup_address_entry_created_is_logged(
