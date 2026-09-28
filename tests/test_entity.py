@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from homeassistant.core import HomeAssistant
@@ -26,9 +27,9 @@ def _make_entity(hass: HomeAssistant) -> TuyaBLEEntity:
     device = make_device()
     device._device_info = make_credentials()
 
-    async def _record_send(dp_ids: list[int]) -> None:
-        """Record which datapoint ids the entity asked the device to send."""
-        device._sent = dp_ids  # type: ignore[attr-defined]
+    async def _record_send(payload: list[int] | dict[int, Any]) -> None:
+        """Record the payload sent via send_datapoints or set_multiple_values."""
+        device._sent = payload  # type: ignore[attr-defined]
 
     device.send_datapoints = _record_send  # type: ignore[assignment]
     device.set_multiple_values = _record_send  # type: ignore[assignment]
