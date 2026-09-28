@@ -56,7 +56,16 @@ class TuyaBLEDataPoint:
             )
         self._value = value
 
-    def get_value(self) -> bytes:  # pylint: disable=too-many-branches
+    @staticmethod
+    def _pack_enum(value: int) -> bytes:
+        """Pack an enum value using the narrowest integer width that fits."""
+        if value > 0xFFFF:
+            return pack(">I", value)
+        if value > 0xFF:
+            return pack(">H", value)
+        return pack(">B", value)
+
+    def get_value(self) -> bytes:
         """Return the serialized value as bytes."""
         result = b""
         match self._type:
@@ -73,12 +82,7 @@ class TuyaBLEDataPoint:
             case TuyaBLEDataPointType.DT_ENUM:
                 if not isinstance(self._value, int):
                     raise TuyaBLEDataFormatError()
-                if self._value > 0xFFFF:
-                    result = pack(">I", self._value)
-                elif self._value > 0xFF:
-                    result = pack(">H", self._value)
-                else:
-                    result = pack(">B", self._value)
+                result = self._pack_enum(self._value)
             case TuyaBLEDataPointType.DT_STRING:
                 if not isinstance(self._value, str):
                     raise TuyaBLEDataFormatError()
