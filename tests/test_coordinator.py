@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from struct import pack
 from unittest.mock import patch
 
 from homeassistant.core import Event, HomeAssistant
@@ -22,9 +24,21 @@ from custom_components.tuya_ble.tuya_ble import (
     TuyaBLEDataPointType,
     TuyaBLEDevice,
 )
+from custom_components.tuya_ble.tuya_ble.const import TuyaBLECode
 from tests.conftest import make_credentials, make_device
+from tests.protocol_harness import (
+    ProtocolHarness,
+    encrypt_payload,
+    frame_packet0,
+)
 
 ADDRESS = "AA:BB:CC:DD:EE:FF"
+
+
+def session_key(harness: ProtocolHarness) -> bytes:
+    """Return the device session key."""
+    assert harness.device._session_key is not None
+    return harness.device._session_key
 
 
 def _make_coord(hass: HomeAssistant) -> tuple[TuyaBLECoordinator, TuyaBLEDevice]:
@@ -405,3 +419,49 @@ def test_dp_classification_is_resolved_once(
     assert known_product is True
     assert 102 in mapped
     assert coordinator._resolve_dp_classification()[1] is mapped
+
+
+async def test_undeclared_dp_from_real_notification_is_logged(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """End to end: an undeclared data point in a real frame reaches the log.
+
+    Drives the whole chain a device takes — BLE notification, AES decrypt,
+    parse, data point update, device callback, coordinator — so the unmapped
+    report is proven against the actual wire path rather than a hand-built
+    data point.
+    """
+    harness = ProtocolHarness()
+    await harness.register_notify()
+    harness.device._device_info = make_credentials(category="wk", product_id="drlajpqc")
+    coordinator = TuyaBLECoordinator(hass, harness.device)
+
+    payload = pack(">BBB", 102, TuyaBLEDataPointType.DT_VALUE.value, 2) + b"\x00\x15"
+    payload += (
+        pack(">BBB", 200, TuyaBLEDataPointType.DT_VALUE.value, 4) + b"\x00\x00\x00\x64"
+    )
+    frame = frame_packet0(
+        encrypt_payload(
+            session_key(harness),
+            5,
+            1,
+            0,
+            TuyaBLECode.FUN_RECEIVE_DP,
+            payload,
+        )
+    )
+
+    caplog.set_level(logging.DEBUG)
+    harness.notify(frame)
+    await asyncio.sleep(0)
+
+    assert (
+        f"{ADDRESS}: Received DP id=200 type=DT_VALUE flags=0x00 raw=00000064 "
+        "decoded=100" in caplog.text
+    )
+    assert (
+        f"{ADDRESS}: Unmapped DP id=200 type=DT_VALUE raw=00000064 decoded=100 "
+        "not used by any entity of wk/drlajpqc" in caplog.text
+    )
+    assert "Unmapped DP id=102" not in caplog.text
+    assert coordinator.connected is True
