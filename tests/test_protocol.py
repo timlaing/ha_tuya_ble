@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Coroutine
+import logging
 from struct import pack
 from typing import Any
 
@@ -155,6 +156,8 @@ async def test_receive_dp_all_types(h: ProtocolHarness) -> None:
 
 async def test_receive_sign_dp(h: ProtocolHarness) -> None:
     """Receiving signed datapoints should be handled."""
+    seen: list[TuyaBLEDataPoint] = []
+    h.device.register_callback(seen.extend)
     data = pack(">HB", 0, 1) + _dp_data()
     msg = frame_packet0(
         encrypt_payload(session_key(h), 5, 1, 0, TuyaBLECode.FUN_RECEIVE_SIGN_DP, data)
@@ -162,6 +165,7 @@ async def test_receive_sign_dp(h: ProtocolHarness) -> None:
     h.notify(msg)
     await asyncio.sleep(0)
     assert len(h.writes()) >= 1
+    assert {dp.dp_id for dp in seen} == {1, 2, 3, 4, 5}
 
 
 async def test_receive_time_dp_type0(h: ProtocolHarness) -> None:
@@ -197,6 +201,83 @@ async def test_receive_sign_time_dp(h: ProtocolHarness) -> None:
     h.notify(msg)
     await asyncio.sleep(0)
     assert len(h.writes()) >= 1
+
+
+def _leading_zero_dp() -> bytes:
+    """Return a DT_VALUE data point whose value carries leading zero bytes."""
+    return pack(">BBB", 3, TuyaBLEDataPointType.DT_VALUE.value, 4) + b"\x00\x00\x00\x64"
+
+
+async def test_receive_dp_debug_log_keeps_original_width(
+    h: ProtocolHarness, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The receive trace must show the exact wire bytes, not the decoded value."""
+    msg = frame_packet0(
+        encrypt_payload(
+            session_key(h), 5, 1, 0, TuyaBLECode.FUN_RECEIVE_DP, _leading_zero_dp()
+        )
+    )
+    with caplog.at_level(logging.DEBUG):
+        h.notify(msg)
+        await asyncio.sleep(0)
+    assert "raw=00000064" in caplog.text
+    assert "decoded=100" in caplog.text
+
+
+def _receive_variant(code: TuyaBLECode, flags: int) -> bytes:
+    """Return a receive payload carrying one datapoint for the given command."""
+    dp = _leading_zero_dp()
+    if code is TuyaBLECode.FUN_RECEIVE_DP:
+        return dp
+    if code is TuyaBLECode.FUN_RECEIVE_SIGN_DP:
+        return pack(">HB", 7, flags) + dp
+    if code is TuyaBLECode.FUN_RECEIVE_TIME_DP:
+        return pack(">B", 0) + b"1700000000123" + b"\x00\x00\x00" + dp
+    return pack(">HB", 7, flags) + pack(">B", 0) + b"1700000000123" + dp
+
+
+@pytest.mark.parametrize(
+    ("code", "flags"),
+    [
+        (TuyaBLECode.FUN_RECEIVE_DP, 0),
+        (TuyaBLECode.FUN_RECEIVE_SIGN_DP, 0x11),
+        (TuyaBLECode.FUN_RECEIVE_TIME_DP, 0),
+        (TuyaBLECode.FUN_RECEIVE_SIGN_TIME_DP, 0x22),
+    ],
+)
+async def test_receive_debug_log_format_is_uniform(
+    h: ProtocolHarness,
+    caplog: pytest.LogCaptureFixture,
+    code: TuyaBLECode,
+    flags: int,
+) -> None:
+    """Every receive command must produce the same raw-bytes trace format."""
+    msg = frame_packet0(
+        encrypt_payload(session_key(h), 5, 1, 0, code, _receive_variant(code, flags))
+    )
+    with caplog.at_level(logging.DEBUG):
+        h.notify(msg)
+        await asyncio.sleep(0)
+    assert f"id=3 type=DT_VALUE flags=0x{flags:02x} raw=00000064 decoded=100" in (
+        caplog.text
+    )
+
+
+async def test_receive_debug_log_suppressed_when_debug_disabled(
+    h: ProtocolHarness, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The raw-bytes trace must not be emitted when DEBUG is off."""
+    msg = frame_packet0(
+        encrypt_payload(
+            session_key(h), 5, 1, 0, TuyaBLECode.FUN_RECEIVE_DP, _leading_zero_dp()
+        )
+    )
+    logger = "custom_components.tuya_ble.tuya_ble.protocol_mixin"
+    with caplog.at_level(logging.INFO, logger=logger):
+        h.notify(msg)
+        await asyncio.sleep(0)
+    assert "raw=" not in caplog.text
+    assert "Received DP" not in caplog.text
 
 
 def _device_info_data() -> bytes:

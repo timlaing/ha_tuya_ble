@@ -514,13 +514,16 @@ class TuyaBLEProtocol(Protocol):
                 case TuyaBLEDataPointType.DT_STRING:
                     value = raw_value.decode()
 
-            _LOGGER.debug(
-                "%s: Received datapoint update, id: %s, type: %s: value: %s",
-                self.address,
-                dp_id,
-                dp_type.name,
-                value,
-            )
+            if _LOGGER.isEnabledFor(logging.DEBUG):
+                _LOGGER.debug(
+                    "%s: Received DP id=%s type=%s flags=0x%02x raw=%s decoded=%s",
+                    self.address,
+                    dp_id,
+                    dp_type.name,
+                    flags,
+                    raw_value.hex(),
+                    value,
+                )
             self._datapoints.update_from_device(dp_id, timestamp, flags, dp_type, value)
             dp = self._datapoints[dp_id]
             if dp is None:
@@ -645,7 +648,7 @@ class TuyaBLEProtocol(Protocol):
         """Handle FUN_RECEIVE_SIGN_DP: parse signed datapoints and send ack."""
         dp_seq_num = int.from_bytes(data[:2], "big")
         flags = data[2]
-        self._parse_datapoints_v3(time.time(), flags, data, 2)
+        self._parse_datapoints_v3(time.time(), flags, data, 3)
         response = pack(">HBB", dp_seq_num, flags, 0)
         self._track_send_response_task(
             asyncio.create_task(
