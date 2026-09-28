@@ -40,7 +40,7 @@ class TuyaBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.device = device
         self._disconnected: bool = True
         self._unsub_disconnect: CALLBACK_TYPE | None = None
-        self._mapped_dp_ids: frozenset[int] | None = None
+        self._dp_classification: tuple[bool, frozenset[int]] | None = None
         self._reported_unmapped: dict[int, tuple[str, bytes]] = {}
         device.register_connected_callback(self._async_handle_connect)
         device.register_callback(self._async_handle_update)
@@ -96,13 +96,20 @@ class TuyaBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         },
                     )
 
-    def _resolve_mapped_dp_ids(self) -> frozenset[int]:
-        """Return the ids this product maps, resolving the registry only once."""
-        if self._mapped_dp_ids is None:
-            self._mapped_dp_ids = get_mapped_dp_ids(
-                self.device.category, self.device.product_id
+    def _resolve_dp_classification(self) -> tuple[bool, frozenset[int]]:
+        """Return whether the product is registered, and the ids it maps.
+
+        Resolved once per coordinator: the descriptor registry is a cached
+        singleton, but the classification must not be rebuilt on every update.
+        """
+        if self._dp_classification is None:
+            category = self.device.category
+            product_id = self.device.product_id
+            self._dp_classification = (
+                get_registry().get(category, product_id) is not None,
+                get_mapped_dp_ids(category, product_id),
             )
-        return self._mapped_dp_ids
+        return self._dp_classification
 
     def _log_unmapped_dp(self, updates: list[TuyaBLEDataPoint]) -> None:
         """Report received data points that no entity of this product uses.
@@ -114,14 +121,12 @@ class TuyaBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         if not _LOGGER.isEnabledFor(logging.DEBUG):
             return
-        mapped = self._resolve_mapped_dp_ids()
-        known_product = (
-            get_registry().get(self.device.category, self.device.product_id) is not None
-        )
+        known_product, mapped = self._resolve_dp_classification()
         for update in updates:
             if update.dp_id in mapped:
                 continue
-            signature = (update.dp_type.name, update.raw_value or b"")
+            raw = update.raw_value or b""
+            signature = (update.dp_type.name, raw)
             if self._reported_unmapped.get(update.dp_id) == signature:
                 continue
             self._reported_unmapped[update.dp_id] = signature
@@ -132,7 +137,7 @@ class TuyaBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self.device.address,
                     update.dp_id,
                     update.dp_type.name,
-                    (update.raw_value or b"").hex(),
+                    raw.hex(),
                     update.value,
                     self.device.category,
                     self.device.product_id,
@@ -145,7 +150,7 @@ class TuyaBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self.device.address,
                     update.dp_id,
                     update.dp_type.name,
-                    (update.raw_value or b"").hex(),
+                    raw.hex(),
                     update.value,
                     self.device.category,
                     self.device.product_id,

@@ -10,6 +10,7 @@ replaces the hardcoded per-platform ``mapping`` dicts.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -324,7 +325,7 @@ def get_entity_descriptors(
     return get_registry().get_entities(category, product_id, platform)
 
 
-def _iter_dp_reference(value: Any) -> Any:
+def _iter_dp_reference(value: Any) -> Iterator[int]:
     """Yield the data point ids held by a single auxiliary descriptor value."""
     if isinstance(value, bool):
         return

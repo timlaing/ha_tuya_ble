@@ -386,10 +386,10 @@ def test_unmapped_report_is_skipped_when_debug_disabled(
     )
 
     assert "Unmapped DP" not in caplog.text
-    assert coordinator._mapped_dp_ids is None
+    assert coordinator._dp_classification is None
 
 
-def test_mapped_dp_ids_are_resolved_once(
+def test_dp_classification_is_resolved_once(
     hass: HomeAssistant, caplog: pytest.LogCaptureFixture
 ) -> None:
     """The registry is consulted once per coordinator, not once per update."""
@@ -401,6 +401,7 @@ def test_mapped_dp_ids_are_resolved_once(
             _receive(device, 200, TuyaBLEDataPointType.DT_VALUE, value, bytes([value]))
         )
 
-    resolved = coordinator._resolve_mapped_dp_ids()
-    assert coordinator._resolve_mapped_dp_ids() is resolved
-    assert 102 in resolved
+    known_product, mapped = coordinator._resolve_dp_classification()
+    assert known_product is True
+    assert 102 in mapped
+    assert coordinator._resolve_dp_classification()[1] is mapped
