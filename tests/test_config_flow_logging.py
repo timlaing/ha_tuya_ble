@@ -133,6 +133,29 @@ def _warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
     ]
 
 
+# Distinctive values, so a "must never be logged" assertion cannot pass or fail
+# by accidentally matching an unrelated substring such as "at" or "tid".
+LOGIN_SECRETS = {
+    "t": "secret-session-token",
+    "uid": "secret-uid",
+    "access_token": "secret-access-token",
+    "refresh_token": "secret-refresh-token",
+    "terminal_id": "secret-terminal-id",
+    "endpoint": "https://secret-endpoint.invalid",
+}
+
+
+def _login_info() -> dict[str, Any]:
+    """Return a login payload whose every sensitive value is unmistakable."""
+    return {**LOGIN_SECRETS, "expire_time": 1}
+
+
+def _assert_no_secrets_logged(caplog: pytest.LogCaptureFixture) -> None:
+    """Fail if any credential from the login payload reached the log."""
+    for secret in LOGIN_SECRETS.values():
+        assert secret not in caplog.text
+
+
 async def test_setup_address_without_manager_is_warned(
     hass: HomeAssistant, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -296,18 +319,10 @@ async def test_login_complete_direct_discovery_is_logged(
         patch.object(flow, "_async_scan_device", return_value=None),
         caplog.at_level(logging.DEBUG),
     ):
-        await flow._async_qr_login_store_and_advance({
-            "t": "t",
-            "uid": "uid",
-            "expire_time": 1,
-            "access_token": "at",
-            "refresh_token": "rt",
-            "terminal_id": "tid",
-            "endpoint": "https://x",
-        })
+        await flow._async_qr_login_store_and_advance(_login_info())
     assert "Login complete, setting up discovered device" in caplog.text
     assert discovery.address in caplog.text
-    assert "at" not in caplog.text.replace("setting up", "")
+    _assert_no_secrets_logged(caplog)
 
 
 async def test_login_complete_device_selection_is_logged(
@@ -330,16 +345,9 @@ async def test_login_complete_device_selection_is_logged(
         patch.object(flow, "_async_current_ids", return_value=set()),
         caplog.at_level(logging.DEBUG),
     ):
-        await flow._async_qr_login_store_and_advance({
-            "t": "t",
-            "uid": "uid",
-            "expire_time": 1,
-            "access_token": "at",
-            "refresh_token": "rt",
-            "terminal_id": "tid",
-            "endpoint": "https://x",
-        })
+        await flow._async_qr_login_store_and_advance(_login_info())
     assert "Login complete, selecting a device to set up" in caplog.text
+    _assert_no_secrets_logged(caplog)
 
 
 async def test_options_reauth_rejection_is_logged(
