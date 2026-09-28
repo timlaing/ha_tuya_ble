@@ -280,6 +280,21 @@ async def test_receive_debug_log_suppressed_when_debug_disabled(
     assert "Received DP" not in caplog.text
 
 
+async def test_received_raw_bytes_reach_the_data_point(h: ProtocolHarness) -> None:
+    """The parser must hand the untouched wire bytes to the data point."""
+    msg = frame_packet0(
+        encrypt_payload(
+            session_key(h), 5, 1, 0, TuyaBLECode.FUN_RECEIVE_DP, _leading_zero_dp()
+        )
+    )
+    h.notify(msg)
+    await asyncio.sleep(0)
+    dp = h.device.datapoints[3]
+    assert dp is not None
+    assert dp.value == 100
+    assert dp.raw_value == b"\x00\x00\x00\x64"
+
+
 def _device_info_data() -> bytes:
     data = bytearray(46)
     data[0] = 1

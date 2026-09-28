@@ -27,12 +27,14 @@ class TuyaBLEDataPoint:
         flags: int,
         dp_type: TuyaBLEDataPointType,
         value: bytes | bool | int | str,
+        raw_value: bytes | None = None,
     ) -> None:
         self._owner = owner
         self._id = dp_id
         self._value = value
         self._changed_by_device = False
-        self.update_from_device(timestamp, flags, dp_type, value)
+        self._raw_value = raw_value
+        self.update_from_device(timestamp, flags, dp_type, value, raw_value)
 
     def update_from_device(
         self,
@@ -40,8 +42,16 @@ class TuyaBLEDataPoint:
         flags: int,
         dp_type: TuyaBLEDataPointType,
         value: bytes | bool | int | str,
+        raw_value: bytes | None = None,
     ) -> None:
-        """Update the data point value from a device update."""
+        """Update the data point value from a device update.
+
+        `raw_value` is the exact payload the device sent, kept verbatim so the
+        original width and leading zero bytes survive decoding. It is only
+        meaningful for values received from the device; a local write leaves
+        the previous snapshot untouched and `get_value()` must not be used to
+        reconstruct it, since it re-serializes with a different width.
+        """
         self._timestamp = timestamp
         self._flags = flags
         self._type = dp_type
@@ -55,6 +65,7 @@ class TuyaBLEDataPoint:
                 dp_type,
             )
         self._value = value
+        self._raw_value = raw_value
 
     @staticmethod
     def _pack_enum(value: int) -> bytes:
@@ -120,6 +131,17 @@ class TuyaBLEDataPoint:
     def value(self) -> bytes | bool | int | str:
         """Return the current value."""
         return self._value
+
+    @property
+    def raw_value(self) -> bytes | None:
+        """Return the exact bytes last received from the device, if any.
+
+        The same `TuyaBLEDataPoint` object is reused across updates, so this is
+        always the most recently *received* payload and is not affected by
+        local writes. It is `None` when the data point has not been updated
+        from a device report.
+        """
+        return self._raw_value
 
     @property
     def changed_by_device(self) -> bool:
@@ -246,15 +268,16 @@ class TuyaBLEDataPoints:
         flags: int,
         dp_type: TuyaBLEDataPointType,
         value: bytes | bool | int | str,
+        raw_value: bytes | None = None,
     ) -> None:
         """Update or create a data point from a device update."""
         dp = self._datapoints.get(dp_id)
         if dp:
-            dp.update_from_device(timestamp, flags, dp_type, value)
+            dp.update_from_device(timestamp, flags, dp_type, value, raw_value)
         else:
             _LOGGER.debug("Data point %s created from device update", dp_id)
             self._datapoints[dp_id] = TuyaBLEDataPoint(
-                self, dp_id, timestamp, flags, dp_type, value
+                self, dp_id, timestamp, flags, dp_type, value, raw_value
             )
 
     async def update_from_user(self, dp_id: int) -> None:

@@ -193,6 +193,66 @@ def test_update_from_device_existing(datapoints: TuyaBLEDataPoints) -> None:
     assert len(datapoints) == 1
 
 
+def test_raw_value_defaults_to_none(datapoints: TuyaBLEDataPoints) -> None:
+    """A data point created locally has no received-bytes snapshot."""
+    assert make_dp(datapoints, dp_id=4).raw_value is None
+
+
+def test_raw_value_keeps_original_width(datapoints: TuyaBLEDataPoints) -> None:
+    """The snapshot must keep the wire bytes, not the re-serialized value."""
+    datapoints.update_from_device(
+        5,
+        9.0,
+        0,
+        TuyaBLEDataPointType.DT_VALUE,
+        100,
+        b"\x00\x00\x00\x64",
+    )
+    dp = datapoints[5]
+    assert dp is not None
+    assert dp.value == 100
+    assert dp.raw_value == b"\x00\x00\x00\x64"
+
+
+def test_raw_value_reflects_latest_report(
+    datapoints: TuyaBLEDataPoints,
+) -> None:
+    """Each device report replaces the snapshot."""
+    datapoints.update_from_device(
+        5, 9.0, 0, TuyaBLEDataPointType.DT_ENUM, 1, b"\x00\x01"
+    )
+    assert datapoints[5].raw_value == b"\x00\x01"  # type: ignore[union-attr]
+    datapoints.update_from_device(5, 10.0, 0, TuyaBLEDataPointType.DT_ENUM, 2, b"\x02")
+    assert datapoints[5].raw_value == b"\x02"  # type: ignore[union-attr]
+
+
+def test_raw_value_survives_local_write(
+    datapoints: TuyaBLEDataPoints, datapoints_owner: FakeDatapointsOwner
+) -> None:
+    """A local write must not overwrite the last received snapshot."""
+    datapoints.update_from_device(
+        5, 9.0, 0, TuyaBLEDataPointType.DT_VALUE, 100, b"\x00\x00\x00\x64"
+    )
+    dp = datapoints[5]
+    assert dp is not None
+    dp.set_value_no_notify(200)
+    assert dp.value == 200
+    assert dp.raw_value == b"\x00\x00\x00\x64"
+
+
+def test_raw_value_widens_narrow_value_on_serialization(
+    datapoints: TuyaBLEDataPoints,
+) -> None:
+    """Demonstrate why get_value() cannot stand in for the raw snapshot."""
+    datapoints.update_from_device(
+        5, 9.0, 0, TuyaBLEDataPointType.DT_VALUE, 256, b"\x01\x00"
+    )
+    dp = datapoints[5]
+    assert dp is not None
+    assert dp.raw_value == b"\x01\x00"
+    assert dp.get_value() == b"\x00\x00\x01\x00"
+
+
 async def test_begin_end_update_sends_deferred(
     datapoints: TuyaBLEDataPoints, datapoints_owner: FakeDatapointsOwner
 ) -> None:

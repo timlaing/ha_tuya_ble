@@ -524,7 +524,9 @@ class TuyaBLEProtocol(Protocol):
                     raw_value.hex(),
                     value,
                 )
-            self._datapoints.update_from_device(dp_id, timestamp, flags, dp_type, value)
+            self._datapoints.update_from_device(
+                dp_id, timestamp, flags, dp_type, value, raw_value
+            )
             dp = self._datapoints[dp_id]
             if dp is None:
                 raise TuyaBLEDeviceError(0)
