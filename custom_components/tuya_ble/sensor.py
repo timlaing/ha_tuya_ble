@@ -279,6 +279,15 @@ class TuyaBLESensor(TuyaBLERestoreEntity, SensorEntity):
         native_value = last_data.as_dict().get("native_value")
         if native_value is None:
             return
+        options = self.entity_description.options
+        if options is not None and native_value not in options:
+            _LOGGER.debug(
+                "%s: Discarded stored value %s for %s, it is no longer offered",
+                self.device.address,
+                native_value,
+                self.entity_description.key,
+            )
+            return
         self._attr_native_value = native_value
         _LOGGER.debug(
             "%s: Restored value for %s",
@@ -313,14 +322,20 @@ class TuyaBLESensor(TuyaBLERestoreEntity, SensorEntity):
     def _update_enum_value(self, datapoint: TuyaBLEDataPoint) -> None:
         """Update attributes from an enum datapoint."""
         options = self.entity_description.options
-        if (
-            options is not None
-            and isinstance(datapoint.value, int)
-            and 0 <= datapoint.value < len(options)
-        ):
+        if options is None:
+            self._attr_native_value = str(datapoint.value)
+        elif isinstance(datapoint.value, int) and 0 <= datapoint.value < len(options):
             self._attr_native_value = options[datapoint.value]
         else:
-            self._attr_native_value = str(datapoint.value)
+            # A code outside the declared options would make the entity state
+            # invalid, so report the value as unknown instead.
+            self._attr_native_value = None
+            _LOGGER.debug(
+                "%s: Enum code %s for %s is outside the declared options",
+                self.device.address,
+                datapoint.value,
+                self.entity_description.key,
+            )
         if (
             self._mapping.icons is not None
             and isinstance(datapoint.value, int)

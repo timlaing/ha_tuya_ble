@@ -31,15 +31,21 @@ entities:
       name: Operation 1
       entity_category: diagnostic
       restore: true
-      handlers:
-        read: ggq.work_state
+      device_class: enum
+      options:
+        - manual
+        - auto
+        - idle
     - dp_id: 113
       translation_key: work_states_zone2
       name: Operation 2
       entity_category: diagnostic
       restore: true
-      handlers:
-        read: ggq.work_state
+      device_class: enum
+      options:
+        - manual
+        - auto
+        - idle
     - dp_id: 101
       translation_key: irrigation_schedule_zone1
       name: Schedule 1

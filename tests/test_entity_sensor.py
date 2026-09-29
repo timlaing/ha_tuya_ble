@@ -129,8 +129,10 @@ async def test_enum_value(hass: HomeAssistant) -> None:
     assert entity.native_value == "b"
 
 
-async def test_enum_value_out_of_range(hass: HomeAssistant) -> None:
-    """Verify an out-of-range enum is reported as its raw value."""
+async def test_enum_value_out_of_range(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Verify an out-of-range enum leaves the state unset and logs the code."""
     device, coordinator, product = build_context(hass)
     mapping = sensor.TuyaBLESensorMapping(
         dp_id=1,
@@ -139,9 +141,30 @@ async def test_enum_value_out_of_range(hass: HomeAssistant) -> None:
     entity = _make_entity(hass, device, coordinator, product, mapping)
     await entity.async_added_to_hass()
     add_dp(device, 1, TuyaBLEDataPointType.DT_ENUM, 9)
-    coordinator.async_set_updated_data({})
+    with caplog.at_level(logging.DEBUG):
+        coordinator.async_set_updated_data({})
     await hass.async_block_till_done()
-    assert entity.native_value == "9"
+    assert entity.native_value is None
+    assert "Enum code 9 for e is outside the declared options" in caplog.text
+
+
+async def test_enum_value_non_int_with_options(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Verify a non-integer enum with options leaves the state unset."""
+    device, coordinator, product = build_context(hass)
+    mapping = sensor.TuyaBLESensorMapping(
+        dp_id=1,
+        description=SensorEntityDescription(key="e", options=["a", "b"]),
+    )
+    entity = _make_entity(hass, device, coordinator, product, mapping)
+    await entity.async_added_to_hass()
+    add_dp(device, 1, TuyaBLEDataPointType.DT_ENUM, "auto")
+    with caplog.at_level(logging.DEBUG):
+        coordinator.async_set_updated_data({})
+    await hass.async_block_till_done()
+    assert entity.native_value is None
+    assert "Enum code auto for e is outside the declared options" in caplog.text
 
 
 async def test_getter(hass: HomeAssistant) -> None:
@@ -552,27 +575,93 @@ async def test_restore_ignores_empty_stored_value(hass: HomeAssistant) -> None:
     assert entity.native_value is None
 
 
-async def test_ggq_work_state_sensor_labels_captured_codes(
-    hass: HomeAssistant,
-) -> None:
-    """The operation sensor reports the captured 0/2 work codes as labels."""
+def _make_work_state(
+    hass: HomeAssistant, category: str, product_id: str, dp_id: int
+) -> tuple[TuyaBLESensor, TuyaBLEDevice, TuyaBLECoordinator]:
+    """Build the work state sensor of a water timer."""
     device, coordinator, product = build_context(hass)
-    device._device_info = make_credentials(category="ggq", product_id="fdrbxxbg")
+    device._device_info = make_credentials(category=category, product_id=product_id)
     mapping = next(
-        item for item in sensor.get_mapping_by_device(device) if item.dp_id == 112
+        item for item in sensor.get_mapping_by_device(device) if item.dp_id == dp_id
     )
     entity = _make_entity(hass, device, coordinator, product, mapping)
+    entity.entity_id = "sensor.operation"
+    return entity, device, coordinator
+
+
+@pytest.mark.parametrize(
+    ("category", "product_id", "dp_id", "labels"),
+    [
+        ("ggq", "fdrbxxbg", 112, ("manual", "auto", "idle")),
+        ("ggq", "fdrbxxbg", 113, ("manual", "auto", "idle")),
+        ("sfkzq", "so5ybnw9", 12, ("auto", "manual", "idle")),
+        ("sfkzq", "nxquc5lb", 12, ("auto", "manual", "idle")),
+        ("sfkzq", "c8800fd30884068f", 12, ("auto", "manual", "idle")),
+    ],
+)
+async def test_work_state_sensor_labels_are_category_specific(
+    hass: HomeAssistant,
+    category: str,
+    product_id: str,
+    dp_id: int,
+    labels: tuple[str, str, str],
+) -> None:
+    """Operation sensors label the work codes, with ggq reversed against sfkzq."""
+    entity, device, coordinator = _make_work_state(hass, category, product_id, dp_id)
     await entity.async_added_to_hass()
 
-    add_dp(device, 112, TuyaBLEDataPointType.DT_ENUM, 0)
-    coordinator.async_set_updated_data({})
-    await hass.async_block_till_done()
-    assert entity.native_value == "watering"
+    for code, label in enumerate(labels):
+        add_dp(device, dp_id, TuyaBLEDataPointType.DT_ENUM, code)
+        coordinator.async_set_updated_data({})
+        await hass.async_block_till_done()
+        assert entity.native_value == label
 
-    add_dp(device, 112, TuyaBLEDataPointType.DT_ENUM, 2)
-    coordinator.async_set_updated_data({})
+
+async def test_work_state_sensor_ignores_unmapped_code(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An operation code outside the declared options leaves the state unknown."""
+    entity, device, coordinator = _make_work_state(hass, "ggq", "fdrbxxbg", 112)
+    await entity.async_added_to_hass()
+
+    add_dp(device, 112, TuyaBLEDataPointType.DT_ENUM, 7)
+    with caplog.at_level(logging.DEBUG):
+        coordinator.async_set_updated_data({})
     await hass.async_block_till_done()
-    assert entity.native_value == "idle"
+    assert entity.native_value is None
+    assert "work_states_zone1" in caplog.text
+
+
+async def test_work_state_sensor_restores_a_still_offered_label(
+    hass: HomeAssistant,
+) -> None:
+    """An operation sensor restores a stored value that is still an option."""
+    entity, _device, _coordinator = _make_work_state(hass, "ggq", "fdrbxxbg", 112)
+    mock_restore_cache_with_extra_data(
+        hass,
+        [(State("sensor.operation", "auto"), _stored_sensor_data("auto"))],
+    )
+
+    await entity.async_added_to_hass()
+
+    assert entity.native_value == "auto"
+
+
+async def test_work_state_sensor_discards_a_stale_label(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A label stored before the device codes changed is not adopted."""
+    entity, _device, _coordinator = _make_work_state(hass, "ggq", "fdrbxxbg", 112)
+    mock_restore_cache_with_extra_data(
+        hass,
+        [(State("sensor.operation", "watering"), _stored_sensor_data("watering"))],
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        await entity.async_added_to_hass()
+
+    assert entity.native_value is None
+    assert "Discarded stored value watering for work_states_zone1" in caplog.text
 
 
 async def test_ggq_schedule_sensor_reports_raw_payload(

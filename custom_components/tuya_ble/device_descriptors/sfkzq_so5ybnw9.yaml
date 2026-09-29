@@ -12,6 +12,11 @@ entities:
     - dp_id: 12
       translation_key: work_state
       name: Operation
+      device_class: enum
+      options:
+        - auto
+        - manual
+        - idle
     - dp_id: 9
       translation_key: time_use
       name: Accumulated use time

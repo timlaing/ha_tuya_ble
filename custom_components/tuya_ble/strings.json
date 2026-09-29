@@ -201,11 +201,29 @@
       "last_use_time_zone2": {
         "name": "Last use time 2"
       },
+      "work_state": {
+        "name": "Operation",
+        "state": {
+          "auto": "Auto",
+          "manual": "Manual",
+          "idle": "Idle"
+        }
+      },
       "work_states_zone1": {
-        "name": "Operation 1"
+        "name": "Operation 1",
+        "state": {
+          "manual": "Manual",
+          "auto": "Auto",
+          "idle": "Idle"
+        }
       },
       "work_states_zone2": {
-        "name": "Operation 2"
+        "name": "Operation 2",
+        "state": {
+          "manual": "Manual",
+          "auto": "Auto",
+          "idle": "Idle"
+        }
       },
       "irrigation_schedule_zone1": {
         "name": "Schedule 1"
