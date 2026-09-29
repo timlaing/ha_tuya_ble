@@ -18,6 +18,7 @@ from .const import DOMAIN
 from .device_registry import EntityDescriptor, get_registry
 from .devices import TuyaBLECoordinator, TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
+from .util import to_bool
 
 SIGNAL_STRENGTH_DP_ID = -1
 
@@ -138,7 +139,7 @@ class TuyaBLEBinarySensor(TuyaBLEEntity, BinarySensorEntity):
         else:
             datapoint = self.device.datapoints[self._mapping.dp_id]
             if datapoint:
-                self._attr_is_on = bool(datapoint.value)
+                self._attr_is_on = to_bool(datapoint.value)
         self.async_write_ha_state()
 
     @property

@@ -7,10 +7,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 import logging
+from typing import Any
 
 from homeassistant.components.sensor import (
-    RestoreSensor,
     SensorDeviceClass,
+    SensorEntity,
     SensorEntityDescription,
     SensorStateClass,
 )
@@ -24,6 +25,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import ExtraStoredData
 
 from .const import (
     DOMAIN,
@@ -45,6 +47,7 @@ _LOGGER = logging.getLogger(__name__)
 
 SIGNAL_STRENGTH_DP_ID = -1
 
+
 ICON_BATTERY = "mdi:battery"
 ICON_BATTERY_CHECK = "mdi:battery-check"
 ICON_COUNTER = "mdi:counter"
@@ -61,6 +64,29 @@ UNIT_CONVERSIONS: dict[str, str] = {
 
 
 TuyaBLESensorIsAvailable = Callable[["TuyaBLESensor", TuyaBLEProductInfo], bool] | None
+
+
+@dataclass
+class SensorRestoreData(ExtraStoredData):
+    """Extra restore data holding the last native value of a sensor.
+
+    Only the value is stored: the unit comes from the entity description, so a
+    stored unit from an older configuration cannot leak into a changed one.
+    """
+
+    native_value: Any
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return a dict representation of the stored value.
+
+        Sensor values here are numbers, strings or ``None``. Anything else is
+        stored as text rather than breaking the state dump.
+        """
+        if self.native_value is None or isinstance(
+            self.native_value, bool | int | float | str
+        ):
+            return {"native_value": self.native_value}
+        return {"native_value": str(self.native_value)}
 
 
 @dataclass
@@ -216,7 +242,7 @@ def get_mapping_by_device(device: TuyaBLEDevice) -> list[TuyaBLESensorMapping]:
     return []
 
 
-class TuyaBLESensor(TuyaBLERestoreEntity, RestoreSensor):  # pylint: disable=too-many-ancestors
+class TuyaBLESensor(TuyaBLERestoreEntity, SensorEntity):
     """Representation of a Tuya BLE sensor."""
 
     def __init__(
@@ -241,13 +267,19 @@ class TuyaBLESensor(TuyaBLERestoreEntity, RestoreSensor):  # pylint: disable=too
         """Return the data point id whose presence supersedes a restored value."""
         return self._mapping.dp_id
 
+    @property
+    def extra_restore_state_data(self) -> ExtraStoredData | None:
+        """Return the native value to store for the next run."""
+        return SensorRestoreData(self.native_value)
+
     async def _async_restore_state(self) -> None:
         """Apply the value stored by the previous run of Home Assistant."""
-        if (last_data := await self.async_get_last_sensor_data()) is None:
+        if (last_data := await self.async_get_last_extra_data()) is None:
             return
-        if last_data.native_value is None:
+        native_value = last_data.as_dict().get("native_value")
+        if native_value is None:
             return
-        self._attr_native_value = last_data.native_value
+        self._attr_native_value = native_value
         _LOGGER.debug(
             "%s: Restored value for %s",
             self.device.address,

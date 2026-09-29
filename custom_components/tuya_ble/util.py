@@ -3,6 +3,18 @@
 from __future__ import annotations
 
 
+def to_bool(value: bytes | bool | float | int | str) -> bool:
+    """Interpret a data point value as a boolean.
+
+    A raw or bitmap payload is not a boolean and `bool(bytes)` is always true,
+    so `b"\\x00"` would read as "on". Treat any set bit in the payload as a set
+    flag instead, which matches how a fault bitmap reports a raised flag.
+    """
+    if isinstance(value, bytes):
+        return any(value)
+    return bool(value)
+
+
 def remap_value(
     value: float | int,
     from_min: float | int = 0,

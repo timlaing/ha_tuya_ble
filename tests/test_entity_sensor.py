@@ -3,6 +3,7 @@
 # pylint: disable=protected-access
 from __future__ import annotations
 
+from decimal import Decimal
 import logging
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntityDescription
@@ -35,10 +36,7 @@ from tests.conftest import (
 
 def _stored_sensor_data(native_value: object) -> dict[str, object]:
     """Build the extra restore payload a sensor stores."""
-    return {
-        "native_value": native_value,
-        "native_unit_of_measurement": None,
-    }
+    return {"native_value": native_value}
 
 
 def _make_entity(
@@ -436,6 +434,51 @@ async def test_restore_enabled_sensor_adopts_stored_value(
 
     assert entity.native_value == 600
     assert "Restored value for last_use_time_zone1" in caplog.text
+
+
+@pytest.mark.parametrize("native_value", [True, 42, 4.5, "manual", None])
+def test_restore_data_serializes_plain_values(native_value: object) -> None:
+    """Numbers, strings, booleans and None are stored as they are."""
+    assert sensor.SensorRestoreData(native_value).as_dict() == {
+        "native_value": native_value
+    }
+
+
+def test_restore_data_serializes_other_values_as_text() -> None:
+    """A value the state dump cannot encode is stored as text, not dropped."""
+    assert sensor.SensorRestoreData(Decimal("1.5")).as_dict() == {"native_value": "1.5"}
+
+
+async def test_restore_data_holds_the_live_value(hass: HomeAssistant) -> None:
+    """The value stored for the next run is the one the device last reported."""
+    entity, device, coordinator = _make_restorable(hass)
+    await entity.async_added_to_hass()
+
+    assert entity.extra_restore_state_data is not None
+    assert entity.extra_restore_state_data.as_dict() == {"native_value": None}
+
+    add_dp(device, 111, TuyaBLEDataPointType.DT_VALUE, 600)
+    coordinator.async_set_updated_data({})
+    await hass.async_block_till_done()
+
+    assert entity.native_value == 600
+    stored = entity.extra_restore_state_data
+    assert stored is not None
+    assert stored.as_dict() == {"native_value": 600}
+
+
+async def test_restore_reads_a_payload_without_a_value(hass: HomeAssistant) -> None:
+    """A stored payload without a value leaves the entity unknown."""
+    entity, _device, _coordinator = _make_restorable(hass)
+
+    mock_restore_cache_with_extra_data(
+        hass,
+        [(State("sensor.last_use", "600"), {})],
+    )
+
+    await entity.async_added_to_hass()
+
+    assert entity.native_value is None
 
 
 async def test_restore_enabled_sensor_keeps_storing_while_device_answers(

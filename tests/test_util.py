@@ -1,6 +1,6 @@
 """Tests for tuya_ble.util module."""
 
-from custom_components.tuya_ble.util import remap_value
+from custom_components.tuya_ble.util import remap_value, to_bool
 
 
 def test_remap_value_basic() -> None:
@@ -35,3 +35,41 @@ def test_remap_value_integer_types() -> None:
     """Test remapping with integer type hints."""
     result = remap_value(5, 0, 10, 0, 100)
     assert result == 50.0
+
+
+def test_to_bool_passes_through_booleans() -> None:
+    """Booleans are returned unchanged."""
+    assert to_bool(True) is True
+    assert to_bool(False) is False
+
+
+def test_to_bool_numbers() -> None:
+    """Zero is off and any other number is on."""
+    assert to_bool(0) is False
+    assert to_bool(1) is True
+    assert to_bool(-1) is True
+    assert to_bool(0.0) is False
+
+
+def test_to_bool_empty_bytes_is_off() -> None:
+    """An empty payload reads as off, unlike bool(b"")."""
+    assert to_bool(b"") is False
+
+
+def test_to_bool_zero_bitmap_is_off() -> None:
+    """A zeroed bitmap is no set flag, unlike bool(b"\x00")."""
+    assert to_bool(b"\x00") is False
+    assert to_bool(b"\x00\x00\x00") is False
+
+
+def test_to_bool_set_bit_is_on() -> None:
+    """Any set bit in a payload means the flag is raised."""
+    assert to_bool(b"\x01") is True
+    assert to_bool(b"\x00\x02") is True
+
+
+def test_to_bool_strings_keep_truthiness() -> None:
+    """Strings keep Python truthiness, as before."""
+    assert to_bool("") is False
+    assert to_bool("1") is True
+    assert to_bool("0") is True

@@ -121,3 +121,24 @@ async def test_ggq_fault_sensor_follows_the_datapoint(hass: HomeAssistant) -> No
     coordinator.async_set_updated_data({})
     await hass.async_block_till_done()
     assert entity.is_on is True
+
+
+async def test_ggq_fault_sensor_reads_a_bitmap_payload(hass: HomeAssistant) -> None:
+    """A zero bitmap is no fault and a set bit is one, despite the unconfirmed type."""
+    device, coordinator, product = build_context(hass)
+    device._device_info = make_credentials(category="ggq", product_id="fdrbxxbg")
+    mapping = binary_sensor.get_mapping_by_device(device)[0]
+    entity = binary_sensor.TuyaBLEBinarySensor(
+        hass, coordinator, device, product, mapping
+    )
+    await entity.async_added_to_hass()
+
+    add_dp(device, 19, TuyaBLEDataPointType.DT_BITMAP, b"\x00")
+    coordinator.async_set_updated_data({})
+    await hass.async_block_till_done()
+    assert entity.is_on is False
+
+    add_dp(device, 19, TuyaBLEDataPointType.DT_BITMAP, b"\x00\x02")
+    coordinator.async_set_updated_data({})
+    await hass.async_block_till_done()
+    assert entity.is_on is True

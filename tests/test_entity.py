@@ -254,7 +254,6 @@ def _make_restore_entity(
 
 def test_restore_defaults_to_disabled() -> None:
     """Entities are not restored unless the descriptor opts in."""
-    assert _make_restore_entity.__doc__ is not None
     assert TuyaBLERestoreEntity._attr_restore is False
 
 

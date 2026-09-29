@@ -11,6 +11,7 @@ from struct import pack
 from typing import cast
 from unittest.mock import patch
 
+from bleak.exc import BleakError
 from homeassistant.core import Event, HomeAssistant
 import pytest
 
@@ -53,6 +54,24 @@ class _PendingStatusDevice(StatusRecordingDevice):
     async def update(self) -> None:
         """Stay in flight so a test can observe the pending task."""
         await asyncio.Event().wait()
+
+
+class _FailingStatusDevice(StatusRecordingDevice):
+    """Device double whose status request fails like a dropped BLE link."""
+
+    async def update(self) -> None:
+        """Fail the way the protocol layer does after a transient BLE drop."""
+        self.status_requests.append(1)
+        raise BleakError("communication failed")
+
+
+def _make_failing_coord(
+    hass: HomeAssistant,
+) -> tuple[TuyaBLECoordinator, TuyaBLEDevice]:
+    """Build a coordinator whose device fails every status request."""
+    device = make_status_device(device_cls=_FailingStatusDevice)
+    device._device_info = make_credentials()
+    return TuyaBLECoordinator(hass, device), device
 
 
 def _make_coord(
@@ -176,6 +195,55 @@ async def test_shutdown_cancels_status_request(hass: HomeAssistant) -> None:
     assert coordinator._status_task is None
     with pytest.raises(asyncio.CancelledError):
         await task
+
+
+async def test_failed_status_request_is_consumed(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A failing status request is retrieved, not reported as unretrieved."""
+    coordinator, _device = _make_failing_coord(hass)
+
+    caplog.set_level(logging.DEBUG)
+    coordinator._async_handle_connect()
+    await hass.async_block_till_done()
+
+    assert coordinator._status_task is not None
+    assert coordinator._status_task.done()
+    assert coordinator._status_task.exception() is not None
+    assert "Status request failed: BleakError" in caplog.text
+    assert "was never retrieved" not in caplog.text
+
+
+async def test_completed_status_request_is_not_logged(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A status request that answers normally is silent."""
+    coordinator, _device = _make_coord(hass)
+
+    caplog.set_level(logging.DEBUG)
+    coordinator._async_handle_connect()
+    await hass.async_block_till_done()
+
+    assert coordinator._status_task is not None
+    assert coordinator._status_task.exception() is None
+    assert "Status request failed" not in caplog.text
+
+
+async def test_cancelled_status_request_is_not_logged(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Cancelling an in-flight status request does not log a failure."""
+    coordinator, _device = _make_coord(hass, pending=True)
+    caplog.set_level(logging.DEBUG)
+
+    coordinator._async_handle_connect()
+    task = coordinator._status_task
+    assert task is not None
+    task.cancel()
+    await asyncio.sleep(0)
+    await coordinator.async_shutdown()
+
+    assert "Status request failed" not in caplog.text
 
 
 async def test_connect_writes_status_request_over_the_wire(

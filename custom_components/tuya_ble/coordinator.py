@@ -87,6 +87,27 @@ class TuyaBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self._status_task is not None:
             self._status_task.cancel()
         self._status_task = self.hass.async_create_task(self.device.update())
+        self._status_task.add_done_callback(self._async_status_request_done)
+
+    @callback
+    def _async_status_request_done(self, task: asyncio.Task[None]) -> None:
+        """Consume the result of a status request.
+
+        A request that fails on a transient BLE drop has already been logged
+        with its traceback by the protocol layer; retrieving the exception here
+        keeps the task from reporting it a second time as an unretrieved
+        exception.
+        """
+        if task.cancelled():
+            return
+        if (exception := task.exception()) is None:
+            return
+        _LOGGER.debug(
+            "%s: Status request failed: %s: %s",
+            self.device.address,
+            type(exception).__name__,
+            exception,
+        )
 
     @callback
     def _async_handle_update(self, updates: list[TuyaBLEDataPoint]) -> None:
