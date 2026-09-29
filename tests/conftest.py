@@ -183,23 +183,65 @@ _EntityManager = FakeBLEManager(
 )
 
 
+class StatusRecordingDevice(TuyaBLEDevice):
+    """Device double that logs the status requests instead of sending them."""
+
+    def __init__(
+        self,
+        manager: AbstractTuyaBLEDeviceManager | None,
+        ble_device: BLEDevice,
+        advertisement_data: AdvertisementData,
+    ) -> None:
+        """Start with an empty request log."""
+        super().__init__(
+            cast(AbstractTuyaBLEDeviceManager, manager), ble_device, advertisement_data
+        )
+        self.status_requests: list[int] = []
+
+    async def update(self) -> None:
+        """Record the status request the coordinator issues on connect."""
+        self.status_requests.append(1)
+
+
+class EntityDevice(StatusRecordingDevice):
+    """Device double for entity tests, recording sends and status requests."""
+
+    def __init__(
+        self,
+        manager: AbstractTuyaBLEDeviceManager | None,
+        ble_device: BLEDevice,
+        advertisement_data: AdvertisementData,
+    ) -> None:
+        """Start with empty send and request logs."""
+        super().__init__(manager, ble_device, advertisement_data)
+        self.sent: list[list[int]] = []
+
+    async def send_datapoints(self, datapoint_ids: list[int]) -> None:
+        """Record the data point ids an entity asked the device to send."""
+        self.sent.append(datapoint_ids)
+
+
+def make_status_device[T: StatusRecordingDevice](
+    manager: AbstractTuyaBLEDeviceManager | None = None,
+    address: str = "AA:BB:CC:DD:EE:FF",
+    device_cls: type[T] = StatusRecordingDevice,  # type: ignore[assignment]
+) -> T:
+    """Build a device double whose status requests are recorded."""
+    ble_device: BLEDevice = cast(BLEDevice, FakeBLEAddress(address))
+    advertisement_data: AdvertisementData = cast(
+        AdvertisementData,
+        FakeAdvertisementData(rssi=-50, service_data={}, manufacturer_data={}),
+    )
+    return device_cls(manager, ble_device, advertisement_data)
+
+
 def build_context(
     hass: HomeAssistant,
 ) -> tuple[TuyaBLEDevice, TuyaBLECoordinator, TuyaBLEProductInfo]:
     """Build a device, coordinator, and product info triple for entity tests."""
-    device = TuyaBLEDevice(
-        _EntityManager,
-        cast(BLEDevice, FakeBLEAddress()),
-        cast(AdvertisementData, FakeAdvertisementData()),
-    )
+    device = make_status_device(_EntityManager, device_cls=EntityDevice)
     coordinator = TuyaBLECoordinator(hass, device)
     product = TuyaBLEProductInfo(name="Test Product", manufacturer="TestMfg")
-
-    async def _record_send(dp_ids: list[int]) -> None:
-        """Record which datapoint ids were sent by the device."""
-        device._sent = dp_ids  # type: ignore[attr-defined]  # pylint: disable=protected-access
-
-    device.send_datapoints = _record_send  # type: ignore[assignment]
     return device, coordinator, product
 
 
@@ -208,9 +250,10 @@ def add_dp(
     dp_id: int,
     dp_type: TuyaBLEDataPointType,
     value: bytes | bool | int | str,
+    raw: bytes | None = None,
 ) -> None:
     """Add or update a data point as if pushed from the device."""
-    device.datapoints.update_from_device(dp_id, 1000.0, 0, dp_type, value)
+    device.datapoints.update_from_device(dp_id, 1000.0, 0, dp_type, value, raw)
 
 
 async def connect(coordinator: TuyaBLECoordinator) -> None:

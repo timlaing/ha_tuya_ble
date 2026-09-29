@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from struct import pack
+from typing import cast
 from unittest.mock import patch
 
 from homeassistant.core import Event, HomeAssistant
@@ -25,7 +26,12 @@ from custom_components.tuya_ble.tuya_ble import (
     TuyaBLEDevice,
 )
 from custom_components.tuya_ble.tuya_ble.const import TuyaBLECode
-from tests.conftest import make_credentials, make_device
+from tests.conftest import (
+    StatusRecordingDevice,
+    make_credentials,
+    make_device,
+    make_status_device,
+)
 from tests.protocol_harness import (
     ProtocolHarness,
     encrypt_payload,
@@ -41,9 +47,21 @@ def session_key(harness: ProtocolHarness) -> bytes:
     return harness.device._session_key
 
 
-def _make_coord(hass: HomeAssistant) -> tuple[TuyaBLECoordinator, TuyaBLEDevice]:
+class _PendingStatusDevice(StatusRecordingDevice):
+    """Device double whose status request never completes."""
+
+    async def update(self) -> None:
+        """Stay in flight so a test can observe the pending task."""
+        await asyncio.Event().wait()
+
+
+def _make_coord(
+    hass: HomeAssistant, pending: bool = False
+) -> tuple[TuyaBLECoordinator, TuyaBLEDevice]:
     """Build a coordinator and device wired together for tests."""
-    device = make_device()
+    device = make_status_device(
+        device_cls=_PendingStatusDevice if pending else StatusRecordingDevice
+    )
     device._device_info = make_credentials()
     return TuyaBLECoordinator(hass, device), device
 
@@ -98,6 +116,105 @@ def test_connect_cancels_pending_disconnect(
     coordinator._async_handle_connect()
 
     assert cancelled == [True]
+
+
+async def test_connect_requests_device_status(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A fresh connection asks the device for the data points it still holds."""
+    coordinator, device = _make_coord(hass)
+
+    caplog.set_level(logging.DEBUG)
+    coordinator._async_handle_connect()
+    await hass.async_block_till_done()
+
+    assert cast(StatusRecordingDevice, device).status_requests == [1]
+    assert f"{ADDRESS}: Requesting device status" in caplog.text
+
+
+async def test_connect_without_transition_skips_status_request(
+    hass: HomeAssistant,
+) -> None:
+    """Only the disconnected -> connected edge triggers the status request."""
+    coordinator, device = _make_coord(hass)
+
+    coordinator._async_handle_connect()
+    await hass.async_block_till_done()
+    coordinator._async_handle_connect()
+    await hass.async_block_till_done()
+
+    assert cast(StatusRecordingDevice, device).status_requests == [1]
+
+
+async def test_connect_cancels_unfinished_status_request(
+    hass: HomeAssistant,
+) -> None:
+    """A status request left running is cancelled by the next connection."""
+    coordinator, _device = _make_coord(hass, pending=True)
+    coordinator._async_handle_connect()
+    first = coordinator._status_task
+    assert first is not None
+
+    coordinator._disconnected = True
+    coordinator._async_handle_connect()
+    await asyncio.sleep(0)
+
+    assert coordinator._status_task is not first
+    assert first.cancelled()
+    await coordinator.async_shutdown()
+
+
+async def test_shutdown_cancels_status_request(hass: HomeAssistant) -> None:
+    """Tearing the coordinator down cancels an outstanding status request."""
+    coordinator, _device = _make_coord(hass, pending=True)
+    coordinator._async_handle_connect()
+    task = coordinator._status_task
+    assert task is not None
+
+    await coordinator.async_shutdown()
+
+    assert coordinator._status_task is None
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+async def test_connect_writes_status_request_over_the_wire(
+    hass: HomeAssistant,
+) -> None:
+    """End to end: a notification driven connect puts a status request on BLE."""
+    harness = ProtocolHarness()
+    await harness.register_notify()
+    harness.device._device_info = make_credentials(category="wk", product_id="drlajpqc")
+    coordinator = TuyaBLECoordinator(hass, harness.device)
+
+    frame = frame_packet0(
+        encrypt_payload(
+            session_key(harness),
+            5,
+            1,
+            0,
+            TuyaBLECode.FUN_RECEIVE_DP,
+            pack(">BBB", 102, TuyaBLEDataPointType.DT_VALUE.value, 2) + b"\x00\x15",
+        )
+    )
+    response = frame_packet0(
+        encrypt_payload(
+            session_key(harness),
+            5,
+            1,
+            1,
+            TuyaBLECode.FUN_SENDER_DEVICE_STATUS,
+            b"\x00",
+        )
+    )
+
+    harness.notify(frame)
+    await asyncio.sleep(0)
+    harness.notify(response)
+    await hass.async_block_till_done()
+
+    assert coordinator.connected is True
+    assert harness.writes()
 
 
 def test_update_batch_logs_data_point_ids(

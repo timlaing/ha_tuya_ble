@@ -10,6 +10,7 @@ from homeassistant.helpers.entity import EntityDescription
 from homeassistant.helpers.entity_registry import (
     async_get as async_get_entity_registry,
 )
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .base import EnumTypeData, IntegerTypeData
@@ -341,3 +342,39 @@ class TuyaBLEEntity(CoordinatorEntity["TuyaBLECoordinator"]):
                     dp_type,
                     value,
                 )
+
+
+class TuyaBLERestoreEntity(TuyaBLEEntity, RestoreEntity):
+    """Tuya BLE entity that keeps its last known state across restarts.
+
+    A Tuya BLE device only pushes the data points that change, so a datapoint
+    such as a push-only timer or a read-only status has no value at all until
+    the device next reports it. Entities opt in through the ``restore`` flag of
+    their descriptor and get the value stored by the previous run applied while
+    the device has reported none, which covers the window between Home
+    Assistant starting and the device answering a status request.
+
+    Availability is left to the coordinator as usual, so a restored entity is
+    still ``unavailable`` while the device is not connected.
+    """
+
+    _attr_restore: bool = False
+
+    @property
+    def _restore_dp_id(self) -> int:
+        """Return the data point id whose presence supersedes a restored state."""
+        raise NotImplementedError
+
+    def _async_restore_allowed(self) -> bool:
+        """Return True while the device has not reported this entity's value."""
+        return self.device.datapoints[self._restore_dp_id] is None
+
+    async def async_added_to_hass(self) -> None:
+        """Register with the coordinator, then restore the last known state."""
+        await super().async_added_to_hass()
+        if self._attr_restore and self._async_restore_allowed():
+            await self._async_restore_state()
+
+    async def _async_restore_state(self) -> None:
+        """Apply the state stored by the previous run."""
+        raise NotImplementedError

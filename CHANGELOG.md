@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+### Added
+
+- **Restart persistence**: entities can opt into restoring their last known value across a Home Assistant restart with the new `restore: true` descriptor flag. A restored value is only applied while the device has not reported the data point, and availability still follows the connection state. Used by the Diivoo dual water timer for battery, last use time, zone operation status, irrigation schedules and weather delay.
+- **Status re-query on connect**: the coordinator now asks the device for its full status once per connection, so read-only data points no longer keep the values of the previous session until the device next pushes them.
+- **Dual water timer**: new diagnostic entities for the previously unmapped BLE-only data points of product `fdrbxxbg` — zone operation status (DP 112/113, reported as `watering`/`idle`), the fault code (DP 19, problem binary sensor) and the two irrigation schedules (DP 101/102, raw payload as hex, disabled by default).
+
+### Fixed
+
+- **Weather delay select**: the Diivoo dual water timer option table is replaced with the codes captured from the live devices (`cancel`, `24h`, `48h`, `72h` as enum codes `0`–`3`) for products `fdrbxxbg`, `jntxv3q4` and `qycalacn`. The previous `dp_type: 3` string table with an `OFF` value sent no packet at all when `Off` was selected, because the non-numeric value cannot be serialized as an enum.
+
 ## [2.1.0] - 2026-08-31
 
 ### Changed

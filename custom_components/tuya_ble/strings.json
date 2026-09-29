@@ -95,6 +95,24 @@
       "temperature_unit": {
         "name": "Temperature unit"
       },
+      "weather_delay_zone1": {
+        "name": "Weather delay 1",
+        "state": {
+          "cancel": "Cancel",
+          "24h": "24 hours",
+          "48h": "48 hours",
+          "72h": "72 hours"
+        }
+      },
+      "weather_delay_zone2": {
+        "name": "Weather delay 2",
+        "state": {
+          "cancel": "Cancel",
+          "24h": "24 hours",
+          "48h": "48 hours",
+          "72h": "72 hours"
+        }
+      },
       "reminder_mode": {
         "name": "Reminder mode",
         "state": {
@@ -109,6 +127,9 @@
     "binary_sensor": {
       "low_battery": {
         "name": "[%key:component::sensor::entity_component::battery::name%]"
+      },
+      "fault_code": {
+        "name": "Fault"
       }
     },
     "sensor": {
@@ -173,6 +194,24 @@
       },
       "time_left": {
         "name": "Remaining irrigation time"
+      },
+      "last_use_time_zone1": {
+        "name": "Last use time 1"
+      },
+      "last_use_time_zone2": {
+        "name": "Last use time 2"
+      },
+      "work_states_zone1": {
+        "name": "Operation 1"
+      },
+      "work_states_zone2": {
+        "name": "Operation 2"
+      },
+      "irrigation_schedule_zone1": {
+        "name": "Schedule 1"
+      },
+      "irrigation_schedule_zone2": {
+        "name": "Schedule 2"
       }
     },
     "switch": {
@@ -223,6 +262,12 @@
       },
       "water_valve": {
         "name": "Irrigation valve"
+      },
+      "water_valve_z1": {
+        "name": "Valve 1"
+      },
+      "water_valve_z2": {
+        "name": "Valve 2"
       }
     },
     "text": {

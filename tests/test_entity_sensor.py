@@ -3,9 +3,15 @@
 # pylint: disable=protected-access
 from __future__ import annotations
 
+import logging
+
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntityDescription
 from homeassistant.const import UnitOfTime
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, State
+import pytest
+from pytest_homeassistant_custom_component.common import (
+    mock_restore_cache_with_extra_data,
+)
 
 from custom_components.tuya_ble import sensor
 from custom_components.tuya_ble.device_descriptors.handlers import battery, co2, rssi
@@ -27,6 +33,14 @@ from tests.conftest import (
 )
 
 
+def _stored_sensor_data(native_value: object) -> dict[str, object]:
+    """Build the extra restore payload a sensor stores."""
+    return {
+        "native_value": native_value,
+        "native_unit_of_measurement": None,
+    }
+
+
 def _make_entity(
     hass: HomeAssistant,
     device: TuyaBLEDevice,
@@ -43,6 +57,21 @@ def _make_entity(
     entity = sensor.TuyaBLESensor(hass, coordinator, device, product, mapping)
     entity.hass = hass
     return entity
+
+
+def _make_restorable(
+    hass: HomeAssistant, restore: bool = True
+) -> tuple[TuyaBLESensor, TuyaBLEDevice, TuyaBLECoordinator]:
+    """Build the last-use sensor of a ggq dual timer, optionally restorable."""
+    device, coordinator, product = build_context(hass)
+    device._device_info = make_credentials(category="ggq", product_id="fdrbxxbg")
+    mapping = next(
+        item for item in sensor.get_mapping_by_device(device) if item.dp_id == 111
+    )
+    mapping.restore = restore
+    entity = _make_entity(hass, device, coordinator, product, mapping)
+    entity.entity_id = "sensor.last_use"
+    return entity, device, coordinator
 
 
 async def test_value_via_datapoint(hass: HomeAssistant) -> None:
@@ -387,3 +416,138 @@ async def test_dt_value_with_float_no_change(hass: HomeAssistant) -> None:
     dp._value = 3.14  # type: ignore[assignment]  # float, not int
     entity._update_from_datapoint(dp)
     assert entity.native_value is None
+
+
+# ---- restore ----
+
+
+async def test_restore_enabled_sensor_adopts_stored_value(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A restore-enabled sensor shows the value of the previous run."""
+    entity, _device, _coordinator = _make_restorable(hass)
+    mock_restore_cache_with_extra_data(
+        hass,
+        [(State("sensor.last_use", "600"), _stored_sensor_data(600))],
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        await entity.async_added_to_hass()
+
+    assert entity.native_value == 600
+    assert "Restored value for last_use_time_zone1" in caplog.text
+
+
+async def test_restore_enabled_sensor_keeps_storing_while_device_answers(
+    hass: HomeAssistant,
+) -> None:
+    """Restoring does not stop the entity from following the live value."""
+    entity, device, coordinator = _make_restorable(hass)
+    mock_restore_cache_with_extra_data(
+        hass,
+        [(State("sensor.last_use", "600"), _stored_sensor_data(600))],
+    )
+    await entity.async_added_to_hass()
+    assert entity.native_value == 600
+
+    add_dp(device, 111, TuyaBLEDataPointType.DT_VALUE, 120)
+    coordinator.async_set_updated_data({})
+    await hass.async_block_till_done()
+
+    assert entity.native_value == 120.0
+
+
+async def test_restore_is_skipped_when_device_reports_a_value(
+    hass: HomeAssistant,
+) -> None:
+    """Nothing is restored while the device already holds the data point."""
+    entity, device, _coordinator = _make_restorable(hass)
+    mock_restore_cache_with_extra_data(
+        hass,
+        [(State("sensor.last_use", "600"), _stored_sensor_data(600))],
+    )
+    add_dp(device, 111, TuyaBLEDataPointType.DT_VALUE, 120)
+
+    await entity.async_added_to_hass()
+
+    assert entity.native_value is None
+
+
+async def test_restore_is_skipped_when_disabled(hass: HomeAssistant) -> None:
+    """A sensor without the restore opt-in ignores the stored value."""
+    entity, _device, _coordinator = _make_restorable(hass, restore=False)
+    mock_restore_cache_with_extra_data(
+        hass,
+        [(State("sensor.last_use", "600"), _stored_sensor_data(600))],
+    )
+
+    await entity.async_added_to_hass()
+
+    assert entity.native_value is None
+
+
+async def test_restore_without_stored_value(hass: HomeAssistant) -> None:
+    """A restore-enabled sensor with no history stays empty."""
+    entity, _device, _coordinator = _make_restorable(hass)
+    mock_restore_cache_with_extra_data(hass, [])
+
+    await entity.async_added_to_hass()
+
+    assert entity.native_value is None
+
+
+async def test_restore_ignores_empty_stored_value(hass: HomeAssistant) -> None:
+    """A stored entry without a native value is not adopted."""
+    entity, _device, _coordinator = _make_restorable(hass)
+    mock_restore_cache_with_extra_data(
+        hass,
+        [(State("sensor.last_use", "unknown"), _stored_sensor_data(None))],
+    )
+
+    await entity.async_added_to_hass()
+
+    assert entity.native_value is None
+
+
+async def test_ggq_work_state_sensor_labels_captured_codes(
+    hass: HomeAssistant,
+) -> None:
+    """The operation sensor reports the captured 0/2 work codes as labels."""
+    device, coordinator, product = build_context(hass)
+    device._device_info = make_credentials(category="ggq", product_id="fdrbxxbg")
+    mapping = next(
+        item for item in sensor.get_mapping_by_device(device) if item.dp_id == 112
+    )
+    entity = _make_entity(hass, device, coordinator, product, mapping)
+    await entity.async_added_to_hass()
+
+    add_dp(device, 112, TuyaBLEDataPointType.DT_ENUM, 0)
+    coordinator.async_set_updated_data({})
+    await hass.async_block_till_done()
+    assert entity.native_value == "watering"
+
+    add_dp(device, 112, TuyaBLEDataPointType.DT_ENUM, 2)
+    coordinator.async_set_updated_data({})
+    await hass.async_block_till_done()
+    assert entity.native_value == "idle"
+
+
+async def test_ggq_schedule_sensor_reports_raw_payload(
+    hass: HomeAssistant,
+) -> None:
+    """The schedule sensor exposes the undecoded payload as hex."""
+    device, coordinator, product = build_context(hass)
+    device._device_info = make_credentials(category="ggq", product_id="fdrbxxbg")
+    mapping = next(
+        item for item in sensor.get_mapping_by_device(device) if item.dp_id == 101
+    )
+    assert mapping.description.entity_registry_enabled_default is False
+    assert mapping.description.entity_category == "diagnostic"
+    entity = _make_entity(hass, device, coordinator, product, mapping)
+    await entity.async_added_to_hass()
+
+    add_dp(device, 101, TuyaBLEDataPointType.DT_RAW, b"", b"\x07\x00\x3c")
+    coordinator.async_set_updated_data({})
+    await hass.async_block_till_done()
+
+    assert entity.native_value == "07003c"

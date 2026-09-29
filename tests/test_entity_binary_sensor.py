@@ -1,5 +1,7 @@
 """Unit tests for the Tuya BLE binary sensor entity."""
 
+# pylint: disable=protected-access
+
 from __future__ import annotations
 
 from homeassistant.components.binary_sensor import (
@@ -16,7 +18,7 @@ from custom_components.tuya_ble.tuya_ble import (
     TuyaBLEDataPointType,
     TuyaBLEDevice,
 )
-from tests.conftest import add_dp, build_context, connect
+from tests.conftest import add_dp, build_context, connect, make_credentials
 
 
 def _make_entity(
@@ -98,3 +100,24 @@ async def test_available_with_is_available(hass: HomeAssistant) -> None:
     entity.hass = hass
     await connect(coordinator)
     assert entity.available is True
+
+
+async def test_ggq_fault_sensor_follows_the_datapoint(hass: HomeAssistant) -> None:
+    """Verify the dual timer fault code drives a problem binary sensor."""
+    device, coordinator, product = build_context(hass)
+    device._device_info = make_credentials(category="ggq", product_id="fdrbxxbg")
+    mapping = binary_sensor.get_mapping_by_device(device)[0]
+    entity = binary_sensor.TuyaBLEBinarySensor(
+        hass, coordinator, device, product, mapping
+    )
+    await entity.async_added_to_hass()
+
+    add_dp(device, 19, TuyaBLEDataPointType.DT_BOOL, False)
+    coordinator.async_set_updated_data({})
+    await hass.async_block_till_done()
+    assert entity.is_on is False
+
+    add_dp(device, 19, TuyaBLEDataPointType.DT_BOOL, True)
+    coordinator.async_set_updated_data({})
+    await hass.async_block_till_done()
+    assert entity.is_on is True

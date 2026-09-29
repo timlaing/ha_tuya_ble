@@ -8,8 +8,9 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, cast
 
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 from homeassistant.components.number.const import NumberMode
-from homeassistant.helpers.entity import UNDEFINED
+from homeassistant.helpers.entity import UNDEFINED, EntityCategory
 import pytest
 
 from custom_components.tuya_ble import (
@@ -35,7 +36,10 @@ from custom_components.tuya_ble.device_descriptors.handlers.fingerbot import (
 from custom_components.tuya_ble.device_descriptors.handlers.water_valve import (
     is_water_valve_in_switch_mode,
 )
-from custom_components.tuya_ble.device_registry import EntityDescriptor
+from custom_components.tuya_ble.device_registry import (
+    EntityDescriptor,
+    get_mapped_dp_ids,
+)
 from custom_components.tuya_ble.devices import TuyaBLEFingerbotInfo
 from custom_components.tuya_ble.products import devices_database
 from custom_components.tuya_ble.tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
@@ -619,6 +623,84 @@ def test_diivoo_dual_water_timer_mappings_use_ggq(name: str) -> None:
     mod = PLATFORMS[name]
     assert mod.get_mapping_by_device(FakeDevice("ggq", "fdrbxxbg"))
     assert mod.get_mapping_by_device(FakeDevice("sfkzq", "fdrbxxbg")) == []
+
+
+def test_ggq_dual_water_timer_exposes_every_confirmed_datapoint() -> None:
+    """Each confirmed BLE data point of the dual timer has a home."""
+    device = cast(TuyaBLEDevice, FakeDevice("ggq", "fdrbxxbg"))
+
+    assert [item.dp_id for item in sensor.get_mapping_by_device(device)] == [
+        11,
+        111,
+        110,
+        112,
+        113,
+        101,
+        102,
+    ]
+    assert [item.dp_id for item in binary_sensor.get_mapping_by_device(device)] == [19]
+    assert [item.dp_id for item in select.get_mapping_by_device(device)] == [117, 114]
+    assert get_mapped_dp_ids("ggq", "fdrbxxbg") == frozenset({
+        11,
+        19,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        110,
+        111,
+        112,
+        113,
+        114,
+        117,
+    })
+
+
+def test_ggq_dual_water_timer_status_sensors_are_restored() -> None:
+    """Only the values the device cannot report after a restart are restored."""
+    device = cast(TuyaBLEDevice, FakeDevice("ggq", "fdrbxxbg"))
+    restored = {
+        item.dp_id: item.restore for item in sensor.get_mapping_by_device(device)
+    }
+
+    assert restored == {
+        11: True,
+        111: True,
+        110: True,
+        112: True,
+        113: True,
+        101: True,
+        102: True,
+    }
+    countdown = number.get_mapping_by_device(device)
+    assert [item.dp_id for item in countdown] == [106, 103]
+    assert all(item.getter is None for item in countdown)
+
+
+@pytest.mark.parametrize("product_id", ["fdrbxxbg", "jntxv3q4", "qycalacn"])
+def test_ggq_weather_delay_uses_the_captured_enum_codes(
+    product_id: str,
+) -> None:
+    """The weather delay codes are read and written as enum indices."""
+    device = cast(TuyaBLEDevice, FakeDevice("ggq", product_id))
+    mappings = select.get_mapping_by_device(device)
+
+    assert [item.dp_id for item in mappings] == [117, 114]
+    for mapping in mappings:
+        assert mapping.dp_type is TuyaBLEDataPointType.DT_ENUM
+        assert mapping.values is None
+        assert mapping.description.options == ["cancel", "24h", "48h", "72h"]
+
+
+def test_ggq_dual_water_timer_fault_sensor_is_a_problem() -> None:
+    """The fault data point is a diagnostic problem binary sensor."""
+    device = cast(TuyaBLEDevice, FakeDevice("ggq", "fdrbxxbg"))
+    mapping = binary_sensor.get_mapping_by_device(device)[0]
+
+    assert mapping.description.device_class is BinarySensorDeviceClass.PROBLEM
+    assert mapping.description.entity_category is EntityCategory.DIAGNOSTIC
 
 
 def test_sop10_water_timer_has_one_entity_per_datapoint_role() -> None:

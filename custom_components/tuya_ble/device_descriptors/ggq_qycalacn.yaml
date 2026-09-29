@@ -70,50 +70,24 @@ entities:
       legacy_keys: [weather_delay_z1]
       icon: mdi:weather-partly-cloudy
       entity_category: config
-      dp_type: 3
+      dp_type: 4
       options:
-        - "Off"
-        - 1 day
-        - 2 days
-        - 3 days
-        - 4 days
-        - 5 days
-        - 6 days
-        - 7 days
-      values:
-        - "OFF"
-        - "1"
-        - "2"
-        - "3"
-        - "4"
-        - "5"
-        - "6"
-        - "7"
+        - cancel
+        - 24h
+        - 48h
+        - 72h
     - dp_id: 114
       translation_key: weather_delay_zone2
       name: Weather delay 2
       legacy_keys: [weather_delay_z2]
       icon: mdi:weather-partly-cloudy
       entity_category: config
-      dp_type: 3
+      dp_type: 4
       options:
-        - "Off"
-        - 1 day
-        - 2 days
-        - 3 days
-        - 4 days
-        - 5 days
-        - 6 days
-        - 7 days
-      values:
-        - "OFF"
-        - "1"
-        - "2"
-        - "3"
-        - "4"
-        - "5"
-        - "6"
-        - "7"
+        - cancel
+        - 24h
+        - 48h
+        - 72h
   valve:
     - dp_id: 105
       translation_key: valve_zone1

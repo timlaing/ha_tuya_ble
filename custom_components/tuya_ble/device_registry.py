@@ -52,6 +52,7 @@ class EntityDescriptor:
     dp_type: int | None = None
     coefficient: float = 1.0
     force_add: bool = True
+    restore: bool = False
     name: str | None = None
     min_value: float | None = None
     max_value: float | None = None
@@ -150,6 +151,7 @@ def _parse_entity(platform: str, raw: dict[str, Any]) -> EntityDescriptor:
         dp_type=raw.get("dp_type"),
         coefficient=float(raw.get("coefficient", 1.0)),
         force_add=bool(raw.get("force_add", True)),
+        restore=bool(raw.get("restore", False)),
         name=raw.get("name"),
         min_value=raw.get("min_value"),
         max_value=raw.get("max_value"),
@@ -182,6 +184,7 @@ _BASE_ENTITY_KEYS = {
     "dp_type",
     "coefficient",
     "force_add",
+    "restore",
     "name",
     "min_value",
     "max_value",

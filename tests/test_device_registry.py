@@ -93,6 +93,24 @@ def test_extra_fields_captured() -> None:
     assert desc.force_add is False
 
 
+def test_restore_flag_captured() -> None:
+    """The restore opt-in is read from the descriptor."""
+    registry = DeviceRegistry()
+    _load_product(
+        registry,
+        {
+            "sensor": [
+                {"dp_id": 5, "translation_key": "x", "restore": True},
+                {"dp_id": 6, "translation_key": "y", "restore": False},
+                {"dp_id": 7, "translation_key": "z"},
+            ]
+        },
+    )
+    descriptors = registry.get("ms", "foo").get("sensor")  # type: ignore[union-attr]
+    assert [desc.restore for desc in descriptors] == [True, False, False]
+    assert "restore" not in descriptors[0].extra
+
+
 def test_category_default_fallback_merge() -> None:
     """Specific platform entries win and unmapped platforms fall back."""
     registry = DeviceRegistry()

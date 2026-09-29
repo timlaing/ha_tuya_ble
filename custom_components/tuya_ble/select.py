@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from typing import TypedDict, cast
 
 from homeassistant.components.select import (
@@ -21,8 +22,15 @@ from .const import (
     FINGERBOT_MODE_SWITCH,
 )
 from .device_registry import EntityDescriptor, get_registry
-from .devices import TuyaBLECoordinator, TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
+from .devices import (
+    TuyaBLECoordinator,
+    TuyaBLEData,
+    TuyaBLEProductInfo,
+    TuyaBLERestoreEntity,
+)
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -32,6 +40,7 @@ class TuyaBLESelectMapping:
     dp_id: int
     description: SelectEntityDescription
     force_add: bool = True
+    restore: bool = False
     dp_type: TuyaBLEDataPointType | None = None
     values: list[str] | None = None
 
@@ -109,6 +118,7 @@ def _build_select_mapping(desc: EntityDescriptor) -> TuyaBLESelectMapping:
         dp_id=desc.dp_id,
         description=_select_description(desc),
         force_add=desc.force_add,
+        restore=desc.restore,
         dp_type=(
             TuyaBLEDataPointType(desc.dp_type) if desc.dp_type is not None else None
         ),
@@ -150,7 +160,7 @@ def get_mapping_by_device(device: TuyaBLEDevice) -> list[TuyaBLESelectMapping]:
     return []
 
 
-class TuyaBLESelect(TuyaBLEEntity, SelectEntity):
+class TuyaBLESelect(TuyaBLERestoreEntity, SelectEntity):
     """Representation of a Tuya BLE select."""
 
     def __init__(
@@ -163,28 +173,51 @@ class TuyaBLESelect(TuyaBLEEntity, SelectEntity):
     ) -> None:
         super().__init__(hass, coordinator, device, product, select_mapping.description)
         self._mapping = select_mapping
+        self._attr_restore = select_mapping.restore
         self._attr_options = select_mapping.description.options or []
+
+    @property
+    def _restore_dp_id(self) -> int:
+        """Return the data point id whose presence supersedes a restored option."""
+        return self._mapping.dp_id
+
+    async def _async_restore_state(self) -> None:
+        """Apply the option stored by the previous run of Home Assistant."""
+        if (last_state := await self.async_get_last_state()) is None:
+            return
+        if last_state.state not in self._attr_options:
+            _LOGGER.debug(
+                "%s: Discarded stored option %s for %s, it is no longer offered",
+                self.device.address,
+                last_state.state,
+                self.entity_description.key,
+            )
+            return
+        self._attr_current_option = last_state.state
+        _LOGGER.debug(
+            "%s: Restored option for %s",
+            self.device.address,
+            self.entity_description.key,
+        )
 
     @property
     def current_option(self) -> str | None:
         """Return the selected entity option to represent the entity state."""
-        # Raw value
-        value: str | None = None
         datapoint = self.device.datapoints[self._mapping.dp_id]
-        if datapoint:
-            value = str(datapoint.value)
-            if self._mapping.values:
-                for index, mapped_value in enumerate(self._mapping.values):
-                    if mapped_value == value and index < len(self._attr_options):
-                        return self._attr_options[index]
-            if (
-                isinstance(datapoint.value, int)
-                and datapoint.value >= 0
-                and datapoint.value < len(self._attr_options)
-            ):
-                return self._attr_options[datapoint.value]
-            return value
-        return None
+        if datapoint is None:
+            return self._attr_current_option
+        value = str(datapoint.value)
+        if self._mapping.values:
+            for index, mapped_value in enumerate(self._mapping.values):
+                if mapped_value == value and index < len(self._attr_options):
+                    return self._attr_options[index]
+        if (
+            isinstance(datapoint.value, int)
+            and datapoint.value >= 0
+            and datapoint.value < len(self._attr_options)
+        ):
+            return self._attr_options[datapoint.value]
+        return value
 
     def select_option(self, option: str) -> None:
         """Change the selected option."""

@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .coordinator import TuyaBLECoordinator
-from .entity import TuyaBLEEntity, get_device_info
+from .entity import TuyaBLEEntity, TuyaBLERestoreEntity, get_device_info
 from .products import (
     TuyaBLECategoryInfo,
     TuyaBLEFingerbotInfo,
@@ -35,6 +35,7 @@ __all__ = [
     "TuyaBLEEntity",
     "TuyaBLEFingerbotInfo",
     "TuyaBLEProductInfo",
+    "TuyaBLERestoreEntity",
     "TuyaBLEWaterValveInfo",
     "devices_database",
     "get_device_info",

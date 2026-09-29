@@ -1,5 +1,5 @@
 """Unit tests for the Tuya BLE base entity."""
-# pylint: disable=protected-access
+# pylint: disable=protected-access,abstract-method
 # The tests deliberately set up device/coordinator internals as test setup
 # state, which is sanctioned by the project's test conventions.
 
@@ -14,7 +14,11 @@ from homeassistant.helpers.entity import EntityDescription
 import pytest
 
 from custom_components.tuya_ble.const import DOMAIN, DPCode, DPType
-from custom_components.tuya_ble.entity import TuyaBLEEntity, _resolve_unique_id
+from custom_components.tuya_ble.entity import (
+    TuyaBLEEntity,
+    TuyaBLERestoreEntity,
+    _resolve_unique_id,
+)
 from custom_components.tuya_ble.tuya_ble import TuyaBLEDataPointType
 from tests.conftest import make_credentials, make_device
 
@@ -217,3 +221,49 @@ async def test_send_command_sends_complete_commands(
 
     assert "skipping command" not in caplog.text
     assert f"{ADDRESS}: sending data point 4 = False" in caplog.text
+
+
+# --------------------------------------------------------------------------
+# TuyaBLERestoreEntity
+# --------------------------------------------------------------------------
+
+
+class _IncompleteRestoreEntity(TuyaBLERestoreEntity):
+    """Restore entity that leaves the abstract hooks to the base class."""
+
+
+def _make_restore_entity(
+    hass: HomeAssistant, dp_id: int | None = None
+) -> TuyaBLERestoreEntity:
+    """Build a restore mixin entity whose hook is left unimplemented."""
+    device = make_device()
+    device._device_info = make_credentials()
+    if dp_id is not None:
+        device.datapoints.get_or_create(dp_id, TuyaBLEDataPointType.DT_VALUE, 1)
+
+    coordinator = MagicMock()
+    coordinator.connected = True
+    coordinator.async_request_refresh = MagicMock(return_value=MagicMock())
+
+    entity = _IncompleteRestoreEntity(
+        hass, coordinator, device, MagicMock(), EntityDescription(key="restore")
+    )
+    entity.hass = hass
+    return entity
+
+
+def test_restore_defaults_to_disabled() -> None:
+    """Entities are not restored unless the descriptor opts in."""
+    assert _make_restore_entity.__doc__ is not None
+    assert TuyaBLERestoreEntity._attr_restore is False
+
+
+async def test_restore_hooks_must_be_implemented(hass: HomeAssistant) -> None:
+    """The mixin leaves the data point id and restore step to the platform."""
+    entity = _make_restore_entity(hass)
+
+    with pytest.raises(NotImplementedError):
+        _ = entity._restore_dp_id
+
+    with pytest.raises(NotImplementedError):
+        await entity._async_restore_state()

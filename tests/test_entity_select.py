@@ -1,9 +1,15 @@
 """Unit tests for the Tuya BLE select entity."""
 
+# pylint: disable=protected-access
+
 from __future__ import annotations
 
+import logging
+
 from homeassistant.components.select import SelectEntityDescription
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, State
+import pytest
+from pytest_homeassistant_custom_component.common import mock_restore_cache
 
 from custom_components.tuya_ble import select
 from custom_components.tuya_ble.devices import (
@@ -15,7 +21,7 @@ from custom_components.tuya_ble.tuya_ble import (
     TuyaBLEDataPointType,
     TuyaBLEDevice,
 )
-from tests.conftest import add_dp, build_context, connect
+from tests.conftest import add_dp, build_context, connect, make_credentials
 
 
 def _make_entity(
@@ -228,3 +234,121 @@ async def test_available(hass: HomeAssistant) -> None:
     assert entity.available is False
     await connect(coordinator)
     assert entity.available is True
+
+
+# ---- restore ----
+
+
+def _make_restorable(hass: HomeAssistant, restore: bool = True) -> select.TuyaBLESelect:
+    """Build the weather delay select of a ggq dual timer, restorable on request."""
+    device, coordinator, product = build_context(hass)
+    device._device_info = make_credentials(category="ggq", product_id="fdrbxxbg")
+    mapping = next(
+        item for item in select.get_mapping_by_device(device) if item.dp_id == 117
+    )
+    mapping.restore = restore
+    entity = select.TuyaBLESelect(hass, coordinator, device, product, mapping)
+    entity.hass = hass
+    entity.entity_id = "select.weather_delay"
+    return entity
+
+
+async def test_restore_enabled_select_adopts_stored_option(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A restore-enabled select shows the option chosen in the previous run."""
+    entity = _make_restorable(hass)
+    mock_restore_cache(hass, [State("select.weather_delay", "48h")])
+
+    with caplog.at_level(logging.DEBUG):
+        await entity.async_added_to_hass()
+
+    assert entity.current_option == "48h"
+    assert "Restored option for weather_delay_zone1" in caplog.text
+
+
+async def test_restore_enabled_select_keeps_following_the_device(
+    hass: HomeAssistant,
+) -> None:
+    """Restoring does not stop the select from following the live value."""
+    entity = _make_restorable(hass)
+    mock_restore_cache(hass, [State("select.weather_delay", "48h")])
+    await entity.async_added_to_hass()
+    assert entity.current_option == "48h"
+
+    add_dp(entity.device, 117, TuyaBLEDataPointType.DT_ENUM, 1)
+    await connect(entity.coordinator)
+    assert entity.current_option == "24h"
+
+
+async def test_restore_is_skipped_when_device_reports_a_value(
+    hass: HomeAssistant,
+) -> None:
+    """Nothing is restored while the device already holds the data point."""
+    entity = _make_restorable(hass)
+    mock_restore_cache(hass, [State("select.weather_delay", "48h")])
+    add_dp(entity.device, 117, TuyaBLEDataPointType.DT_ENUM, 3)
+
+    await entity.async_added_to_hass()
+
+    assert entity.current_option == "72h"
+
+
+async def test_restore_is_skipped_when_disabled(hass: HomeAssistant) -> None:
+    """A select without the restore opt-in ignores the stored option."""
+    entity = _make_restorable(hass, restore=False)
+    mock_restore_cache(hass, [State("select.weather_delay", "48h")])
+
+    await entity.async_added_to_hass()
+
+    assert entity.current_option is None
+
+
+async def test_restore_without_stored_state(hass: HomeAssistant) -> None:
+    """A restore-enabled select with no history stays empty."""
+    entity = _make_restorable(hass)
+    mock_restore_cache(hass, [])
+
+    await entity.async_added_to_hass()
+
+    assert entity.current_option is None
+
+
+async def test_restore_discards_an_option_that_is_no_longer_offered(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An option from an older version of the descriptor is not restored."""
+    entity = _make_restorable(hass)
+    mock_restore_cache(hass, [State("select.weather_delay", "3 days")])
+
+    with caplog.at_level(logging.DEBUG):
+        await entity.async_added_to_hass()
+
+    assert entity.current_option is None
+    assert "Discarded stored option 3 days" in caplog.text
+
+
+async def test_ggq_weather_delay_uses_confirmed_code_table(
+    hass: HomeAssistant,
+) -> None:
+    """The dual timer weather delay reads and writes the captured codes."""
+    device, coordinator, product = build_context(hass)
+    device._device_info = make_credentials(category="ggq", product_id="fdrbxxbg")
+    mapping = next(
+        item for item in select.get_mapping_by_device(device) if item.dp_id == 114
+    )
+    assert mapping.values is None
+    assert mapping.dp_type is TuyaBLEDataPointType.DT_ENUM
+    assert mapping.description.options == ["cancel", "24h", "48h", "72h"]
+    entity = select.TuyaBLESelect(hass, coordinator, device, product, mapping)
+    entity.hass = hass
+
+    add_dp(device, 114, TuyaBLEDataPointType.DT_ENUM, 2)
+    assert entity.current_option == "48h"
+
+    entity.select_option("24h")
+    await hass.async_block_till_done()
+    datapoint = device.datapoints[114]
+    assert datapoint is not None
+    assert datapoint.dp_type is TuyaBLEDataPointType.DT_ENUM
+    assert datapoint.value == 1

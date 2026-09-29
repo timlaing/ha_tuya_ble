@@ -11,6 +11,8 @@ from custom_components.tuya_ble.device_descriptors import handlers
 from custom_components.tuya_ble.device_descriptors.handlers import (
     battery,
     co2,
+    ggq,
+    raw,
     rssi,
     water_valve,
 )
@@ -59,7 +61,7 @@ def make_fake_owner(datapoints: dict[int, Any], signal: int = -55) -> Any:
     return owner
 
 
-def make_datapoint(value: Any) -> Any:
+def make_datapoint(value: Any, raw_value: bytes | None = None) -> Any:
     """Build a fake datapoint with a recorded setter."""
     call = {"value": value, "set_calls": []}
 
@@ -67,7 +69,7 @@ def make_datapoint(value: Any) -> Any:
         call["set_calls"].append(new_value)
         call["value"] = new_value
 
-    dp = SimpleNamespace(value=value, set_value=_set_value)
+    dp = SimpleNamespace(value=value, set_value=_set_value, raw_value=raw_value)
     dp.value = value
     return dp
 
@@ -308,6 +310,83 @@ def test_water_valve_set_on_unset_dp11_value() -> None:
     })
     water_valve.set_16wgjvck_water_valve(switch, product, True)
     assert switch.sent[0][2][2] == 60
+
+
+# ---- ggq water timer handlers ----
+
+
+def test_ggq_work_state_labels_known_codes() -> None:
+    """work_state maps the captured work codes to readable labels."""
+    for code, label in ggq.WORK_STATES.items():
+        owner = make_fake_owner({})
+        owner.dp_id = 112
+        owner.datapoints[112] = make_datapoint(code)
+        ggq.work_state(owner)
+        assert owner.set_native_value_calls == [label]
+
+
+def test_ggq_work_state_passes_through_unknown_code() -> None:
+    """work_state renders an unknown code as its own decimal string."""
+    owner = make_fake_owner({})
+    owner.dp_id = 113
+    owner.datapoints[113] = make_datapoint(7)
+    ggq.work_state(owner)
+    assert owner.set_native_value_calls == ["7"]
+
+
+def test_ggq_work_state_passes_through_non_int() -> None:
+    """work_state renders a non-integer value as a string."""
+    owner = make_fake_owner({})
+    owner.dp_id = 112
+    owner.datapoints[112] = make_datapoint("auto")
+    ggq.work_state(owner)
+    assert owner.set_native_value_calls == ["auto"]
+
+
+def test_ggq_work_state_missing_datapoint() -> None:
+    """work_state leaves the sensor alone when the data point is absent."""
+    owner = make_fake_owner({})
+    owner.dp_id = 112
+    ggq.work_state(owner)
+    assert owner.set_native_value_calls == []
+
+
+# ---- raw payload handlers ----
+
+
+def test_raw_hex_reports_payload_as_hex() -> None:
+    """raw_hex renders the raw payload as a lowercase hex string."""
+    owner = make_fake_owner({})
+    owner.dp_id = 101
+    owner.datapoints[101] = make_datapoint(b"", b"\x01\x02\xab")
+    raw.raw_hex(owner)
+    assert owner.set_native_value_calls == ["0102ab"]
+
+
+def test_raw_hex_empty_payload() -> None:
+    """raw_hex reports no value for an empty payload."""
+    owner = make_fake_owner({})
+    owner.dp_id = 101
+    owner.datapoints[101] = make_datapoint(b"", b"")
+    raw.raw_hex(owner)
+    assert owner.set_native_value_calls == [None]
+
+
+def test_raw_hex_without_raw_value() -> None:
+    """raw_hex reports no value when the device sent no raw payload."""
+    owner = make_fake_owner({})
+    owner.dp_id = 101
+    owner.datapoints[101] = make_datapoint(5)
+    raw.raw_hex(owner)
+    assert owner.set_native_value_calls == [None]
+
+
+def test_raw_hex_missing_datapoint() -> None:
+    """raw_hex leaves the sensor alone when the data point is absent."""
+    owner = make_fake_owner({})
+    owner.dp_id = 101
+    raw.raw_hex(owner)
+    assert owner.set_native_value_calls == []
 
 
 # ---- fingerbot mode handlers ----

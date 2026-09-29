@@ -9,6 +9,7 @@ entities:
       state_class: measurement
       entity_category: diagnostic
       kind: battery
+      restore: true
     - dp_id: 111
       translation_key: last_use_time_zone1
       name: Last use time 1
@@ -16,6 +17,7 @@ entities:
       device_class: duration
       unit: s
       state_class: measurement
+      restore: true
     - dp_id: 110
       translation_key: last_use_time_zone2
       name: Last use time 2
@@ -23,13 +25,44 @@ entities:
       device_class: duration
       unit: s
       state_class: measurement
+      restore: true
     - dp_id: 112
       translation_key: work_states_zone1
       name: Operation 1
       entity_category: diagnostic
+      restore: true
+      handlers:
+        read: ggq.work_state
     - dp_id: 113
       translation_key: work_states_zone2
       name: Operation 2
+      entity_category: diagnostic
+      restore: true
+      handlers:
+        read: ggq.work_state
+    - dp_id: 101
+      translation_key: irrigation_schedule_zone1
+      name: Schedule 1
+      icon: mdi:calendar-clock
+      entity_category: diagnostic
+      enabled_by_default: false
+      restore: true
+      handlers:
+        read: raw.raw_hex
+    - dp_id: 102
+      translation_key: irrigation_schedule_zone2
+      name: Schedule 2
+      icon: mdi:calendar-clock
+      entity_category: diagnostic
+      enabled_by_default: false
+      restore: true
+      handlers:
+        read: raw.raw_hex
+  binary_sensor:
+    - dp_id: 19
+      translation_key: fault_code
+      name: Fault
+      device_class: problem
       entity_category: diagnostic
   number:
     - dp_id: 106
@@ -63,49 +96,25 @@ entities:
       name: Weather delay 1
       icon: mdi:weather-partly-cloudy
       entity_category: config
-      dp_type: 3
+      dp_type: 4
+      restore: true
       options:
-        - "Off"
-        - 1 day
-        - 2 days
-        - 3 days
-        - 4 days
-        - 5 days
-        - 6 days
-        - 7 days
-      values:
-        - "OFF"
-        - "1"
-        - "2"
-        - "3"
-        - "4"
-        - "5"
-        - "6"
-        - "7"
+        - cancel
+        - 24h
+        - 48h
+        - 72h
     - dp_id: 114
       translation_key: weather_delay_zone2
       name: Weather delay 2
       icon: mdi:weather-partly-cloudy
       entity_category: config
-      dp_type: 3
+      dp_type: 4
+      restore: true
       options:
-        - "Off"
-        - 1 day
-        - 2 days
-        - 3 days
-        - 4 days
-        - 5 days
-        - 6 days
-        - 7 days
-      values:
-        - "OFF"
-        - "1"
-        - "2"
-        - "3"
-        - "4"
-        - "5"
-        - "6"
-        - "7"
+        - cancel
+        - 24h
+        - 48h
+        - 72h
   valve:
     - dp_id: 105
       translation_key: valve_zone1

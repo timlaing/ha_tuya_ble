@@ -6,10 +6,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+import logging
 
 from homeassistant.components.sensor import (
+    RestoreSensor,
     SensorDeviceClass,
-    SensorEntity,
     SensorEntityDescription,
     SensorStateClass,
 )
@@ -32,8 +33,15 @@ from .device_registry import (
     EntityDescriptor,
     get_registry,
 )
-from .devices import TuyaBLECoordinator, TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
+from .devices import (
+    TuyaBLECoordinator,
+    TuyaBLEData,
+    TuyaBLEProductInfo,
+    TuyaBLERestoreEntity,
+)
 from .tuya_ble import TuyaBLEDataPoint, TuyaBLEDataPointType, TuyaBLEDevice
+
+_LOGGER = logging.getLogger(__name__)
 
 SIGNAL_STRENGTH_DP_ID = -1
 
@@ -62,6 +70,7 @@ class TuyaBLESensorMapping:
     dp_id: int
     description: SensorEntityDescription
     force_add: bool = True
+    restore: bool = False
     dp_type: TuyaBLEDataPointType | None = None
     getter: Callable[[TuyaBLESensor], None] | None = None
     coefficient: float = 1.0
@@ -149,6 +158,7 @@ def _build_sensor_mapping(desc: EntityDescriptor) -> TuyaBLESensorMapping:
         dp_id=desc.dp_id,
         description=_sensor_description(desc),
         force_add=desc.force_add,
+        restore=desc.restore,
         dp_type=(
             TuyaBLEDataPointType(desc.dp_type) if desc.dp_type is not None else None
         ),
@@ -206,7 +216,7 @@ def get_mapping_by_device(device: TuyaBLEDevice) -> list[TuyaBLESensorMapping]:
     return []
 
 
-class TuyaBLESensor(TuyaBLEEntity, SensorEntity):
+class TuyaBLESensor(TuyaBLERestoreEntity, RestoreSensor):  # pylint: disable=too-many-ancestors
     """Representation of a Tuya BLE sensor."""
 
     def __init__(
@@ -219,6 +229,30 @@ class TuyaBLESensor(TuyaBLEEntity, SensorEntity):
     ) -> None:
         super().__init__(hass, coordinator, device, product, sensor_mapping.description)
         self._mapping = sensor_mapping
+        self._attr_restore = sensor_mapping.restore
+
+    @property
+    def dp_id(self) -> int:
+        """Return the data point id this entity reports."""
+        return self._mapping.dp_id
+
+    @property
+    def _restore_dp_id(self) -> int:
+        """Return the data point id whose presence supersedes a restored value."""
+        return self._mapping.dp_id
+
+    async def _async_restore_state(self) -> None:
+        """Apply the value stored by the previous run of Home Assistant."""
+        if (last_data := await self.async_get_last_sensor_data()) is None:
+            return
+        if last_data.native_value is None:
+            return
+        self._attr_native_value = last_data.native_value
+        _LOGGER.debug(
+            "%s: Restored value for %s",
+            self.device.address,
+            self.entity_description.key,
+        )
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -270,7 +304,7 @@ class TuyaBLESensor(TuyaBLEEntity, SensorEntity):
             result = self._mapping.is_available(self, self._product)
         return result
 
-    def set_native_value(self, value: float | int | None) -> None:
+    def set_native_value(self, value: str | float | int | None) -> None:
         """Set the native value of the sensor."""
         self._attr_native_value = value
 
