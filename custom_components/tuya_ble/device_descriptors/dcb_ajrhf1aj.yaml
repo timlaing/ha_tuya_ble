@@ -8,13 +8,11 @@ entities:
       unit: "%"
       state_class: measurement
       entity_category: diagnostic
-      kind: battery
     - dp_id: 11
       translation_key: temperature
       device_class: temperature
       unit: °C
       state_class: measurement
-      kind: temperature
     - dp_id: 172
       translation_key: battery_temp_current
       name: Battery temperature

@@ -1,6 +1,8 @@
 """Unit tests for the platform mapping-by-device functions and pure helpers."""
 
-# pylint: disable=protected-access
+# The `type(x) is Base` assertions below deliberately reject subclasses:
+# they assert the builders return one flat mapping class.
+# pylint: disable=protected-access,unidiomatic-typecheck
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -10,6 +12,8 @@ from typing import Any, cast
 
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 from homeassistant.components.number.const import NumberMode
+from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
+from homeassistant.const import PERCENTAGE, UnitOfTemperature
 from homeassistant.helpers.entity import UNDEFINED, EntityCategory
 import pytest
 
@@ -151,31 +155,47 @@ def test_build_sensor_mapping_enabled_by_default_false() -> None:
     assert built.description.entity_registry_enabled_default is False
 
 
-def test_build_sensor_mapping_kind_battery_and_temperature() -> None:
-    """Battery/temperature kinds select the specialized mapping classes."""
+def test_build_sensor_mapping_description_comes_from_the_descriptor() -> None:
+    """The sensor description is built from descriptor fields alone.
+
+    There is no ``kind`` indirection: the builder always passes an explicit
+    description, so a kind class's ``default_factory`` could never apply.
+    """
 
     battery = sensor._build_sensor_mapping(
         EntityDescriptor(
             platform="sensor",
             dp_id=15,
-            kind="battery",
             translation_key="battery",
             icon="mdi:battery",
+            device_class="battery",
+            unit="%",
+            state_class="measurement",
+            entity_category="diagnostic",
         )
     )
-    assert isinstance(battery, sensor.TuyaBLEBatteryMapping)
+    assert type(battery) is sensor.TuyaBLESensorMapping
     assert battery.description.key == "battery"
+    assert battery.description.device_class is SensorDeviceClass.BATTERY
+    assert battery.description.native_unit_of_measurement == PERCENTAGE
+    assert battery.description.state_class is SensorStateClass.MEASUREMENT
+    assert battery.description.entity_category is EntityCategory.DIAGNOSTIC
 
     temperature = sensor._build_sensor_mapping(
         EntityDescriptor(
             platform="sensor",
             dp_id=18,
-            kind="temperature",
             translation_key="temperature",
+            device_class="temperature",
+            unit="\N{DEGREE SIGN}C",
+            state_class="measurement",
         )
     )
-    assert isinstance(temperature, sensor.TuyaBLETemperatureMapping)
-    assert temperature.description.key == "temperature"
+    assert type(temperature) is sensor.TuyaBLESensorMapping
+    assert temperature.description.device_class is SensorDeviceClass.TEMPERATURE
+    assert temperature.description.native_unit_of_measurement == (
+        UnitOfTemperature.CELSIUS
+    )
 
 
 def test_temperature_unit_description() -> None:
@@ -214,70 +234,57 @@ def test_build_select_mapping_no_options() -> None:
 
 
 def test_build_select_mapping_fingerbot_mode() -> None:
-    """A fingerbot_mode descriptor yields the dedicated mapping class."""
+    """A fingerbot_mode descriptor is described entirely by its own fields.
+
+    The builder used to short-circuit on ``kind: fingerbot_mode`` and return a
+    mapping with a hardcoded description, discarding the descriptor's
+    ``entity_category`` and ``options``.
+    """
 
     desc = EntityDescriptor(
         platform="select",
         dp_id=8,
         translation_key="fingerbot_mode",
-        kind="fingerbot_mode",
+        entity_category="config",
+        options=["push", "switch", "program"],
     )
     built = select._build_select_mapping(desc)
-    assert isinstance(built, select.TuyaBLEFingerbotModeMapping)
-    assert built.dp_id == 8
+    assert type(built) is select.TuyaBLESelectMapping
+    assert built.description.key == "fingerbot_mode"
+    assert built.description.entity_category is EntityCategory.CONFIG
+    assert built.description.options == ["push", "switch", "program"]
 
 
-@pytest.mark.parametrize(
-    ("kind", "mapping_class"),
-    [
-        ("TuyaBLEFingerbotSwitchMapping", "TuyaBLEFingerbotSwitchMapping"),
-        ("TuyaBLEReversePositionsMapping", "TuyaBLEReversePositionsMapping"),
-        ("TuyaLockMotorStateMapping", "TuyaLockMotorStateMapping"),
-        ("TuyaBLEWaterValveSwitchMapping", "TuyaBLEWaterValveSwitchMapping"),
-        (
-            "TuyaBLEWaterValveWeatherSwitchMapping",
-            "TuyaBLEWaterValveWeatherSwitchMapping",
-        ),
-    ],
-)
-def test_build_switch_mapping_kinds(kind: str, mapping_class: str) -> None:
-    """Each switch kind selects its dedicated mapping class."""
+def test_build_switch_mapping_is_always_the_base_class() -> None:
+    """Switch mappings are one flat class; behaviour comes from fields.
 
-    desc = EntityDescriptor(
-        platform="switch",
-        dp_id=1,
-        translation_key="switch",
-        kind=kind,
-    )
-    built = switch._build_switch_mapping(desc)
-    assert isinstance(built, getattr(switch, mapping_class))
-    assert built.dp_id == 1
-
-
-def test_build_switch_mapping_kind_preserves_class_default_availability() -> None:
-    """Kinds keep their class-default availability when no 'when' handler exists."""
+    Five per-platform subclasses used to be selected by ``kind``, but the
+    builder always passed an explicit ``description`` and an ``is_available``
+    taken from the ``when`` handler, so those subclasses only ever supplied
+    values the descriptor already carried.
+    """
 
     desc = EntityDescriptor(
         platform="switch",
         dp_id=1,
         translation_key="water_valve",
-        kind="TuyaBLEWaterValveSwitchMapping",
+    )
+    built = switch._build_switch_mapping(desc)
+    assert type(built) is switch.TuyaBLESwitchMapping
+    assert built.description.key == "water_valve"
+
+
+def test_build_switch_mapping_availability_comes_from_the_when_handler() -> None:
+    """Availability is resolved from the 'when' handler, not a class default."""
+
+    desc = EntityDescriptor(
+        platform="switch",
+        dp_id=1,
+        translation_key="water_valve",
+        handlers={"when": "water_valve.is_water_valve_in_switch_mode"},
     )
     built = switch._build_switch_mapping(desc)
     assert built.is_available is is_water_valve_in_switch_mode
-
-
-def test_build_switch_mapping_unknown_kind() -> None:
-    """An unknown kind falls back to the base switch mapping class."""
-
-    desc = EntityDescriptor(
-        platform="switch",
-        dp_id=1,
-        translation_key="water_valve",
-        kind="TuyaBLEBogusMapping",
-    )
-    built = switch._build_switch_mapping(desc)
-    assert isinstance(built, switch.TuyaBLESwitchMapping)
 
 
 def test_build_switch_mapping_bitmap_mask_and_handlers() -> None:

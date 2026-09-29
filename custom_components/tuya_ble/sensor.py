@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import logging
 from typing import Any
 
@@ -105,35 +105,6 @@ class TuyaBLESensorMapping:
 
 
 @dataclass
-class TuyaBLEBatteryMapping(TuyaBLESensorMapping):
-    """Sensor mapping with default battery entity description."""
-
-    description: SensorEntityDescription = field(
-        default_factory=lambda: SensorEntityDescription(
-            key="battery",
-            device_class=SensorDeviceClass.BATTERY,
-            native_unit_of_measurement=PERCENTAGE,
-            entity_category=EntityCategory.DIAGNOSTIC,
-            state_class=SensorStateClass.MEASUREMENT,
-        )
-    )
-
-
-@dataclass
-class TuyaBLETemperatureMapping(TuyaBLESensorMapping):
-    """Sensor mapping with default temperature entity description."""
-
-    description: SensorEntityDescription = field(
-        default_factory=lambda: SensorEntityDescription(
-            key="temperature",
-            device_class=SensorDeviceClass.TEMPERATURE,
-            native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-            state_class=SensorStateClass.MEASUREMENT,
-        )
-    )
-
-
-@dataclass
 class TuyaBLECategorySensorMapping:
     """Hold product-specific and category-level sensor mappings."""
 
@@ -171,16 +142,9 @@ def _sensor_description(desc: EntityDescriptor) -> SensorEntityDescription:
     )
 
 
-_KIND_CLASSES: dict[str, type[TuyaBLESensorMapping]] = {
-    "battery": TuyaBLEBatteryMapping,
-    "temperature": TuyaBLETemperatureMapping,
-}
-
-
 def _build_sensor_mapping(desc: EntityDescriptor) -> TuyaBLESensorMapping:
     """Construct a sensor mapping from a registry descriptor."""
-    cls = _KIND_CLASSES.get(desc.kind or "", TuyaBLESensorMapping)
-    return cls(
+    return TuyaBLESensorMapping(
         dp_id=desc.dp_id,
         description=_sensor_description(desc),
         force_add=desc.force_add,

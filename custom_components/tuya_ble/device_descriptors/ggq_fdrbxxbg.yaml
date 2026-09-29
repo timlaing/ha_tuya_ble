@@ -8,7 +8,6 @@ entities:
       unit: "%"
       state_class: measurement
       entity_category: diagnostic
-      kind: battery
       restore: true
     - dp_id: 111
       translation_key: last_use_time_zone1

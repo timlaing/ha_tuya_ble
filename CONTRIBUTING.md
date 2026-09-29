@@ -19,7 +19,6 @@ entities:
       unit: "%"
       state_class: measurement
       entity_category: diagnostic
-      kind: battery
   switch:
     - dp_id: 1
       translation_key: water_valve
@@ -57,12 +56,13 @@ model_name: 16wgjvck
 | `force_add`          | No       | Defaults to `true`: the entity is created even if the device has never reported the data point. Set to `false` to only create it once the device has been seen                                         |
 | `restore`            | No       | Set to `true` to restore the last known value across a Home Assistant restart. The restored value is only applied while the device has not reported the data point. Supported by `sensor` and `select` |
 | `legacy_keys`        | No       | Previous `translation_key` values, so renaming one adopts the existing entity instead of recreating it                                                                                                 |
-| `kind`               | No       | Selects a built-in mapping class for the platform (e.g. `battery` or `temperature` in `sensor`)                                                                                                        |
 | `handlers`           | No       | Mapping of role → handler path (see [Handlers](#handlers))                                                                                                                                             |
 
 > **Translations**: `translation_key` values are looked up against `entity.<platform>.<translation_key>` in `strings.json` / `translations/en.json`. When you introduce a new `translation_key`, add the corresponding `name` entry there too — otherwise use a literal `name:` instead.
 
 > **`dp_type`**: on `select` this is the type used to encode the chosen option when writing it — `3` (`DT_STRING`) for a string table, `4` (`DT_ENUM`) for an enum code table, `2` (`DT_VALUE`) for a raw value. This is why a string option table whose values are not all numeric cannot be written at all. On every other platform `dp_type` is only a type filter on the data point that decides whether the entity is created, and that check is skipped for every current descriptor because `force_add` defaults to `true`; a sensor decodes the type the device actually pushed, not a declared one. Do not set it outside `select` — a test enforces this.
+
+> **Battery and temperature sensors**: spell the entity out in full rather than relying on a shorthand. A `device_class: battery` sensor needs `unit: "%"`, `state_class: measurement` and `entity_category: diagnostic`; a `device_class: temperature` sensor needs `unit: "°C"` and `state_class: measurement`. These combinations are what Home Assistant needs to group, display and record the reading correctly, and a test enforces them for every descriptor in the registry.
 
 #### Entity fields (by platform)
 

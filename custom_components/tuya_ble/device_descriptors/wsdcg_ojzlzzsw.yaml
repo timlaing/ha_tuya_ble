@@ -8,7 +8,6 @@ entities:
       unit: °C
       state_class: measurement
       coefficient: 10.0
-      kind: temperature
     - dp_id: 2
       translation_key: moisture
       device_class: moisture
@@ -33,7 +32,6 @@ entities:
       unit: "%"
       state_class: measurement
       entity_category: diagnostic
-      kind: battery
   number:
     - dp_id: 17
       translation_key: reporting_period

@@ -196,6 +196,20 @@ def test_parse_entity_unknown_handler_role_raises() -> None:
         raise AssertionError("expected DeviceRegistryError")
 
 
+def test_parse_entity_removed_kind_field_raises() -> None:
+    """A descriptor still carrying the removed 'kind' field fails loudly.
+
+    Unknown keys are otherwise collected into ``extra`` and silently ignored,
+    which would let a reintroduced ``kind:`` look like it worked.
+    """
+    registry = DeviceRegistry()
+    with pytest.raises(DeviceRegistryError, match="removed 'kind' field"):
+        _load_product(
+            registry,
+            {"sensor": [{"dp_id": 7, "kind": "battery", "device_class": "battery"}]},
+        )
+
+
 def test_parse_entity_legacy_keys_string_coerced() -> None:
     """A single-string legacy_keys is coerced to a list."""
     registry = DeviceRegistry()
@@ -568,5 +582,50 @@ def test_sensor_descriptors_never_declare_a_dp_type() -> None:
         for product in get_registry().products.values()
         for desc in product.get("sensor")
         if desc.dp_type is not None
+    ]
+    assert offenders == []
+
+
+# The field set every sensor must carry to be a well-formed battery or
+# temperature reading. These replace the ``kind: battery`` / ``kind:
+# temperature`` annotations, which were inert: the sensor builder always
+# passes an explicit ``description``, so a kind class's ``default_factory``
+# could never take effect. Keyed on ``device_class`` so the rule still holds
+# for descriptors that never carried the annotation.
+_REQUIRED_SENSOR_FIELDS: dict[str, dict[str, str]] = {
+    "battery": {
+        "unit": "%",
+        "state_class": "measurement",
+        "entity_category": "diagnostic",
+    },
+    "temperature": {"unit": "°C", "state_class": "measurement"},
+}
+
+
+def _missing_required_fields(desc: dr.EntityDescriptor) -> list[str]:
+    """Return the required fields a battery/temperature sensor does not set."""
+    required = _REQUIRED_SENSOR_FIELDS.get(desc.device_class or "", {})
+    return sorted(
+        field for field, value in required.items() if getattr(desc, field) != value
+    )
+
+
+@pytest.mark.parametrize("device_class", sorted(_REQUIRED_SENSOR_FIELDS))
+def test_battery_and_temperature_sensors_are_fully_described(
+    device_class: str,
+) -> None:
+    """Battery and temperature sensors carry every field their class needs.
+
+    ``kind`` used to name a mapping class here, but the sensor builder always
+    passes its own ``description``, so the class defaults never applied and the
+    annotation was documentation at best. Asserting the fields directly makes
+    the rule enforceable and catches a partially declared sensor.
+    """
+    offenders = [
+        f"{product.category}/{product.product_id} dp_id {desc.dp_id}"
+        f" is missing {_missing_required_fields(desc)}"
+        for product in get_registry().products.values()
+        for desc in product.get("sensor")
+        if desc.device_class == device_class and _missing_required_fields(desc)
     ]
     assert offenders == []

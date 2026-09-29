@@ -8,7 +8,6 @@ entities:
       unit: "%"
       state_class: measurement
       entity_category: diagnostic
-      kind: battery
     - dp_id: 12
       translation_key: work_state
       name: Operation

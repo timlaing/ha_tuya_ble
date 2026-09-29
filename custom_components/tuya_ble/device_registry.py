@@ -58,7 +58,6 @@ class EntityDescriptor:
     max_value: float | None = None
     step: float | None = None
     mode: str | None = None
-    kind: str | None = None
     handlers: dict[str, str] = field(default_factory=dict)
     pattern: str | None = None
     door_dp_id: int | None = None
@@ -112,6 +111,12 @@ def _parse_entity(platform: str, raw: dict[str, Any]) -> EntityDescriptor:
     """Parse a raw entity mapping dict into an EntityDescriptor."""
     if "dp_id" not in raw and platform not in _SINGLE_ENTITY_PLATFORMS:
         raise DeviceRegistryError(f"Entity in {platform!r} missing 'dp_id': {raw}")
+    if "kind" in raw:
+        raise DeviceRegistryError(
+            f"Entity {raw.get('dp_id', '?')} uses the removed 'kind' field. It named a "
+            "mapping class whose defaults were always overridden, so it had no effect. "
+            "Describe the entity with its own fields instead."
+        )
     handlers_raw = raw.get("handlers", {})
     if not isinstance(handlers_raw, dict):
         raise DeviceRegistryError(
@@ -157,7 +162,6 @@ def _parse_entity(platform: str, raw: dict[str, Any]) -> EntityDescriptor:
         max_value=raw.get("max_value"),
         step=raw.get("step"),
         mode=raw.get("mode"),
-        kind=raw.get("kind"),
         pattern=raw.get("pattern"),
         door_dp_id=raw.get("door_dp_id"),
         legacy_keys=legacy_keys_raw,
@@ -190,7 +194,6 @@ _BASE_ENTITY_KEYS = {
     "max_value",
     "step",
     "mode",
-    "kind",
     "handlers",
     "pattern",
     "door_dp_id",

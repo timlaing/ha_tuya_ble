@@ -21,13 +21,11 @@ entities:
       unit: "%"
       state_class: measurement
       entity_category: diagnostic
-      kind: battery
     - dp_id: 18
       translation_key: temperature
       device_class: temperature
       unit: °C
       state_class: measurement
-      kind: temperature
     - dp_id: 19
       translation_key: humidity
       device_class: humidity

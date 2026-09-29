@@ -8,7 +8,6 @@ entities:
       unit: "%"
       state_class: measurement
       entity_category: diagnostic
-      kind: battery
     - dp_id: 11
       translation_key: time_left
       device_class: duration

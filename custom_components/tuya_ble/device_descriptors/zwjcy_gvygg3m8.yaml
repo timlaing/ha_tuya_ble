@@ -9,7 +9,6 @@ entities:
       unit: °C
       state_class: measurement
       coefficient: 10.0
-      kind: temperature
     - dp_id: 3
       translation_key: humidity
       device_class: humidity
@@ -35,6 +34,5 @@ entities:
       unit: "%"
       state_class: measurement
       entity_category: diagnostic
-      kind: battery
 device_name: Smartlife Plant Sensor SGS01
 model_name: gvygg3m8

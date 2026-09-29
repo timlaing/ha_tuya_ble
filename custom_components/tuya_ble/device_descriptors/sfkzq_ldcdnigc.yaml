@@ -24,6 +24,7 @@ entities:
       device_class: battery
       unit: "%"
       state_class: measurement
+      entity_category: diagnostic
     - dp_id: 15
       translation_key: use_time_one
       name: Use time

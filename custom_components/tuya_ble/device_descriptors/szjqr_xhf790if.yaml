@@ -20,13 +20,11 @@ entities:
       unit: "%"
       state_class: measurement
       entity_category: diagnostic
-      kind: battery
   button:
     - dp_id: 1
       translation_key: push
       handlers:
         when: fingerbot.mode.in_push_mode
-      kind: fingerbot_mode
   number:
     - dp_id: 3
       translation_key: hold_time
@@ -65,19 +63,16 @@ entities:
         - push
         - switch
         - program
-      kind: fingerbot_mode
   switch:
     - dp_id: 1
       translation_key: switch
       handlers:
         when: fingerbot.mode.in_switch_mode
-      kind: TuyaBLEFingerbotSwitchMapping
     - dp_id: 4
       translation_key: reverse_positions
       icon: mdi:arrow-up-down-bold
       entity_category: config
       handlers:
         when: fingerbot.mode.in_switch_mode
-      kind: TuyaBLEReversePositionsMapping
 device_name: CubeTouch II
 model_name: xhf790if

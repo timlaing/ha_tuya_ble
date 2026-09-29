@@ -37,7 +37,6 @@ entities:
       unit: "%"
       state_class: measurement
       entity_category: diagnostic
-      kind: battery
   lock:
     - dp_id: 47
       translation_key: lock

@@ -9,7 +9,6 @@ entities:
       unit: °C
       state_class: measurement
       coefficient: 10.0
-      kind: temperature
     - dp_id: 2
       translation_key: va_moisture
       name: Moisture
@@ -23,6 +22,5 @@ entities:
       unit: "%"
       state_class: measurement
       entity_category: diagnostic
-      kind: battery
 device_name: Temperature Humidity Sensor
 model_name: jm6iasmb

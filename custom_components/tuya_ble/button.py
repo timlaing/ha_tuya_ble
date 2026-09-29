@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from homeassistant.components.button import (
     ButtonEntity,
@@ -14,7 +14,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
-from .device_descriptors.handlers.fingerbot.mode import in_push_mode
 from .device_registry import EntityDescriptor, get_registry
 from .devices import TuyaBLECoordinator, TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
@@ -34,28 +33,11 @@ class TuyaBLEButtonMapping:
 
 
 @dataclass
-class TuyaBLEFingerbotModeMapping(TuyaBLEButtonMapping):
-    """Button mapping for triggering fingerbot push mode."""
-
-    description: ButtonEntityDescription = field(
-        default_factory=lambda: ButtonEntityDescription(
-            key="push",
-        )
-    )
-    is_available: TuyaBLEButtonIsAvailable = in_push_mode
-
-
-@dataclass
 class TuyaBLECategoryButtonMapping:
     """Container for product-specific and default button mappings."""
 
     products: dict[str, list[TuyaBLEButtonMapping]] | None = None
     mapping: list[TuyaBLEButtonMapping] | None = None
-
-
-_KIND_CLASSES: dict[str, type[TuyaBLEButtonMapping]] = {
-    "fingerbot_mode": TuyaBLEFingerbotModeMapping,
-}
 
 
 def _button_description(desc: EntityDescriptor) -> ButtonEntityDescription:
@@ -70,8 +52,7 @@ def _button_description(desc: EntityDescriptor) -> ButtonEntityDescription:
 
 def _build_button_mapping(desc: EntityDescriptor) -> TuyaBLEButtonMapping:
     """Construct a button mapping from a registry descriptor."""
-    cls = _KIND_CLASSES.get(desc.kind or "", TuyaBLEButtonMapping)
-    return cls(
+    return TuyaBLEButtonMapping(
         dp_id=desc.dp_id,
         description=_button_description(desc),
         force_add=desc.force_add,

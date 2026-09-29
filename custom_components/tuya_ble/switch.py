@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from homeassistant.components.switch import (
@@ -16,8 +16,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
-from .device_descriptors.handlers.fingerbot.mode import in_switch_mode
-from .device_descriptors.handlers.water_valve import is_water_valve_in_switch_mode
 from .device_registry import EntityDescriptor, get_registry
 from .devices import TuyaBLECoordinator, TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
 from .tuya_ble import TuyaBLEDataPoint, TuyaBLEDataPointType, TuyaBLEDevice
@@ -48,82 +46,11 @@ class TuyaBLESwitchMapping:
 
 
 @dataclass
-class TuyaBLEFingerbotSwitchMapping(TuyaBLESwitchMapping):
-    """Switch mapping for fingerbot devices."""
-
-    description: SwitchEntityDescription = field(
-        default_factory=lambda: SwitchEntityDescription(
-            key="switch",
-        )
-    )
-    is_available: TuyaBLESwitchIsAvailable = in_switch_mode
-
-
-@dataclass
-class TuyaBLEReversePositionsMapping(TuyaBLESwitchMapping):
-    """Switch mapping for fingerbot reverse positions."""
-
-    description: SwitchEntityDescription = field(
-        default_factory=lambda: SwitchEntityDescription(
-            key="reverse_positions",
-            icon="mdi:arrow-up-down-bold",
-            entity_category=EntityCategory.CONFIG,
-        )
-    )
-    is_available: TuyaBLESwitchIsAvailable = in_switch_mode
-
-
-@dataclass
-class TuyaBLEWaterValveSwitchMapping(TuyaBLESwitchMapping):
-    """Switch mapping for water valve devices."""
-
-    description: SwitchEntityDescription = field(
-        default_factory=lambda: SwitchEntityDescription(
-            key="water_valve",
-        )
-    )
-    is_available: TuyaBLESwitchIsAvailable = is_water_valve_in_switch_mode
-
-
-@dataclass
-class TuyaLockMotorStateMapping(TuyaBLESwitchMapping):
-    """Switch mapping for lock motor state."""
-
-    description: SwitchEntityDescription = field(
-        default_factory=lambda: SwitchEntityDescription(
-            key="lock_motor_state",
-        )
-    )
-
-
-@dataclass
-class TuyaBLEWaterValveWeatherSwitchMapping(TuyaBLESwitchMapping):
-    """Switch mapping for water valve weather switch."""
-
-    description: SwitchEntityDescription = field(
-        default_factory=lambda: SwitchEntityDescription(
-            key="weather_switch",
-            icon="mdi:cloud-question",
-            name="Weather Switch",
-        )
-    )
-
-
-@dataclass
 class TuyaBLECategorySwitchMapping:
     """Mapping of product IDs to switch mappings within a device category."""
 
     products: dict[str, list[TuyaBLESwitchMapping]] | None = None
     mapping: list[TuyaBLESwitchMapping] | None = None
-
-
-_KIND_CLASSES: dict[str, type[TuyaBLESwitchMapping]] = {
-    "TuyaBLEFingerbotSwitchMapping": TuyaBLEFingerbotSwitchMapping,
-    "TuyaBLEReversePositionsMapping": TuyaBLEReversePositionsMapping,
-    "TuyaLockMotorStateMapping": TuyaLockMotorStateMapping,
-    "TuyaBLEWaterValveSwitchMapping": TuyaBLEWaterValveSwitchMapping,
-    "TuyaBLEWaterValveWeatherSwitchMapping": TuyaBLEWaterValveWeatherSwitchMapping,
-}
 
 
 def _switch_description(desc: EntityDescriptor) -> SwitchEntityDescription:
@@ -143,12 +70,6 @@ def _switch_description(desc: EntityDescriptor) -> SwitchEntityDescription:
 
 def _build_switch_mapping(desc: EntityDescriptor) -> TuyaBLESwitchMapping:
     """Construct a switch mapping from a registry descriptor."""
-    kind = desc.kind
-    cls = (
-        _KIND_CLASSES.get(kind, TuyaBLESwitchMapping)
-        if kind is not None
-        else TuyaBLESwitchMapping
-    )
     kwargs: dict[str, Any] = {
         "dp_id": desc.dp_id,
         "description": _switch_description(desc),
@@ -164,7 +85,7 @@ def _build_switch_mapping(desc: EntityDescriptor) -> TuyaBLESwitchMapping:
         kwargs["setter"] = setter
     if desc.dp_type is not None:
         kwargs["dp_type"] = TuyaBLEDataPointType(desc.dp_type)
-    return cls(**kwargs)
+    return TuyaBLESwitchMapping(**kwargs)
 
 
 def _build_mapping() -> dict[str, TuyaBLECategorySwitchMapping]:

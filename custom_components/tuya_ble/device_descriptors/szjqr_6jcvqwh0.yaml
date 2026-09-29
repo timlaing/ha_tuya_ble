@@ -8,7 +8,6 @@ entities:
       unit: "%"
       state_class: measurement
       entity_category: diagnostic
-      kind: battery
   number:
     - dp_id: 9
       translation_key: down_position
@@ -73,14 +72,12 @@ entities:
       translation_key: switch
       handlers:
         when: fingerbot.mode.in_switch_mode
-      kind: TuyaBLEFingerbotSwitchMapping
     - dp_id: 11
       translation_key: reverse_positions
       icon: mdi:arrow-up-down-bold
       entity_category: config
       handlers:
         when: fingerbot.mode.in_switch_mode
-      kind: TuyaBLEReversePositionsMapping
     - dp_id: 17
       translation_key: manual_control
       icon: mdi:gesture-tap-box

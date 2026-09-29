@@ -16,7 +16,6 @@ entities:
       unit: "%"
       state_class: measurement
       entity_category: diagnostic
-      kind: battery
     - dp_id: 19
       translation_key: unlock_ble
       name: Bluetooth unlock
@@ -50,7 +49,6 @@ entities:
   switch:
     - dp_id: 47
       translation_key: lock_motor_state
-      kind: TuyaLockMotorStateMapping
     - dp_id: 46
       translation_key: manual_lock
       name: Manual lock

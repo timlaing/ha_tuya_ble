@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
-from typing import TypedDict, cast
+from typing import TypedDict
 
 from homeassistant.components.select import (
     SelectEntity,
@@ -15,12 +15,7 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import (
-    DOMAIN,
-    FINGERBOT_MODE_PROGRAM,
-    FINGERBOT_MODE_PUSH,
-    FINGERBOT_MODE_SWITCH,
-)
+from .const import DOMAIN
 from .device_registry import EntityDescriptor, get_registry
 from .devices import (
     TuyaBLECoordinator,
@@ -51,24 +46,6 @@ class TemperatureUnitDescription(SelectEntityDescription):
     key: str = "temperature_unit"
     icon: str = "mdi:thermometer"
     entity_category: EntityCategory = EntityCategory.CONFIG
-
-
-class TuyaBLEFingerbotModeMapping(TuyaBLESelectMapping):
-    """Select mapping for fingerbot mode selection (push/switch/program)."""
-
-    def __init__(self, dp_id: int) -> None:
-        super().__init__(
-            dp_id=dp_id,
-            description=SelectEntityDescription(
-                key="fingerbot_mode",
-                entity_category=EntityCategory.CONFIG,
-                options=[
-                    FINGERBOT_MODE_PUSH,
-                    FINGERBOT_MODE_SWITCH,
-                    FINGERBOT_MODE_PROGRAM,
-                ],
-            ),
-        )
 
 
 @dataclass
@@ -112,8 +89,6 @@ def _select_description(desc: EntityDescriptor) -> SelectEntityDescription:
 
 def _build_select_mapping(desc: EntityDescriptor) -> TuyaBLESelectMapping:
     """Construct a select mapping from a registry descriptor."""
-    if desc.kind == "fingerbot_mode":
-        return cast(TuyaBLESelectMapping, TuyaBLEFingerbotModeMapping(dp_id=desc.dp_id))
     return TuyaBLESelectMapping(
         dp_id=desc.dp_id,
         description=_select_description(desc),

@@ -25,7 +25,6 @@ entities:
       unit: "%"
       state_class: measurement
       entity_category: diagnostic
-      kind: battery
     - dp_id: 40
       translation_key: lock_door_status
       name: Door status
@@ -38,7 +37,6 @@ entities:
   switch:
     - dp_id: 47
       translation_key: lock_motor_state
-      kind: TuyaLockMotorStateMapping
   lock:
     - dp_id: 47
       translation_key: lock

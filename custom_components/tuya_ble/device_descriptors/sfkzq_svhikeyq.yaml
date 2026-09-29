@@ -8,7 +8,6 @@ entities:
       unit: "%"
       state_class: measurement
       entity_category: diagnostic
-      kind: battery
     - dp_id: 12
       translation_key: work_state
       name: Operation
@@ -50,12 +49,12 @@ entities:
   switch:
     - dp_id: 1
       translation_key: water_valve
-      kind: TuyaBLEWaterValveSwitchMapping
+      handlers:
+        when: water_valve.is_water_valve_in_switch_mode
     - dp_id: 14
       translation_key: weather_switch
       name: Smart weather switch
       icon: mdi:cloud-question
-      kind: TuyaBLEWaterValveWeatherSwitchMapping
   valve:
     - dp_id: 1
       translation_key: valve
