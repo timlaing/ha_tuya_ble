@@ -1,7 +1,7 @@
 """Handler registry for YAML-referenced device behavior.
 
 Only handlers referenced from YAML device descriptors live in this package.
-Handlers are resolved by dotted module path (e.g. ``co2.alarm_enabled``).
+Handlers are resolved by dotted module path (e.g. ``battery.battery_enum``).
 """
 
 from __future__ import annotations

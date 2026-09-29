@@ -155,8 +155,8 @@
       "carbon_dioxide": {
         "name": "[%key:component::sensor::entity_component::carbon_dioxide::name%]"
       },
-      "carbon_dioxide_alarm": {
-        "name": "Carbon dioxide level",
+      "co2_status": {
+        "name": "CO2 status",
         "state": {
           "alarm": "Alarm",
           "normal": "Normal"

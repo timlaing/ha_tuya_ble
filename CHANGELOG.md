@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+### Changed
+
+- **CO2 status sensor**: the alarm state of the CO2 detector (`co2bj`, DP 1) is now always available and reports `alarm` or `normal` as the device sends it. It was previously hidden whenever the alarm switch (DP 13) was off, although the device reports the status independently of that switch. The sensor is also renamed to `CO2 status` to match the function name in the device's own definition; existing entities are adopted under their previous unique id, so nothing is recreated.
+
 ### Added
 
 - **Restart persistence**: entities can opt into restoring their last known value across a Home Assistant restart with the new `restore: true` descriptor flag. A restored value is only applied while the device has not reported the data point, and availability still follows the connection state. Used by the Diivoo dual water timer for battery, last use time, zone operation status, irrigation schedules and weather delay.

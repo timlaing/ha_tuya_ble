@@ -3,14 +3,13 @@ product_id: 59s19z5m
 entities:
   sensor:
     - dp_id: 1
-      translation_key: carbon_dioxide_alarm
+      translation_key: co2_status
+      legacy_keys: [carbon_dioxide_alarm]
       icon: mdi:molecule-co2
       device_class: enum
       options:
         - alarm
         - normal
-      handlers:
-        when: co2.alarm_enabled
     - dp_id: 2
       translation_key: carbon_dioxide
       device_class: carbon_dioxide

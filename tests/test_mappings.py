@@ -27,7 +27,9 @@ from custom_components.tuya_ble import (
     text,
     valve,
 )
-from custom_components.tuya_ble.device_descriptors.handlers.co2 import alarm_enabled
+from custom_components.tuya_ble.device_descriptors.handlers.battery import (
+    battery_enum,
+)
 from custom_components.tuya_ble.device_descriptors.handlers.fingerbot import (
     get_position,
     in_program_mode,
@@ -288,7 +290,7 @@ def test_build_switch_mapping_bitmap_mask_and_handlers() -> None:
         icon="mdi:molecule-co2",
         entity_category="config",
         enabled_by_default=False,
-        handlers={"when": "co2.alarm_enabled", "read": "rssi.rssi"},
+        handlers={"when": "battery.battery_enum", "read": "rssi.rssi"},
         extra={"bitmap_mask": b"\x01"},
     )
     built = switch._build_switch_mapping(desc)
@@ -297,7 +299,7 @@ def test_build_switch_mapping_bitmap_mask_and_handlers() -> None:
     assert built.bitmap_mask == b"\x01"
     assert built.description.key == "carbon_dioxide_severely_exceed_alarm"
     assert built.description.entity_registry_enabled_default is False
-    assert built.is_available is cast(Any, alarm_enabled)
+    assert built.is_available is cast(Any, battery_enum)
     assert built.getter is not None
     assert built.setter is None
 

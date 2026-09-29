@@ -158,8 +158,8 @@
       "carbon_dioxide": {
         "name": "Carbon dioxide"
       },
-      "carbon_dioxide_alarm": {
-        "name": "Carbon dioxide level",
+      "co2_status": {
+        "name": "CO2 status",
         "state": {
           "alarm": "Alarm",
           "normal": "Normal"

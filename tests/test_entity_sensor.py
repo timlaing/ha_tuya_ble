@@ -15,7 +15,7 @@ from pytest_homeassistant_custom_component.common import (
 )
 
 from custom_components.tuya_ble import sensor
-from custom_components.tuya_ble.device_descriptors.handlers import battery, co2, rssi
+from custom_components.tuya_ble.device_descriptors.handlers import battery, rssi
 from custom_components.tuya_ble.devices import (
     TuyaBLECoordinator,
     TuyaBLEProductInfo,
@@ -183,13 +183,19 @@ async def test_getter(hass: HomeAssistant) -> None:
     assert entity.native_value == 60.0
 
 
+def _gated_on_dp13(entity: TuyaBLESensor, product: TuyaBLEProductInfo) -> bool:
+    """Availability gate that only passes while data point 13 is set."""
+    datapoint = entity.device.datapoints[13]
+    return bool(datapoint.value) if datapoint else True
+
+
 async def test_available_with_is_available(hass: HomeAssistant) -> None:
     """Verify the is_available gate plus connection state."""
     device, coordinator, product = build_context(hass)
     mapping = sensor.TuyaBLESensorMapping(
         dp_id=13,
-        description=SensorEntityDescription(key="co2"),
-        is_available=co2.alarm_enabled,
+        description=SensorEntityDescription(key="gated"),
+        is_available=_gated_on_dp13,
     )
     add_dp(device, 13, TuyaBLEDataPointType.DT_ENUM, 1)
     entity = _make_entity(hass, device, coordinator, product, mapping)
@@ -198,13 +204,15 @@ async def test_available_with_is_available(hass: HomeAssistant) -> None:
     assert entity.available is True
 
 
-async def test_is_co2_alarm_enabled_no_datapoint(hass: HomeAssistant) -> None:
-    """Verify co2.alarm_enabled returns True when datapoint is absent."""
+async def test_is_available_passes_without_its_datapoint(
+    hass: HomeAssistant,
+) -> None:
+    """Verify the availability gate passes when its data point is absent."""
     device, coordinator, product = build_context(hass)
     mapping = sensor.TuyaBLESensorMapping(
         dp_id=13,
-        description=SensorEntityDescription(key="co2"),
-        is_available=co2.alarm_enabled,
+        description=SensorEntityDescription(key="gated"),
+        is_available=_gated_on_dp13,
     )
     entity = _make_entity(hass, device, coordinator, product, mapping)
     await connect(coordinator)
