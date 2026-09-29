@@ -10,7 +10,6 @@ entities:
         - auto
         - manual
         - idle
-      dp_type: 4
     - dp_id: 8
       translation_key: battery_state
       device_class: enum
@@ -19,14 +18,12 @@ entities:
         - low
         - middle
         - high
-      dp_type: 4
     - dp_id: 7
       translation_key: battery_percentage
       name: Battery
       device_class: battery
       unit: "%"
       state_class: measurement
-      dp_type: 2
     - dp_id: 15
       translation_key: use_time_one
       name: Use time

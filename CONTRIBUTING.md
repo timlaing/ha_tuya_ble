@@ -42,28 +42,33 @@ model_name: 16wgjvck
 
 #### Entity fields (common)
 
-| Field                | Required | Description                                                                                     |
-| -------------------- | -------- | ----------------------------------------------------------------------------------------------- |
-| `dp_id`              | Yes*     | Data-point ID on the device (*not required for `climate`, `cover`, `light`)                     |
-| `translation_key`    | No       | Translation key / entity ID (also accepts `key`)                                                |
-| `name`               | No       | Literal display-name override (used when no translation exists for `translation_key`)           |
-| `icon`               | No       | MDI icon override (e.g. `mdi:valve`)                                                            |
-| `device_class`       | No       | HA device class (e.g. `battery`, `temperature`, `carbon_dioxide`)                               |
-| `unit`               | No       | Unit of measurement (e.g. `%`, `°C`, `ppm`, `s`)                                                |
-| `state_class`        | No       | HA state class (`measurement`, `total_increasing`, `total`)                                     |
-| `dp_type`            | No       | Data-point type override (used by all platforms except `climate`, `cover`, `light`)             |
-| `entity_category`    | No       | `config` or `diagnostic`                                                                        |
-| `enabled_by_default` | No       | Set to `false` to hide the entity by default                                                    |
-| `kind`               | No       | Selects a built-in mapping class for the platform (e.g. `battery` or `temperature` in `sensor`) |
-| `handlers`           | No       | Mapping of role → handler path (see [Handlers](#handlers))                                      |
+| Field                | Required | Description                                                                                                                                                                                            |
+| -------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `dp_id`              | Yes*     | Data-point ID on the device (*not required for `climate`, `cover`, `light`)                                                                                                                            |
+| `translation_key`    | No       | Translation key / entity ID (also accepts `key`)                                                                                                                                                       |
+| `name`               | No       | Literal display-name override (used when no translation exists for `translation_key`)                                                                                                                  |
+| `icon`               | No       | MDI icon override (e.g. `mdi:valve`)                                                                                                                                                                   |
+| `device_class`       | No       | HA device class (e.g. `battery`, `temperature`, `carbon_dioxide`)                                                                                                                                      |
+| `unit`               | No       | Unit of measurement (e.g. `%`, `°C`, `ppm`, `s`)                                                                                                                                                       |
+| `state_class`        | No       | HA state class (`measurement`, `total_increasing`, `total`)                                                                                                                                            |
+| `dp_type`            | No       | Wire type used to serialise the value. `select` only — see [Entity fields (by platform)](#entity-fields-by-platform)                                                                                   |
+| `entity_category`    | No       | `config` or `diagnostic`                                                                                                                                                                               |
+| `enabled_by_default` | No       | Set to `false` to hide the entity by default                                                                                                                                                           |
+| `force_add`          | No       | Defaults to `true`: the entity is created even if the device has never reported the data point. Set to `false` to only create it once the device has been seen                                         |
+| `restore`            | No       | Set to `true` to restore the last known value across a Home Assistant restart. The restored value is only applied while the device has not reported the data point. Supported by `sensor` and `select` |
+| `legacy_keys`        | No       | Previous `translation_key` values, so renaming one adopts the existing entity instead of recreating it                                                                                                 |
+| `kind`               | No       | Selects a built-in mapping class for the platform (e.g. `battery` or `temperature` in `sensor`)                                                                                                        |
+| `handlers`           | No       | Mapping of role → handler path (see [Handlers](#handlers))                                                                                                                                             |
 
 > **Translations**: `translation_key` values are looked up against `entity.<platform>.<translation_key>` in `strings.json` / `translations/en.json`. When you introduce a new `translation_key`, add the corresponding `name` entry there too — otherwise use a literal `name:` instead.
+
+> **`dp_type`**: on `select` this is the type used to encode the chosen option when writing it — `3` (`DT_STRING`) for a string table, `4` (`DT_ENUM`) for an enum code table, `2` (`DT_VALUE`) for a raw value. This is why a string option table whose values are not all numeric cannot be written at all. On every other platform `dp_type` is only a type filter on the data point that decides whether the entity is created, and that check is skipped for every current descriptor because `force_add` defaults to `true`; a sensor decodes the type the device actually pushed, not a declared one. Do not set it outside `select` — a test enforces this.
 
 #### Entity fields (by platform)
 
 **number**: `min_value`, `max_value`, `step`, `mode` (`box` or `slider`)
 
-**select**: `options` (display values), `values` (raw DP values)
+**select**: `options` (display values), `values` (raw DP values), and the `dp_type` describing how the selected value is written to the device (`3` for a string table, `4` for enum codes, `2` for a raw value)
 
 **text**: `pattern` (regex validation pattern)
 
@@ -103,7 +108,7 @@ Three roles are supported. Note that handler signatures vary by platform:
 Available handler modules:
 
 - `battery.battery_enum` — convert battery enum DP to percentage
-- `co2.alarm_enabled` — check if CO2 alarm is enabled
+- `raw.raw_hex` — read an undecodable DP payload as hex
 - `rssi.rssi` — read RSSI signal strength
 - `water_valve.is_water_valve_in_switch_mode` — when-role for water valve switches
 - `water_valve.set_16wgjvck_water_valve` — Aldi/Ferrex water valve write handler

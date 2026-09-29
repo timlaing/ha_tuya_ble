@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning].
 
 ### Changed
 
+- **Descriptor schema reference**: the entity-field tables in `CONTRIBUTING.md` now document `force_add`, `restore` and `legacy_keys`, and describe `dp_type` accurately as a `select`-only wire type rather than a type override. The handler list is corrected — it still listed the removed `co2.alarm_enabled` and omitted `raw.raw_hex`. Inert `dp_type` declarations are removed from the SOP10 battery sensors, which never took effect because sensors are force-added; a test now rejects `dp_type` on any sensor descriptor so they cannot reappear silently.
 - **CO2 status sensor**: the alarm state of the CO2 detector (`co2bj`, DP 1) is now always available and reports `alarm` or `normal` as the device sends it. It was previously hidden whenever the alarm switch (DP 13) was off, although the device reports the status independently of that switch. The sensor is also renamed to `CO2 status` to match the function name in the device's own definition; existing entities are adopted under their previous unique id, so nothing is recreated.
 
 ### Added

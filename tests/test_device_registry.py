@@ -551,3 +551,22 @@ def test_get_mapped_dp_ids_includes_handler_only_specs() -> None:
 def test_get_mapped_dp_ids_includes_water_valve_spec() -> None:
     """The water valve handler's data points count as mapped."""
     assert {1, 10, 11, 13, 15} <= dr.get_mapped_dp_ids("sfkzq", "16wgjvck")
+
+
+def test_sensor_descriptors_never_declare_a_dp_type() -> None:
+    """A sensor's ``dp_type`` is inert, so no descriptor may declare one.
+
+    ``sensor.py`` reads ``dp_type`` only in the ``has_id`` gate deciding
+    whether the entity is created, and that gate is short-circuited because no
+    descriptor sets ``force_add: false``. Enum decoding uses the type the
+    device pushed, not a declared one. ``select`` is the one platform where
+    the field carries meaning: it picks the wire type used to serialise the
+    chosen option.
+    """
+    offenders = [
+        f"{product.category}/{product.product_id} dp_id {desc.dp_id}"
+        for product in get_registry().products.values()
+        for desc in product.get("sensor")
+        if desc.dp_type is not None
+    ]
+    assert offenders == []

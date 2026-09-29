@@ -17,7 +17,6 @@ entities:
         - low
         - middle
         - high
-      dp_type: 4
     - dp_id: 104
       translation_key: battery_percentage_alt
       name: Battery level
@@ -25,7 +24,6 @@ entities:
       unit: "%"
       state_class: measurement
       entity_category: diagnostic
-      dp_type: 2
   number:
     - dp_id: 2
       translation_key: valve_opening_percentage

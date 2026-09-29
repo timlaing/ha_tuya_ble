@@ -30,11 +30,23 @@ entities:
       name: Operation 1
       legacy_keys: [work_states_z1]
       entity_category: diagnostic
+      restore: true
+      device_class: enum
+      options:
+        - manual
+        - auto
+        - idle
     - dp_id: 113
       translation_key: work_states_zone2
       name: Operation 2
       legacy_keys: [work_states_z2]
       entity_category: diagnostic
+      restore: true
+      device_class: enum
+      options:
+        - manual
+        - auto
+        - idle
   number:
     - dp_id: 106
       translation_key: countdown_zone1
