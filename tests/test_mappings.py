@@ -696,6 +696,28 @@ def test_ggq_weather_delay_uses_the_captured_enum_codes(
         assert mapping.description.options == ["cancel", "24h", "48h", "72h"]
 
 
+@pytest.mark.parametrize("product_id", ["nxquc5lb", "c8800fd30884068f", "so5ybnw9"])
+def test_sfkzq_weather_delay_is_written_as_an_enum_index(
+    product_id: str,
+) -> None:
+    """The weather delay is an enum, so the option index is written as the code.
+
+    The ``sfkzq`` category definition types ``weather_delay`` as an ``Enum``
+    over the same four options. Declaring it as a string table with a parallel
+    ``values`` list meant ``select_option`` fed a non-numeric string into a data
+    point the device had already reported as an enum, which raised
+    ``TuyaBLEDataFormatError`` on serialisation instead of sending a packet.
+    """
+    device = cast(TuyaBLEDevice, FakeDevice("sfkzq", product_id))
+    mappings = select.get_mapping_by_device(device)
+
+    assert [item.dp_id for item in mappings] == [10]
+    for mapping in mappings:
+        assert mapping.dp_type is TuyaBLEDataPointType.DT_ENUM
+        assert mapping.values is None
+        assert mapping.description.options == ["cancel", "24h", "48h", "72h"]
+
+
 def test_ggq_dual_water_timer_fault_sensor_is_a_problem() -> None:
     """The fault data point is a diagnostic problem binary sensor."""
     device = cast(TuyaBLEDevice, FakeDevice("ggq", "fdrbxxbg"))

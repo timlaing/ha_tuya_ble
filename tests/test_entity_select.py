@@ -352,3 +352,35 @@ async def test_ggq_weather_delay_uses_confirmed_code_table(
     assert datapoint is not None
     assert datapoint.dp_type is TuyaBLEDataPointType.DT_ENUM
     assert datapoint.value == 1
+
+
+@pytest.mark.parametrize("product_id", ["nxquc5lb", "c8800fd30884068f", "so5ybnw9"])
+async def test_sfkzq_weather_delay_writes_the_enum_index(
+    hass: HomeAssistant,
+    product_id: str,
+) -> None:
+    """The SOP10 weather delay writes the option index the device expects.
+
+    The category definition types ``weather_delay`` as an ``Enum``, so the
+    option index is the wire value. Reading an enum the device has already
+    reported has to keep working, which is where the previous string table
+    raised ``TuyaBLEDataFormatError`` instead of sending a packet.
+    """
+    device, coordinator, product = build_context(hass)
+    device._device_info = make_credentials(category="sfkzq", product_id=product_id)
+    mapping = next(
+        item for item in select.get_mapping_by_device(device) if item.dp_id == 10
+    )
+    entity = select.TuyaBLESelect(hass, coordinator, device, product, mapping)
+    entity.hass = hass
+
+    add_dp(device, 10, TuyaBLEDataPointType.DT_ENUM, 2)
+    assert entity.current_option == "48h"
+
+    entity.select_option("24h")
+    await hass.async_block_till_done()
+    datapoint = device.datapoints[10]
+    assert datapoint is not None
+    assert datapoint.dp_type is TuyaBLEDataPointType.DT_ENUM
+    assert datapoint.value == 1
+    assert datapoint.get_value() == b"\x01"

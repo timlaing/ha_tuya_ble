@@ -80,13 +80,8 @@ entities:
       name: Weather delay
       icon: mdi:weather-partly-cloudy
       entity_category: config
-      dp_type: 3
+      dp_type: 4
       options:
-        - cancel
-        - 24h
-        - 48h
-        - 72h
-      values:
         - cancel
         - 24h
         - 48h
