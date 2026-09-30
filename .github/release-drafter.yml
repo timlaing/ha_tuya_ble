@@ -29,6 +29,15 @@ categories:
       conventional:
         type: "chore"
 
+  # Deliberately no semver-increment, so a release is not forced to a minor
+  # bump by a refactor alone. Most refactors here are internal cleanups; the
+  # ones that also add behaviour land as `feat`, which already bumps minor.
+  - title: "♻️ Refactoring"
+    exclusive: true
+    when:
+      conventional:
+        type: "refactor"
+
   - title: "⬆️ Dependencies"
     collapse-after: 0
     exclusive: true
