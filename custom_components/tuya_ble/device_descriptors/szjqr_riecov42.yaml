@@ -8,13 +8,18 @@ entities:
       unit: "%"
       state_class: measurement
       entity_category: diagnostic
+  button:
+    - dp_id: 2
+      translation_key: push
+      handlers:
+        when: fingerbot.mode.in_push_mode
   number:
     - dp_id: 9
       translation_key: down_position
       mode: box
       handlers:
         when: fingerbot.mode.not_in_program_mode
-      min_value: 51
+      min_value: 50
       max_value: 100
       step: 1
       icon: mdi:arrow-down-bold
@@ -67,6 +72,14 @@ entities:
       min_value: 0
       max_value: 100
       step: 1
+  select:
+    - dp_id: 8
+      translation_key: fingerbot_mode
+      entity_category: config
+      options:
+        - push
+        - switch
+        - program
   switch:
     - dp_id: 2
       translation_key: switch
@@ -94,6 +107,16 @@ entities:
       handlers:
         read: fingerbot.program.get_repeat_forever
         write: fingerbot.program.set_repeat_forever
+        when: fingerbot.mode.in_program_mode
+  text:
+    - dp_id: 121
+      translation_key: program
+      icon: mdi:repeat
+      pattern: ^((\d{1,2}|100)(\/\d{1,2})?)(;((\d{1,2}|100)(\/\d{1,2})?))+$
+      entity_category: config
+      handlers:
+        read: fingerbot.program.get_program
+        write: fingerbot.program.set_program
         when: fingerbot.mode.in_program_mode
 device_name: Fingerbot Plus
 model_name: riecov42

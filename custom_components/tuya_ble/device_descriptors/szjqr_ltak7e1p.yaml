@@ -19,7 +19,7 @@ entities:
       mode: box
       handlers:
         when: fingerbot.mode.not_in_program_mode
-      min_value: 51
+      min_value: 50
       max_value: 100
       step: 1
       icon: mdi:arrow-down-bold
