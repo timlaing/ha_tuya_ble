@@ -567,6 +567,107 @@ def test_get_mapped_dp_ids_includes_water_valve_spec() -> None:
     assert {1, 10, 11, 13, 15} <= dr.get_mapped_dp_ids("sfkzq", "16wgjvck")
 
 
+# The three ``kg`` Fingerbot Plus products, and the data points upstream's
+# mapping declares for them. Held here so a future edit that renumbers a data
+# point is caught rather than silently reaching for the wrong one on-device.
+_KG_FINGERBOT_PLUS = ("bs3ubslo", "mknd4lci", "riecov42")
+
+_KG_FINGERBOT_PLUS_MAPPING: dict[str, list[tuple[int, str, str | None]]] = {
+    "button": [(108, "push", "fingerbot.mode.in_push_mode")],
+    "number": [
+        (102, "down_position", "fingerbot.mode.not_in_program_mode"),
+        (103, "hold_time", "fingerbot.mode.in_push_mode"),
+        (106, "up_position", "fingerbot.mode.not_in_program_mode"),
+        (109, "program_repeats_count", "fingerbot.mode.repeat_count_available"),
+        (109, "program_idle_position", "fingerbot.mode.in_program_mode"),
+    ],
+    "select": [(101, "fingerbot_mode", None)],
+    "text": [(109, "program", "fingerbot.mode.in_program_mode")],
+}
+
+_KG_DOWN_POSITION_FLOOR = 50
+
+
+@pytest.mark.parametrize("product_id", _KG_FINGERBOT_PLUS)
+def test_kg_fingerbot_mapping_matches_upstream(product_id: str) -> None:
+    """Each ``kg`` data point, its translation key and its mode gate are as upstream.
+
+    These three products shipped with only their ``switch`` and ``sensor``
+    blocks, so the upstream numbers, mode select, push button and program text
+    were never reachable. The data points are not the same as the ``szjqr``
+    Fingerbot's, so each one is asserted individually.
+    """
+    product = get_registry().get("kg", product_id)
+    assert product is not None, f"kg/{product_id} is not in the registry"
+
+    for platform, expected in _KG_FINGERBOT_PLUS_MAPPING.items():
+        declared = [
+            (desc.dp_id, desc.translation_key, desc.handlers.get("when"))
+            for desc in product.get(platform)
+        ]
+        assert declared == expected, f"kg/{product_id} {platform} is not as upstream"
+
+
+@pytest.mark.parametrize("product_id", _KG_FINGERBOT_PLUS)
+def test_kg_fingerbot_products_are_identical(product_id: str) -> None:
+    """The three ``kg`` products are one device, so their descriptors must agree."""
+    for other in _KG_FINGERBOT_PLUS:
+        reference = get_registry().get("kg", other)
+        product = get_registry().get("kg", product_id)
+        assert reference is not None, f"kg/{other} is not in the registry"
+        assert product is not None, f"kg/{product_id} is not in the registry"
+        for platform in _KG_FINGERBOT_PLUS_MAPPING:
+            assert product.get(platform) == reference.get(platform), (
+                f"kg/{product_id} {platform} differs from kg/{other}"
+            )
+
+
+@pytest.mark.parametrize("product_id", _KG_FINGERBOT_PLUS)
+def test_kg_mode_gated_descriptors_expose_a_mode_select(product_id: str) -> None:
+    """A ``fingerbot.mode.*`` gate is inert without a mode select to read.
+
+    As with the ``szjqr`` Fingerbots, these descriptors hide and show entities
+    from the device's mode, but nothing exposed the mode itself.
+    """
+    product = get_registry().get("kg", product_id)
+    assert product is not None
+    gates = [
+        role_path
+        for platform in _KG_FINGERBOT_PLUS_MAPPING
+        for desc in product.get(platform)
+        for role_path in desc.handlers.values()
+        if role_path.startswith("fingerbot.mode.")
+    ]
+    mode_selects = [
+        desc
+        for desc in product.get("select")
+        if desc.translation_key == "fingerbot_mode"
+    ]
+    assert gates, f"kg/{product_id} unexpectedly gates on nothing"
+    assert len(mode_selects) == 1, f"kg/{product_id} needs exactly one mode select"
+
+
+@pytest.mark.parametrize("product_id", _KG_FINGERBOT_PLUS)
+def test_kg_down_position_can_reach_half_way(product_id: str) -> None:
+    """``down_position`` must not exclude 50 %, the finger's mid-travel position.
+
+    Matches the floor the ``szjqr`` descriptors use. Upstream's shared
+    ``TuyaBLEDownPositionDescription`` still defaults to 51, so this is stated
+    explicitly rather than inherited.
+    """
+    product = get_registry().get("kg", product_id)
+    assert product is not None
+    down = [
+        desc
+        for desc in product.get("number")
+        if desc.translation_key == "down_position"
+    ]
+    assert len(down) == 1, f"kg/{product_id} needs exactly one down_position"
+    assert down[0].min_value == _KG_DOWN_POSITION_FLOOR
+    assert down[0].max_value is not None, f"kg/{product_id} down_position has no max"
+    assert down[0].max_value >= 50
+
+
 def test_sensor_descriptors_never_declare_a_dp_type() -> None:
     """A sensor's ``dp_type`` is inert, so no descriptor may declare one.
 
