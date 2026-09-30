@@ -1,5 +1,6 @@
 category: ggq
 product_id: jntxv3q4
+manufacturer: Insoma
 entities:
   sensor:
     - dp_id: 11

@@ -52,7 +52,9 @@ Supports lock/unlock, alarm events, fingerprint/card/password unlock tracking, a
 
 - Irrigation computer (product_ids `6pahkcau`, `hfgdqhho`).
 - Dual-outlet irrigation computer (product_ids `fnlw6npo`, `jjqi2syk`): separate water valve and countdown entities for each outlet.
-- Dual water timer (product_ids `fdrbxxbg`, `jntxv3q4`, `qycalacn`): separate water valve and countdown entities for each outlet.
+- Diivoo WT-05 dual water timer (product_id `fdrbxxbg`): separate water valve and countdown entities for each outlet.
+- Insoma dual water timer (product_id `jntxv3q4`): separate water valve and countdown entities for each outlet.
+- Yohgee dual water timer (product_id `qycalacn`): separate water valve and countdown entities for each outlet.
 
 ## Water valve controllers (category_id `sfkzq`)
 
@@ -73,9 +75,9 @@ Entities: battery, temperature, charge/discharge current and voltage, tool diagn
 
 ## LED strip lights and lamps (category_id `dd`)
 
-- LGB102 Magic Strip Lights (product_id `nvfrtxlq`).
-- Floor Lamp (product_id `umzu0c2y`).
-- Sunset Lamp (product_id `6jxcdae1`).
+- Magiacous LGB102 Magic Strip Lights (product_id `nvfrtxlq`).
+- Magiacous Floor Lamp (product_id `umzu0c2y`).
+- Comfamoli Sunset Lamp (product_id `6jxcdae1`).
 - RGB Strip Light (product_id `0qgrjxum`).
 
 Entities: on/off, brightness, color temperature, RGB color.

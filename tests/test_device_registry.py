@@ -873,3 +873,120 @@ def test_fingerbot_plus_products_are_fully_described(product_id: str) -> None:
         assert product.get(platform) == reference.get(platform), (
             f"{product_id} {platform} differs from blliqpsj"
         )
+
+
+# A product is only worth a descriptor entry if the descriptor can stand on its
+# own: the display name and the manufacturer both have to be declared there, or
+# the device falls back to ``products.py``. Both rules below catch descriptors
+# that would silently lose their name or their brand when that file goes away.
+_MANUFACTURER_FROM_PRODUCTS = {
+    "dd/6jxcdae1": "Comfamoli",
+    "dd/nvfrtxlq": "Magiacous",
+    "dd/umzu0c2y": "Magiacous",
+    "ggq/fdrbxxbg": "Diivoo",
+    "ggq/jntxv3q4": "Insoma",
+    "ggq/qycalacn": "Yohgee",
+    "sfkzq/16wgjvck": "Ferrex",
+}
+
+_NAMES_FROM_PRODUCTS = {
+    "dd/nvfrtxlq": "LGB102 Magic Strip Lights",
+    "ggq/fnlw6npo": "Irrigation computer",
+    "ggq/jjqi2syk": "Irrigation computer",
+    "ggq/qycalacn": "Dual water timer",
+}
+
+# Products that had no descriptor of their own until their entities were lifted
+# out of the category defaults, plus the lock added in this change.
+_NEW_DESCRIPTORS = (
+    "dd/0qgrjxum",
+    "dd/6jxcdae1",
+    "dd/umzu0c2y",
+    "jtmspro/ebd5e0uauqx0vfsp",
+)
+
+
+@pytest.mark.parametrize(
+    ("product_key", "manufacturer"), sorted(_MANUFACTURER_FROM_PRODUCTS.items())
+)
+def test_descriptor_declares_the_manufacturer(
+    product_key: str, manufacturer: str
+) -> None:
+    """A branded product declares its manufacturer in its own descriptor.
+
+    ``products.py`` is the only other record of this. Until a descriptor
+    declares it, the manufacturer is invisible to anything reading the registry,
+    and it disappears along with that file.
+    """
+    category, product_id = product_key.split("/")
+    product = get_registry().get(category, product_id)
+    assert product is not None, f"{product_key} is not in the registry"
+    assert product.manufacturer == manufacturer
+
+
+@pytest.mark.parametrize(
+    ("product_key", "device_name"), sorted(_NAMES_FROM_PRODUCTS.items())
+)
+def test_descriptor_declares_a_device_name_that_lived_in_products(
+    product_key: str, device_name: str
+) -> None:
+    """A descriptor must not rely on ``products.py`` for its display name."""
+    category, product_id = product_key.split("/")
+    product = get_registry().get(category, product_id)
+    assert product is not None, f"{product_key} is not in the registry"
+    assert product.device_name == device_name
+
+
+@pytest.mark.parametrize("product_key", _NEW_DESCRIPTORS)
+def test_new_descriptors_are_registered(product_key: str) -> None:
+    """The products added in this change resolve, with a model name to match."""
+    category, product_id = product_key.split("/")
+    product = get_registry().get(category, product_id)
+    assert product is not None, f"{product_key} is not in the registry"
+    assert product.device_name, f"{product_key} has no device_name"
+    assert product.model_name == product_id
+
+
+@pytest.mark.parametrize("product_id", ["0qgrjxum", "6jxcdae1", "umzu0c2y", "nvfrtxlq"])
+def test_dd_descriptors_inherit_the_strip_light_mapping(product_id: str) -> None:
+    """The ``dd`` descriptors are identity-only and inherit ``_category_dd.yaml``.
+
+    ``dd_nvfrtxlq.yaml`` used to restate the category's light mapping field for
+    field, so editing the category would have left that one product behind.
+    All four now carry no entities of their own.
+    """
+    product = get_registry().get("dd", product_id)
+    assert product is not None
+    assert product.entities == {}, f"dd/{product_id} should inherit, not restate"
+
+    light = product.get("light")
+    assert light, f"dd/{product_id} inherits no light mapping"
+    assert light[0].translation_key == "switch_led"
+    assert light[0].extra == {
+        "switch_dp_id": 1,
+        "color_mode_dp_id": 2,
+        "brightness_dp_id": 3,
+        "color_temp_dp_id": 4,
+        "color_data_dp_id": 5,
+        "brightness_min": 0,
+        "brightness_max": 1000,
+    }
+
+
+def test_central_acesso_descriptor_matches_the_smart_cylinder_lock() -> None:
+    """The new lock descriptor is the existing one under a new product id.
+
+    All seven ``jtmspro`` products are the same lock, so a hand-written copy
+    could drift freely. Asserting equality against an existing descriptor means
+    a change to one has to be made to the other.
+    """
+    reference = get_registry().get("jtmspro", "hs21i377")
+    product = get_registry().get("jtmspro", "ebd5e0uauqx0vfsp")
+    assert reference is not None
+    assert product is not None
+    assert product.entities == reference.entities
+
+    lock = product.get("lock")
+    assert len(lock) == 1
+    assert lock[0].dp_id == 47
+    assert lock[0].door_dp_id == 40

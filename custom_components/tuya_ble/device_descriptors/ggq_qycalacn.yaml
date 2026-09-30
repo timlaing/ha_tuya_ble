@@ -1,5 +1,6 @@
 category: ggq
 product_id: qycalacn
+manufacturer: Yohgee
 entities:
   sensor:
     - dp_id: 11
@@ -106,4 +107,5 @@ entities:
     - dp_id: 104
       translation_key: valve_zone2
       device_class: water
+device_name: Dual water timer
 model_name: qycalacn

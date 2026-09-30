@@ -15,13 +15,15 @@ from homeassistant.core import Event, HomeAssistant
 from homeassistant.helpers.entity import EntityDescription
 
 from custom_components.tuya_ble.const import (
-    DOMAIN as DEVICES_DOMAIN,
-)
-from custom_components.tuya_ble.const import (
+    DEVICE_DEF_MANUFACTURER,
     FINGERBOT_BUTTON_EVENT,
     DPCode,
     DPType,
 )
+from custom_components.tuya_ble.const import (
+    DOMAIN as DEVICES_DOMAIN,
+)
+from custom_components.tuya_ble.device_registry import get_registry
 from custom_components.tuya_ble.devices import (
     TuyaBLECoordinator,
     TuyaBLEEntity,
@@ -197,6 +199,66 @@ def test_get_device_info_no_product() -> None:
     assert info["model"] is None
     assert info["hw_version"] is None
     assert info["sw_version"] is None
+
+
+def test_get_device_info_descriptor_manufacturer() -> None:
+    """The descriptor's manufacturer is used in preference to the product's."""
+    dev = make_device()
+    dev._device_info = TuyaBLEDeviceCredentials(
+        uuid="1234567890abcdef",
+        local_key="abcdef",
+        device_id="device123",
+        category="ggq",
+        product_id="qycalacn",
+        device_name=None,
+        product_model=None,
+        product_name=None,
+    )
+    info = get_device_info(dev)
+    assert info is not None
+    assert info["manufacturer"] == "Yohgee"
+    assert info["name"] == "Dual water timer"
+
+
+def test_get_device_info_falls_back_to_the_product_manufacturer() -> None:
+    """A descriptor without a manufacturer still gets the product's."""
+    dev = make_device()
+    dev._device_info = TuyaBLEDeviceCredentials(
+        uuid="1234567890abcdef",
+        local_key="abcdef",
+        device_id="device123",
+        category="ggq",
+        product_id="fdrbxxbg",
+        device_name=None,
+        product_model=None,
+        product_name=None,
+    )
+    with patch(
+        "custom_components.tuya_ble.entity._descriptor_manufacturer",
+        return_value=None,
+    ):
+        info = get_device_info(dev)
+    assert info is not None
+    assert info["manufacturer"] == "Diivoo"
+
+
+def test_get_device_info_unbranded_product_falls_back_to_tuya() -> None:
+    """With no manufacturer anywhere, the default brand is reported."""
+    dev = make_device()
+    dev._device_info = TuyaBLEDeviceCredentials(
+        uuid="1234567890abcdef",
+        local_key="abcdef",
+        device_id="device123",
+        category="ggq",
+        product_id="fnlw6npo",
+        device_name=None,
+        product_model=None,
+        product_name=None,
+    )
+    info = get_device_info(dev)
+    assert info is not None
+    assert info["manufacturer"] == "tuya"
+    assert info["name"] == "Irrigation computer"
 
 
 def test_get_device_info_descriptor_model() -> None:
@@ -670,3 +732,41 @@ def test_get_dptype_prefer_function() -> None:
     """With prefer_function=True, look in function first."""
     entity, _ = _make_entity_with_device_get_dptype()
     assert entity.get_dptype(DPCode.TEMP_SET, prefer_function=True) == DPType.ENUM
+
+
+# --- consistency between the descriptor registry and products.py --------------
+#
+# These two compare the registries against each other rather than testing either
+# one. They are the scaffolding that proves the manufacturer/name migration is
+# complete, and they are deleted together with products.py when the descriptors
+# become the single source of product metadata.
+
+
+def test_no_descriptor_loses_a_manufacturer_it_has_in_products() -> None:
+    """Every branded product in ``products.py`` is branded in its descriptor too."""
+    mismatched: list[str] = []
+    for (category, product_id), product in get_registry().products.items():
+        info = get_product_info_by_ids(category, product_id)
+        if info is None or info.manufacturer == DEVICE_DEF_MANUFACTURER:
+            continue
+        if product.manufacturer != info.manufacturer:
+            mismatched.append(
+                f"{category}/{product_id} declares {product.manufacturer!r}, "
+                f"products.py has {info.manufacturer!r}"
+            )
+    assert not mismatched
+
+
+def test_no_descriptor_loses_a_device_name_it_has_in_products() -> None:
+    """No descriptor is missing a name that ``products.py`` supplies."""
+    nameless: list[str] = []
+    for (category, product_id), product in get_registry().products.items():
+        info = get_product_info_by_ids(category, product_id)
+        if info is None or not info.name:
+            continue
+        if not product.device_name:
+            nameless.append(
+                f"{category}/{product_id} has no device_name, "
+                f"products.py has {info.name!r}"
+            )
+    assert not nameless

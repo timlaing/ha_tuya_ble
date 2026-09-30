@@ -1,5 +1,6 @@
 category: ggq
 product_id: fdrbxxbg
+manufacturer: Diivoo
 entities:
   sensor:
     - dp_id: 11

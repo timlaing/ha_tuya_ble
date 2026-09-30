@@ -1,5 +1,6 @@
 category: sfkzq
 product_id: 16wgjvck
+manufacturer: Ferrex
 entities:
   sensor:
     - dp_id: 7

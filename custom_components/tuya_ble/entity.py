@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
     from .coordinator import TuyaBLECoordinator
+    from .device_registry import DeviceEntities
 
 
 _HASS_DATA_LEGACY_KEYS = "legacy_unique_id_suffixes"
@@ -63,7 +64,9 @@ def get_device_info(device: TuyaBLEDevice) -> DeviceInfo | None:
         hw_version=device.hardware_version or None,
         identifiers={(DOMAIN, device.address)},
         manufacturer=(
-            product_info.manufacturer if product_info else DEVICE_DEF_MANUFACTURER
+            _descriptor_manufacturer(device)
+            or (product_info.manufacturer if product_info else None)
+            or DEVICE_DEF_MANUFACTURER
         ),
         model=model or None,
         name=device_name,
@@ -72,28 +75,31 @@ def get_device_info(device: TuyaBLEDevice) -> DeviceInfo | None:
     return result
 
 
-def _descriptor_device_name(device: TuyaBLEDevice) -> str | None:
-    """Return the descriptor device_name for the device, if any."""
+def _descriptor(device: TuyaBLEDevice) -> DeviceEntities | None:
+    """Return the device's descriptor, if it has one."""
     if not device.category or not device.product_id:
         return None
     from .device_registry import get_registry  # pylint: disable=C0415
 
-    product = get_registry().get(device.category, device.product_id)
-    if product is not None:
-        return product.device_name
-    return None
+    return get_registry().get(device.category, device.product_id)
+
+
+def _descriptor_device_name(device: TuyaBLEDevice) -> str | None:
+    """Return the descriptor device_name for the device, if any."""
+    product = _descriptor(device)
+    return product.device_name if product is not None else None
 
 
 def _descriptor_model_name(device: TuyaBLEDevice) -> str | None:
     """Return the descriptor model_name for the device, if any."""
-    if not device.category or not device.product_id:
-        return None
-    from .device_registry import get_registry  # pylint: disable=C0415
+    product = _descriptor(device)
+    return product.model_name if product is not None else None
 
-    product = get_registry().get(device.category, device.product_id)
-    if product is not None:
-        return product.model_name
-    return None
+
+def _descriptor_manufacturer(device: TuyaBLEDevice) -> str | None:
+    """Return the descriptor manufacturer for the device, if any."""
+    product = _descriptor(device)
+    return product.manufacturer if product is not None else None
 
 
 def _find_legacy_keys(

@@ -97,6 +97,7 @@ class DeviceEntities:
     product_id: str
     model_name: str | None = None
     device_name: str | None = None
+    manufacturer: str | None = None
     entities: dict[str, list[EntityDescriptor]] = field(default_factory=dict)
     category_defaults: dict[str, list[EntityDescriptor]] = field(default_factory=dict)
 
@@ -257,6 +258,7 @@ class DeviceRegistry:
             product_id=product_id,
             model_name=data.get("model_name"),
             device_name=data.get("device_name"),
+            manufacturer=data.get("manufacturer"),
             entities={
                 platform: [_parse_entity(platform, e) for e in es]
                 for platform, es in entities.items()
@@ -297,7 +299,7 @@ def _validate_descriptor(data: dict[str, Any]) -> None:
         raise DeviceRegistryError(
             f"Device descriptor for {data.get('product_id')!r} missing 'category'"
         )
-    for name_field in ("model_name", "device_name"):
+    for name_field in ("model_name", "device_name", "manufacturer"):
         if data.get(name_field) is not None and not isinstance(
             data.get(name_field), str
         ):
