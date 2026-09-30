@@ -186,10 +186,8 @@ class TuyaBLESelect(TuyaBLERestoreEntity, SelectEntity):
             for index, mapped_value in enumerate(self._mapping.values):
                 if mapped_value == value and index < len(self._attr_options):
                     return self._attr_options[index]
-        if (
-            isinstance(datapoint.value, int)
-            and datapoint.value >= 0
-            and datapoint.value < len(self._attr_options)
+        if isinstance(datapoint.value, int) and 0 <= datapoint.value < len(
+            self._attr_options
         ):
             return self._attr_options[datapoint.value]
         return value
