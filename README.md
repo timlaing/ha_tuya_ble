@@ -124,6 +124,10 @@ The integration supports a broad range of Tuya BLE devices across the following 
 | Blinds & curtains (`cl`)                 | Blind/curtain controllers, venetian blind motors                          |
 | Plant sensors (`zwjcy`)                  | Soil moisture / plant sensors                                             |
 
+Category codes are Tuya's, and several of them do not mean what their name suggests — `kg` is
+"Switch" and holds Fingerbot Plus, `znhsb` is "Smart glass" but the product is a water bottle.
+See [docs/TUYA_CATEGORIES.md](docs/TUYA_CATEGORIES.md) for what each code actually covers.
+
 For the full, up-to-date list of supported devices with their product IDs, see [SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md).
 
 ## Contributing

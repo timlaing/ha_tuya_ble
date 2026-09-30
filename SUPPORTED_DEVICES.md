@@ -94,3 +94,24 @@ Entities: open/close/stop, battery, work state, cover speed.
 - Smartlife Plant Sensor SGS01 (product_id `gvygg3m8`).
 
 Entities: temperature, humidity, battery state, battery percentage.
+
+## Category notes
+
+Category codes come from Tuya and several of them do not mean what their name suggests. The full
+reference, including every category this integration does not use, is in
+[docs/TUYA_CATEGORIES.md](docs/TUYA_CATEGORIES.md).
+
+- **`kg` is officially "Switch."** That is why Fingerbot Plus and Switch Robot sit under it rather
+  than under `szjqr`. `szjqr` is itself undocumented — it is what Tuya uses for the plain
+  Fingerbot. Both use the same `mode.*` handlers, so their descriptors look nearly identical,
+  which makes the category easy to mistake.
+- **`jtmspro` is "Residential Lock PRO"** and **`ms` is "Residential Lock."** The two have the same
+  entity layout, so they are listed separately here only because the category ids differ.
+- **`ms_category` is "DoorLock Accessories."** It is a separate category from `ms`, reported by a
+  lock's accessory sub-devices (key modules, fingerprint readers). No descriptor covers it.
+- **`cljqr` and `jdcljqr` are curtain robots, not curtain motors.** `cl` covers motors, which
+  report a controllable position. A robot only reports the two end states, so the curtain robot
+  must not reuse `_category_cl.yaml` — it would produce a cover entity with a position slider
+  that can never move. No robot is supported yet.
+- **`znhsb` officially means "Smart glass,"** although the `cdlandip` product listed above is a
+  smart water bottle. There is no glass device to compare it to, so the name is not a guide.

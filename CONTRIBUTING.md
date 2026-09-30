@@ -4,6 +4,17 @@
 
 New device support requires a **YAML device descriptor**. All device configuration lives in `custom_components/tuya_ble/device_descriptors/` — you do **not** need to edit the Python platform files or `products.py`.
 
+### 0. Identify the category
+
+The descriptor filename is `<category>_<product_id>.yaml`, so you need the category first. Add the
+device through the config flow and look for the `unknown product <category>/<product_id>` debug
+line — both halves are in it.
+
+Check the code in [docs/TUYA_CATEGORIES.md](docs/TUYA_CATEGORIES.md) before mapping anything. Several
+category names do not mean what they suggest: `kg` is officially "Switch" and is where Fingerbot
+Plus lives, `znhsb` is "Smart glass" although the product is a smart water bottle, and curtain
+robots (`cljqr`, `jdcljqr`) are not curtain motors (`cl`) and must not reuse `_category_cl.yaml`.
+
 ### 1. Create a YAML device descriptor
 
 Create a file named `<category>_<product_id>.yaml` under `custom_components/tuya_ble/device_descriptors/`. For example, for a device with category `sfkzq` and product ID `16wgjvck`, create `sfkzq_16wgjvck.yaml`:
@@ -133,7 +144,7 @@ entities:
 
 ### 5. Update `SUPPORTED_DEVICES.md`
 
-Add the device to the supported devices list in `SUPPORTED_DEVICES.md` (and, if it's a new category, add a row to the category summary table in `README.md`).
+Add the device to the supported devices list in `SUPPORTED_DEVICES.md` (and, if it's a new category, add a row to the category summary table in `README.md` and a row to the supported-categories table in `docs/TUYA_CATEGORIES.md`).
 
 ## Getting the data-point list
 
