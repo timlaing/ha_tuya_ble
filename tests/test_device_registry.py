@@ -16,6 +16,7 @@ from custom_components.tuya_ble.device_registry import (
     get_entity_descriptors,
     get_registry,
 )
+from custom_components.tuya_ble.products import get_product_info_by_ids
 
 
 def _descriptor() -> EntityDescriptor:
@@ -629,3 +630,145 @@ def test_battery_and_temperature_sensors_are_fully_described(
         if desc.device_class == device_class and _missing_required_fields(desc)
     ]
     assert offenders == []
+
+
+def _szjqr_products() -> list[DeviceEntities]:
+    """Every Fingerbot-family product, in product-id order."""
+    return sorted(
+        (
+            product
+            for product in get_registry().products.values()
+            if product.category == "szjqr"
+        ),
+        key=lambda product: product.product_id,
+    )
+
+
+def _szjqr_modes(product: DeviceEntities) -> list[str]:
+    """Every handler path in a descriptor that gates on the device's mode."""
+    return [
+        role_path
+        for desc in (
+            product.get("button")
+            + product.get("number")
+            + product.get("select")
+            + product.get("switch")
+            + product.get("text")
+        )
+        for role_path in desc.handlers.values()
+        if role_path.startswith("fingerbot.mode.")
+    ]
+
+
+def _mode_selects(product: DeviceEntities) -> list[EntityDescriptor]:
+    """The mode selects a descriptor declares."""
+    return [
+        desc
+        for desc in product.get("select")
+        if desc.translation_key == "fingerbot_mode"
+    ]
+
+
+def test_every_mode_gated_descriptor_exposes_a_mode_select() -> None:
+    """A ``fingerbot.mode.*`` gate is inert without a mode select to read.
+
+    The gates decide which entities are available from the device's operating
+    mode, but the mode itself lives on its own data point that no other entity
+    exposes. A descriptor that used the gates without declaring that select had
+    nothing to read the mode from, so the gated entities could not be offered.
+    """
+    missing = [
+        f"{product.product_id} gates on mode "
+        f"({sorted(set(_szjqr_modes(product)))}) but declares no mode select"
+        for product in _szjqr_products()
+        if _szjqr_modes(product) and not _mode_selects(product)
+    ]
+    assert missing == []
+
+
+def test_fingerbot_mode_select_is_uniform() -> None:
+    """Every mode select offers the same three modes, in the same order.
+
+    The options map positionally onto the wire values the mode data point
+    accepts, so the order is part of the contract rather than a preference.
+    """
+    offenders = [
+        f"{product.product_id} declares {desc.options}"
+        for product in _szjqr_products()
+        for desc in _mode_selects(product)
+        if desc.options != ["push", "switch", "program"]
+    ]
+    assert offenders == []
+
+
+def _declared_mode_dp(product: DeviceEntities) -> int:
+    """The data point ``products.py`` declares as the device's mode."""
+    info = get_product_info_by_ids(product.category, product.product_id)
+    assert info is not None, (
+        f"{product.category}/{product.product_id} has no product info"
+    )
+    assert info.fingerbot is not None, (
+        f"{product.category}/{product.product_id} declares no fingerbot info"
+    )
+    return info.fingerbot.mode
+
+
+def test_fingerbot_mode_select_matches_the_declared_mode_data_point() -> None:
+    """The mode select sits on the same data point the product declares.
+
+    ``products.py`` is the only remaining record of which data point carries
+    the mode for these devices; nothing else in a descriptor references it. This
+    pins the select to that data point until the registry takes ownership of it.
+    """
+    offenders = [
+        f"{product.product_id} mode select is on dp_id {desc.dp_id}, "
+        f"but the product declares mode on {_declared_mode_dp(product)}"
+        for product in _szjqr_products()
+        for desc in _mode_selects(product)
+        if desc.dp_id != _declared_mode_dp(product)
+    ]
+    assert offenders == []
+
+
+def test_szjqr_down_position_never_excludes_half_way() -> None:
+    """Any ``down_position`` that can reach 50 % must not start above it.
+
+    The finger pushes from its fully raised position, which the devices report
+    as 100 %, and 50 % is mid-travel. A floor of 51 meant the slider could not
+    be returned to the centre by hand once it had been moved. Descriptors that
+    legitimately travel less far -- the CubeTouch and Nedis models stop at 30 %
+    or start at 0 -- are unaffected, so the rule is stated as reachability
+    rather than as a fixed floor.
+    """
+    offenders = [
+        f"{product.product_id} down_position dp_id {desc.dp_id} spans "
+        f"{desc.min_value}-{desc.max_value}"
+        for product in _szjqr_products()
+        for desc in product.get("number")
+        if desc.translation_key == "down_position"
+        and desc.max_value is not None
+        and desc.max_value >= 50
+        and desc.min_value is not None
+        and desc.min_value > 50
+    ]
+    assert offenders == []
+
+
+@pytest.mark.parametrize("product_id", ["6jcvqwh0", "h8kdwywx", "riecov42"])
+def test_fingerbot_plus_products_are_fully_described(product_id: str) -> None:
+    """The three incomplete Fingerbot Plus descriptors now match the complete one.
+
+    ``blliqpsj`` is the reference: the same hardware under a different product
+    id, with its push button, mode select and program text all declared. The
+    other three shipped without them, so a push could not be triggered, the mode
+    could not be read, and a program could not be edited from the UI.
+    """
+    reference = get_registry().get("szjqr", "blliqpsj")
+    assert reference is not None
+    product = get_registry().get("szjqr", product_id)
+    assert product is not None
+
+    for platform in ("button", "select", "text"):
+        assert product.get(platform) == reference.get(platform), (
+            f"{product_id} {platform} differs from blliqpsj"
+        )
