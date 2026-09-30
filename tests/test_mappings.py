@@ -31,9 +31,6 @@ from custom_components.tuya_ble import (
     text,
     valve,
 )
-from custom_components.tuya_ble.device_descriptors.handlers.battery import (
-    battery_enum,
-)
 from custom_components.tuya_ble.device_descriptors.handlers.fingerbot import (
     get_position,
     in_program_mode,
@@ -297,7 +294,10 @@ def test_build_switch_mapping_bitmap_mask_and_handlers() -> None:
         icon="mdi:molecule-co2",
         entity_category="config",
         enabled_by_default=False,
-        handlers={"when": "battery.battery_enum", "read": "rssi.rssi"},
+        handlers={
+            "when": "water_valve.is_water_valve_in_switch_mode",
+            "read": "rssi.rssi",
+        },
         extra={"bitmap_mask": b"\x01"},
     )
     built = switch._build_switch_mapping(desc)
@@ -306,7 +306,7 @@ def test_build_switch_mapping_bitmap_mask_and_handlers() -> None:
     assert built.bitmap_mask == b"\x01"
     assert built.description.key == "carbon_dioxide_severely_exceed_alarm"
     assert built.description.entity_registry_enabled_default is False
-    assert built.is_available is cast(Any, battery_enum)
+    assert built.is_available is cast(Any, is_water_valve_in_switch_mode)
     assert built.getter is not None
     assert built.setter is None
 
@@ -697,6 +697,28 @@ def test_ggq_weather_delay_uses_the_captured_enum_codes(
     mappings = select.get_mapping_by_device(device)
 
     assert [item.dp_id for item in mappings] == [117, 114]
+    for mapping in mappings:
+        assert mapping.dp_type is TuyaBLEDataPointType.DT_ENUM
+        assert mapping.values is None
+        assert mapping.description.options == ["cancel", "24h", "48h", "72h"]
+
+
+@pytest.mark.parametrize("product_id", ["nxquc5lb", "c8800fd30884068f", "so5ybnw9"])
+def test_sfkzq_weather_delay_is_written_as_an_enum_index(
+    product_id: str,
+) -> None:
+    """The weather delay is an enum, so the option index is written as the code.
+
+    The ``sfkzq`` category definition types ``weather_delay`` as an ``Enum``
+    over the same four options. Declaring it as a string table with a parallel
+    ``values`` list meant ``select_option`` fed a non-numeric string into a data
+    point the device had already reported as an enum, which raised
+    ``TuyaBLEDataFormatError`` on serialisation instead of sending a packet.
+    """
+    device = cast(TuyaBLEDevice, FakeDevice("sfkzq", product_id))
+    mappings = select.get_mapping_by_device(device)
+
+    assert [item.dp_id for item in mappings] == [10]
     for mapping in mappings:
         assert mapping.dp_type is TuyaBLEDataPointType.DT_ENUM
         assert mapping.values is None

@@ -184,7 +184,7 @@ async def test_getter(hass: HomeAssistant) -> None:
 
 
 def _gated_on_dp13(entity: TuyaBLESensor, product: TuyaBLEProductInfo) -> bool:
-    """Availability gate that only passes while data point 13 is set."""
+    """Availability gate that passes while DP 13 is unset or its value is truthy."""
     datapoint = entity.device.datapoints[13]
     return bool(datapoint.value) if datapoint else True
 
