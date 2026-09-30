@@ -16,7 +16,7 @@ from custom_components.tuya_ble.device_registry import (
     get_entity_descriptors,
     get_registry,
 )
-from custom_components.tuya_ble.products import get_product_info_by_ids
+from custom_components.tuya_ble.devices import get_product_info_by_ids
 
 
 def _descriptor() -> EntityDescriptor:
@@ -563,11 +563,6 @@ def test_get_mapped_dp_ids_includes_handler_only_specs() -> None:
     assert {8, 15, 17, 121} <= dr.get_mapped_dp_ids("szjqr", "riecov42")
 
 
-def test_get_mapped_dp_ids_includes_water_valve_spec() -> None:
-    """The water valve handler's data points count as mapped."""
-    assert {1, 10, 11, 13, 15} <= dr.get_mapped_dp_ids("sfkzq", "16wgjvck")
-
-
 # The three ``kg`` Fingerbot Plus products, and the data points upstream's
 # mapping declares for them. Held here so a future edit that renumbers a data
 # point is caught rather than silently reaching for the wrong one on-device.
@@ -803,15 +798,13 @@ def test_fingerbot_mode_select_is_uniform() -> None:
 
 
 def _declared_mode_dp(product: DeviceEntities) -> int:
-    """The data point ``products.py`` declares as the device's mode."""
+    """The data point the product's descriptor resolves the mode to."""
     info = get_product_info_by_ids(product.category, product.product_id)
-    assert info is not None, (
-        f"{product.category}/{product.product_id} has no product info"
+    mode_dp_id = info.fingerbot_mode_dp_id
+    assert mode_dp_id is not None, (
+        f"{product.category}/{product.product_id} declares no fingerbot mode"
     )
-    assert info.fingerbot is not None, (
-        f"{product.category}/{product.product_id} declares no fingerbot info"
-    )
-    return info.fingerbot.mode
+    return mode_dp_id
 
 
 def test_fingerbot_mode_select_matches_the_declared_mode_data_point() -> None:

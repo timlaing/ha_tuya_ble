@@ -1,8 +1,7 @@
 """Backward-compatible re-exports from split modules.
 
 All symbols that were previously in this file now live in:
-  - products.py    — dataclasses, devices_database, helper functions
-  - entity.py      — TuyaBLEEntity, get_device_info
+  - entity.py      — TuyaBLEEntity, product metadata, device info helpers
   - coordinator.py — TuyaBLECoordinator
   - device_descriptors/handlers/ — per-device handlers (e.g. Fingerbot helpers)
 
@@ -15,13 +14,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from .coordinator import TuyaBLECoordinator
-from .entity import TuyaBLEEntity, TuyaBLERestoreEntity, get_device_info
-from .products import (
-    TuyaBLECategoryInfo,
-    TuyaBLEFingerbotInfo,
+from .entity import (
+    TuyaBLEEntity,
     TuyaBLEProductInfo,
-    TuyaBLEWaterValveInfo,
-    devices_database,
+    TuyaBLERestoreEntity,
+    get_device_info,
     get_device_product_info,
     get_device_readable_name,
     get_product_info_by_ids,
@@ -29,15 +26,11 @@ from .products import (
 )
 
 __all__ = [
-    "TuyaBLECategoryInfo",
     "TuyaBLECoordinator",
     "TuyaBLEData",
     "TuyaBLEEntity",
-    "TuyaBLEFingerbotInfo",
     "TuyaBLEProductInfo",
     "TuyaBLERestoreEntity",
-    "TuyaBLEWaterValveInfo",
-    "devices_database",
     "get_device_info",
     "get_device_product_info",
     "get_device_readable_name",

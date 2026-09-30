@@ -42,10 +42,10 @@ from custom_components.tuya_ble.device_descriptors.handlers.water_valve import (
 from custom_components.tuya_ble.device_registry import (
     EntityDescriptor,
     get_mapped_dp_ids,
+    get_registry,
 )
-from custom_components.tuya_ble.devices import TuyaBLEFingerbotInfo
-from custom_components.tuya_ble.products import devices_database
 from custom_components.tuya_ble.tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
+from tests.conftest import make_product_info
 
 PLATFORMS = {
     "binary_sensor": binary_sensor,
@@ -531,18 +531,42 @@ def test_build_light_mapping() -> None:
     assert built.color_temp_max == 90
 
 
-def test_fingerbot_info_defaults() -> None:
-    """Verify default fingerbot info fields."""
-    info = TuyaBLEFingerbotInfo(
-        switch=1,
-        mode=2,
-        up_position=5,
-        down_position=6,
-        hold_time=3,
-        reverse_positions=4,
-    )
-    assert info.manual_control == 0
-    assert info.program == 0
+def test_get_mapped_dp_ids_includes_the_water_valve_entity() -> None:
+    """The water valve's own data points count as mapped.
+
+    The switch handler reads data points 15, 11 and 2 on top of the switch's own
+    1, and all four are declared as entities, so nothing it touches is reported
+    as an unmapped data point.
+    """
+    assert {1, 2, 11, 15} <= get_mapped_dp_ids("sfkzq", "16wgjvck")
+
+
+def test_get_mapped_dp_ids_excludes_data_points_no_entity_uses() -> None:
+    """A data point no entity declares is not treated as mapped.
+
+    Data points 10 and 13 used to be declared mapped by the water valve spec, so
+    the unmapped-data-point diagnostic stayed quiet about them even though
+    nothing read them.
+    """
+    assert {10, 13}.isdisjoint(get_mapped_dp_ids("sfkzq", "16wgjvck"))
+
+
+def test_product_info_dp_ids_are_descriptor_derived() -> None:
+    """A Fingerbot's dp ids come from its entities, absent ones stay None."""
+    info = make_product_info(mode=2, switch=1)
+    assert info.fingerbot_mode_dp_id == 2
+    assert info.fingerbot_switch_dp_id == 1
+    assert info.fingerbot_manual_control_dp_id is None
+    assert info.fingerbot_program_dp_id is None
+    assert not info.is_water_valve
+
+
+def test_plain_product_has_no_fingerbot_dp_ids() -> None:
+    """A product with no fingerbot entities resolves no fingerbot dp ids."""
+    info = make_product_info()
+    assert info.fingerbot_mode_dp_id is None
+    assert info.fingerbot_switch_dp_id is None
+    assert info.fingerbot_program_dp_id is None
 
 
 @pytest.mark.parametrize(
@@ -762,9 +786,7 @@ def test_all_product_mappings_use_registered_category() -> None:
         for category, category_mapping in platform.mapping.items():
             for product_id in category_mapping.products or {}:
                 product_is_registered = (
-                    category in devices_database
-                    and devices_database[category].products is not None
-                    and product_id in devices_database[category].products
+                    get_registry().get(category, product_id) is not None
                 )
                 if (
                     not product_is_registered

@@ -19,7 +19,7 @@ from .const import (
     SET_DISCONNECTED_DELAY,
 )
 from .device_registry import get_mapped_dp_ids, get_registry
-from .products import get_device_product_info
+from .entity import get_device_product_info
 from .tuya_ble import (
     TuyaBLEDataPoint,
     TuyaBLEDevice,
@@ -122,21 +122,25 @@ class TuyaBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self._log_unmapped_dp(updates)
         info = get_device_product_info(self.device)
-        if info and info.fingerbot and info.fingerbot.manual_control != 0:
-            for update in updates:
-                if update.dp_id == info.fingerbot.switch and update.changed_by_device:
-                    _LOGGER.debug(
-                        "%s: Fingerbot button event for data point %s",
-                        self.device.address,
-                        update.dp_id,
-                    )
-                    self.hass.bus.fire(
-                        FINGERBOT_BUTTON_EVENT,
-                        {
-                            CONF_ADDRESS: self.device.address,
-                            CONF_DEVICE_ID: self.device.device_id,
-                        },
-                    )
+        # Only the Fingerbot Plus has a sensor button, so a manual control
+        # entity is what makes a switch change worth an event.
+        if info.fingerbot_manual_control_dp_id is None:
+            return
+        switch_dp_id = info.fingerbot_switch_dp_id
+        for update in updates:
+            if update.dp_id == switch_dp_id and update.changed_by_device:
+                _LOGGER.debug(
+                    "%s: Fingerbot button event for data point %s",
+                    self.device.address,
+                    update.dp_id,
+                )
+                self.hass.bus.fire(
+                    FINGERBOT_BUTTON_EVENT,
+                    {
+                        CONF_ADDRESS: self.device.address,
+                        CONF_DEVICE_ID: self.device.device_id,
+                    },
+                )
 
     def _resolve_dp_classification(self) -> tuple[bool, frozenset[int]]:
         """Return whether the product is registered, and the ids it maps.

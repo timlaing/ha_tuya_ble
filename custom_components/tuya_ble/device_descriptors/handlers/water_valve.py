@@ -7,8 +7,7 @@ from typing import TYPE_CHECKING
 from ...tuya_ble import TuyaBLEDataPointType
 
 if TYPE_CHECKING:
-    from ...entity import TuyaBLEEntity
-    from ...products import TuyaBLEProductInfo
+    from ...entity import TuyaBLEEntity, TuyaBLEProductInfo
     from ...switch import TuyaBLESwitch
 
 
@@ -17,7 +16,7 @@ def is_water_valve_in_switch_mode(
     product: TuyaBLEProductInfo,
 ) -> bool:
     """Return True if the product is a water valve."""
-    return product.watervalve is not None
+    return product.is_water_valve
 
 
 def set_16wgjvck_water_valve(

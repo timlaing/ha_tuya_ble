@@ -20,7 +20,7 @@ from custom_components.tuya_ble.const import (
     SET_DISCONNECTED_DELAY,
 )
 from custom_components.tuya_ble.coordinator import TuyaBLECoordinator
-from custom_components.tuya_ble.devices import TuyaBLEFingerbotInfo, TuyaBLEProductInfo
+from custom_components.tuya_ble.devices import TuyaBLEProductInfo
 from custom_components.tuya_ble.tuya_ble import (
     TuyaBLEDataPoint,
     TuyaBLEDataPointType,
@@ -31,6 +31,7 @@ from tests.conftest import (
     StatusRecordingDevice,
     make_credentials,
     make_device,
+    make_product_info,
     make_status_device,
 )
 from tests.protocol_harness import (
@@ -87,17 +88,8 @@ def _make_coord(
 
 def _fingerbot_product(manual_control: int) -> TuyaBLEProductInfo:
     """Return a product info carrying fingerbot specs with manual control."""
-    return TuyaBLEProductInfo(
-        name="Fingerbot",
-        fingerbot=TuyaBLEFingerbotInfo(
-            switch=1,
-            mode=2,
-            up_position=5,
-            down_position=6,
-            hold_time=3,
-            reverse_positions=4,
-            manual_control=manual_control,
-        ),
+    return make_product_info(
+        name="Fingerbot", mode=2, switch=1, manual_control=manual_control
     )
 
 

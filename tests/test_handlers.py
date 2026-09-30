@@ -20,11 +20,8 @@ from custom_components.tuya_ble.device_descriptors.handlers.fingerbot import (
 from custom_components.tuya_ble.device_descriptors.handlers.fingerbot import (
     program as fingerbot_program,
 )
-from custom_components.tuya_ble.products import (
-    TuyaBLEFingerbotInfo,
-    TuyaBLEProductInfo,
-    TuyaBLEWaterValveInfo,
-)
+from custom_components.tuya_ble.devices import TuyaBLEProductInfo
+from tests.conftest import make_product_info
 
 pytestmark = pytest.mark.filterwarnings("ignore::RuntimeWarning")
 
@@ -73,26 +70,22 @@ def make_datapoint(value: Any, raw_value: bytes | None = None) -> Any:
 
 
 def make_fingerbot_product() -> TuyaBLEProductInfo:
-    """Build product info with a fingerbot descriptor."""
-    return TuyaBLEProductInfo(
-        name="Fingerbot",
-        fingerbot=TuyaBLEFingerbotInfo(
-            switch=1,
-            mode=2,
-            up_position=3,
-            down_position=4,
-            hold_time=5,
-            reverse_positions=6,
-            program=7,
-        ),
-    )
+    """Build product info for a Fingerbot with a program."""
+    return make_product_info(name="Fingerbot", mode=2, switch=1, program=7)
 
 
-def _fb(product: TuyaBLEProductInfo) -> TuyaBLEFingerbotInfo:
-    """Return the fingerbot descriptor, asserting it is present."""
-    fb = product.fingerbot
-    assert fb is not None
-    return fb
+def _mode_dp(product: TuyaBLEProductInfo) -> int:
+    """Return the fingerbot mode dp_id, asserting it is present."""
+    dp_id = product.fingerbot_mode_dp_id
+    assert dp_id is not None
+    return dp_id
+
+
+def _program_dp(product: TuyaBLEProductInfo) -> int:
+    """Return the fingerbot program dp_id, asserting it is present."""
+    dp_id = product.fingerbot_program_dp_id
+    assert dp_id is not None
+    return dp_id
 
 
 def test_resolve_handler_dotted_path() -> None:
@@ -165,12 +158,7 @@ def test_rssi_sensor_sets_signal() -> None:
 def test_water_valve_in_switch_mode_true() -> None:
     """is_water_valve_in_switch_mode is True when product is a water valve."""
     entity: Any = SimpleNamespace()
-    product = TuyaBLEProductInfo(
-        name="Valve",
-        watervalve=TuyaBLEWaterValveInfo(
-            switch=1, countdown=2, weather_delay=3, smart_weather=4, use_time=5
-        ),
-    )
+    product = make_product_info(name="Valve", water_valve=1)
     assert water_valve.is_water_valve_in_switch_mode(entity, product)
 
 
@@ -333,7 +321,7 @@ def test_raw_hex_missing_datapoint() -> None:
 def test_in_program_mode_true() -> None:
     """in_program_mode is True when the mode datapoint equals 2."""
     product = make_fingerbot_product()
-    owner = make_fake_owner({_fb(product).mode: make_datapoint(2)})
+    owner = make_fake_owner({_mode_dp(product): make_datapoint(2)})
     assert fingerbot_mode.in_program_mode(owner, product)
 
 
@@ -347,21 +335,21 @@ def test_in_program_mode_false_no_datapoint() -> None:
 def test_not_in_program_mode_true() -> None:
     """not_in_program_mode is True when the mode is not 2."""
     product = make_fingerbot_product()
-    owner = make_fake_owner({_fb(product).mode: make_datapoint(1)})
+    owner = make_fake_owner({_mode_dp(product): make_datapoint(1)})
     assert fingerbot_mode.not_in_program_mode(owner, product)
 
 
 def test_in_switch_mode_true() -> None:
     """in_switch_mode is True when the mode datapoint equals 1."""
     product = make_fingerbot_product()
-    owner = make_fake_owner({_fb(product).mode: make_datapoint(1)})
+    owner = make_fake_owner({_mode_dp(product): make_datapoint(1)})
     assert fingerbot_mode.in_switch_mode(owner, product)
 
 
 def test_in_push_mode_true() -> None:
     """in_push_mode is True when the mode datapoint equals 0."""
     product = make_fingerbot_product()
-    owner = make_fake_owner({_fb(product).mode: make_datapoint(0)})
+    owner = make_fake_owner({_mode_dp(product): make_datapoint(0)})
     assert fingerbot_mode.in_push_mode(owner, product)
 
 
@@ -389,8 +377,8 @@ def test_repeat_count_available_finite() -> None:
     """repeat_count_available is True for a finite repeat count."""
     product = make_fingerbot_product()
     owner = make_fake_owner({
-        _fb(product).mode: make_datapoint(2),
-        _fb(product).program: make_datapoint(b"\x00\x0a" + b"\x00\x00\x00"),
+        _mode_dp(product): make_datapoint(2),
+        _program_dp(product): make_datapoint(b"\x00\x0a" + b"\x00\x00\x00"),
     })
     assert fingerbot_mode.repeat_count_available(owner, product)
 
@@ -399,8 +387,8 @@ def test_repeat_count_available_forever() -> None:
     """repeat_count_available is False for the 0xFFFF repeat marker."""
     product = make_fingerbot_product()
     owner = make_fake_owner({
-        _fb(product).mode: make_datapoint(2),
-        _fb(product).program: make_datapoint(b"\xff\xff" + b"\x00\x00\x00"),
+        _mode_dp(product): make_datapoint(2),
+        _program_dp(product): make_datapoint(b"\xff\xff" + b"\x00\x00\x00"),
     })
     assert not fingerbot_mode.repeat_count_available(owner, product)
 
@@ -422,7 +410,7 @@ def test_repeat_count_available_non_fingerbot() -> None:
 def test_repeat_count_available_not_in_program_mode() -> None:
     """repeat_count_available is False when the mode is not program mode."""
     product = make_fingerbot_product()
-    owner = make_fake_owner({_fb(product).mode: make_datapoint(1)})
+    owner = make_fake_owner({_mode_dp(product): make_datapoint(1)})
     assert not fingerbot_mode.repeat_count_available(owner, product)
 
 
@@ -433,7 +421,7 @@ def test_get_repeat_count() -> None:
     """get_repeat_count returns the repeat count as a float."""
     product = make_fingerbot_product()
     owner = make_fake_owner({
-        _fb(product).program: make_datapoint(b"\x00\x05\x00\x00\x00")
+        _program_dp(product): make_datapoint(b"\x00\x05\x00\x00\x00")
     })
     assert fingerbot_program.get_repeat_count(owner, product) == 5.0
 
@@ -449,7 +437,7 @@ def test_set_repeat_count() -> None:
     """set_repeat_count rebuilds the first two bytes and schedules a write."""
     product = make_fingerbot_product()
     data = bytearray(b"\x00\x05\x00\x00\x00")
-    owner = make_fake_owner({_fb(product).program: make_datapoint(bytes(data))})
+    owner = make_fake_owner({_program_dp(product): make_datapoint(bytes(data))})
     fingerbot_program.set_repeat_count(owner, product, 7.0)
     assert len(owner.hass.task_calls) == 1
 
@@ -458,7 +446,7 @@ def test_get_repeat_forever_true() -> None:
     """get_repeat_forever returns True for the 0xFFFF marker."""
     product = make_fingerbot_product()
     owner = make_fake_owner({
-        _fb(product).program: make_datapoint(b"\xff\xff\x00\x00\x00")
+        _program_dp(product): make_datapoint(b"\xff\xff\x00\x00\x00")
     })
     assert fingerbot_program.get_repeat_forever(owner, product) is True
 
@@ -467,7 +455,7 @@ def test_get_repeat_forever_false() -> None:
     """get_repeat_forever returns False for a finite repeat count."""
     product = make_fingerbot_product()
     owner = make_fake_owner({
-        _fb(product).program: make_datapoint(b"\x00\x05\x00\x00\x00")
+        _program_dp(product): make_datapoint(b"\x00\x05\x00\x00\x00")
     })
     assert fingerbot_program.get_repeat_forever(owner, product) is False
 
@@ -483,7 +471,7 @@ def test_set_repeat_forever_true() -> None:
     """set_repeat_forever writes the 0xFFFF marker when enabled."""
     product = make_fingerbot_product()
     owner = make_fake_owner({
-        _fb(product).program: make_datapoint(b"\x00\x05\x00\x00\x00")
+        _program_dp(product): make_datapoint(b"\x00\x05\x00\x00\x00")
     })
     fingerbot_program.set_repeat_forever(owner, product, True)
     assert len(owner.hass.task_calls) == 1
@@ -493,7 +481,7 @@ def test_set_repeat_forever_false() -> None:
     """set_repeat_forever writes 1 when disabling the forever repeat."""
     product = make_fingerbot_product()
     owner = make_fake_owner({
-        _fb(product).program: make_datapoint(b"\xff\xff\x00\x00\x00")
+        _program_dp(product): make_datapoint(b"\xff\xff\x00\x00\x00")
     })
     fingerbot_program.set_repeat_forever(owner, product, False)
     assert len(owner.hass.task_calls) == 1
@@ -502,7 +490,7 @@ def test_set_repeat_forever_false() -> None:
 def test_get_position() -> None:
     """get_position returns the third program byte as a float."""
     product = make_fingerbot_product()
-    owner = make_fake_owner({_fb(product).program: make_datapoint(b"\x00\x00\x0a\x00")})
+    owner = make_fake_owner({_program_dp(product): make_datapoint(b"\x00\x00\x0a\x00")})
     assert fingerbot_program.get_position(owner, product) == 10.0
 
 
@@ -517,7 +505,7 @@ def test_set_position() -> None:
     """set_position rebuilds the third byte and schedules a write."""
     product = make_fingerbot_product()
     owner = make_fake_owner({
-        _fb(product).program: make_datapoint(b"\x00\x00\x00\x00\x00")
+        _program_dp(product): make_datapoint(b"\x00\x00\x00\x00\x00")
     })
     fingerbot_program.set_position(owner, product, 42.0)
     assert len(owner.hass.task_calls) == 1
@@ -527,7 +515,7 @@ def test_get_program_multiple_steps() -> None:
     """get_program formats multiple steps with semicolon separators."""
     product = make_fingerbot_product()
     program = b"\x00\x00\x00\x02" + b"\x05\x00\x0a" + b"\x06\x00\x64"
-    owner = make_fake_owner({_fb(product).program: make_datapoint(program)})
+    owner = make_fake_owner({_program_dp(product): make_datapoint(program)})
     assert fingerbot_program.get_program(owner, product) == "5/10;6/100"
 
 
@@ -541,7 +529,7 @@ def test_get_program_missing() -> None:
 def test_set_program() -> None:
     """set_program rebuilds the program string and schedules a write."""
     product = make_fingerbot_product()
-    owner = make_fake_owner({_fb(product).program: make_datapoint(b"\x00\x00\x00\x00")})
+    owner = make_fake_owner({_program_dp(product): make_datapoint(b"\x00\x00\x00\x00")})
     fingerbot_program.set_program(owner, product, "5/10;6")
     assert len(owner.hass.task_calls) == 1
 
@@ -571,7 +559,7 @@ def test_program_handlers_non_fingerbot_noop() -> None:
 def test_program_handlers_non_bytes_datapoint() -> None:
     """Program get/set handlers ignore non-bytes datapoint values."""
     product = make_fingerbot_product()
-    owner = make_fake_owner({_fb(product).program: make_datapoint("nope")})
+    owner = make_fake_owner({_program_dp(product): make_datapoint("nope")})
     assert fingerbot_program.get_repeat_count(owner, product) is None
     assert fingerbot_program.get_repeat_forever(owner, product) is None
     assert fingerbot_program.get_position(owner, product) is None
@@ -586,5 +574,5 @@ def test_get_program_step_with_zero_delay() -> None:
     """get_program omits the delay when a step has delay zero."""
     product = make_fingerbot_product()
     program = b"\x00\x00\x00\x02" + b"\x05\x00\x00" + b"\x06\x00\x64"
-    owner = make_fake_owner({_fb(product).program: make_datapoint(program)})
+    owner = make_fake_owner({_program_dp(product): make_datapoint(program)})
     assert fingerbot_program.get_program(owner, product) == "5;6/100"

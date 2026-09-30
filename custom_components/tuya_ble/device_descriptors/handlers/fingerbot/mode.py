@@ -4,62 +4,60 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .program import get_repeat_forever
+
 if TYPE_CHECKING:
-    from ....entity import TuyaBLEEntity
-    from ....products import TuyaBLEProductInfo
+    from ....entity import TuyaBLEEntity, TuyaBLEProductInfo
+
+
+def _mode(entity: TuyaBLEEntity, product: TuyaBLEProductInfo) -> int | None:
+    """Return the fingerbot's current mode, or None when it is not reported.
+
+    A None result means "do not restrict on mode": either this is not a
+    fingerbot, or the device has not reported its mode yet, and in both cases
+    the entity stays available.
+    """
+    dp_id = product.fingerbot_mode_dp_id
+    if dp_id is None:
+        return None
+    datapoint = entity.device.datapoints[dp_id]
+    if datapoint is None or not isinstance(datapoint.value, int):
+        return None
+    return datapoint.value
 
 
 def in_program_mode(entity: TuyaBLEEntity, product: TuyaBLEProductInfo) -> bool:
     """Return True if the fingerbot is in program mode."""
-    result: bool = True
-    if product.fingerbot:
-        datapoint = entity.device.datapoints[product.fingerbot.mode]
-        if datapoint:
-            result = datapoint.value == 2
-    return result
+    mode = _mode(entity, product)
+    return mode is None or mode == 2
 
 
 def not_in_program_mode(entity: TuyaBLEEntity, product: TuyaBLEProductInfo) -> bool:
     """Return True if the fingerbot is not in program mode."""
-    result: bool = True
-    if product.fingerbot:
-        datapoint = entity.device.datapoints[product.fingerbot.mode]
-        if datapoint:
-            result = datapoint.value != 2
-    return result
+    mode = _mode(entity, product)
+    return mode is None or mode != 2
 
 
 def in_switch_mode(entity: TuyaBLEEntity, product: TuyaBLEProductInfo) -> bool:
     """Return True if the fingerbot is in switch mode."""
-    result: bool = True
-    if product.fingerbot:
-        datapoint = entity.device.datapoints[product.fingerbot.mode]
-        if datapoint:
-            result = datapoint.value == 1
-    return result
+    mode = _mode(entity, product)
+    return mode is None or mode == 1
 
 
 def in_push_mode(entity: TuyaBLEEntity, product: TuyaBLEProductInfo) -> bool:
     """Return True if the fingerbot is in push mode."""
-    result: bool = True
-    if product.fingerbot:
-        datapoint = entity.device.datapoints[product.fingerbot.mode]
-        if datapoint:
-            result = datapoint.value == 0
-    return result
+    mode = _mode(entity, product)
+    return mode is None or mode == 0
 
 
 def repeat_count_available(entity: TuyaBLEEntity, product: TuyaBLEProductInfo) -> bool:
-    """Return whether the fingerbot program repeat count is available."""
-    result: bool = True
-    if product.fingerbot and product.fingerbot.program:
-        datapoint = entity.device.datapoints[product.fingerbot.mode]
-        if datapoint:
-            result = datapoint.value == 2
-        if result:
-            datapoint = entity.device.datapoints[product.fingerbot.program]
-            if datapoint and isinstance(datapoint.value, bytes):
-                repeat_count = int.from_bytes(datapoint.value[0:2], "big")
-                result = repeat_count != 0xFFFF
+    """Return whether the fingerbot program repeat count is available.
 
-    return result
+    A count only means anything while a program is running, and the device
+    reports 0xFFFF as "repeating forever" instead of a count -- so the count is
+    available exactly when the fingerbot is not repeating forever.
+    """
+    mode = _mode(entity, product)
+    if mode is not None and mode != 2:
+        return False
+    return not get_repeat_forever(entity, product)

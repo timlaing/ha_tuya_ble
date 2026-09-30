@@ -13,6 +13,7 @@ from bleak.backends.scanner import AdvertisementData
 from homeassistant.core import HomeAssistant
 import pytest
 
+from custom_components.tuya_ble.device_registry import DeviceEntities, EntityDescriptor
 from custom_components.tuya_ble.devices import (
     TuyaBLECoordinator,
     TuyaBLEProductInfo,
@@ -235,14 +236,75 @@ def make_status_device[T: StatusRecordingDevice](
     return device_cls(manager, ble_device, advertisement_data)
 
 
+def make_product_info(
+    *,
+    name: str = "Test Product",
+    manufacturer: str = "TestMfg",
+    mode: int | None = None,
+    switch: int | None = None,
+    program: int | None = None,
+    manual_control: int | None = None,
+    water_valve: int | None = None,
+) -> TuyaBLEProductInfo:
+    """Build a descriptor-backed TuyaBLEProductInfo for tests.
+
+    Mirrors how the integration derives data point ids: a Fingerbot is a
+    product with a ``fingerbot_mode`` select, and a water valve is a product
+    with a ``valve`` entity. Pass None for an entity the product does not have.
+    """
+    entities: dict[str, list[EntityDescriptor]] = {}
+    if mode is not None:
+        entities.setdefault("select", []).append(
+            EntityDescriptor(
+                platform="select", dp_id=mode, translation_key="fingerbot_mode"
+            )
+        )
+    if switch is not None:
+        entities.setdefault("switch", []).append(
+            EntityDescriptor(platform="switch", dp_id=switch, translation_key="switch")
+        )
+    if manual_control is not None:
+        entities.setdefault("switch", []).append(
+            EntityDescriptor(
+                platform="switch",
+                dp_id=manual_control,
+                translation_key="manual_control",
+            )
+        )
+    if program is not None:
+        entities.setdefault("number", []).append(
+            EntityDescriptor(
+                platform="number",
+                dp_id=program,
+                translation_key="program_idle_position",
+            )
+        )
+    if water_valve is not None:
+        entities.setdefault("valve", []).append(
+            EntityDescriptor(
+                platform="valve", dp_id=water_valve, translation_key="valve"
+            )
+        )
+    return TuyaBLEProductInfo(
+        name=name,
+        manufacturer=manufacturer,
+        entities=DeviceEntities(
+            category="test",
+            product_id="testproduct",
+            device_name=name,
+            manufacturer=manufacturer,
+            entities=entities,
+        ),
+    )
+
+
 def build_context(
     hass: HomeAssistant,
 ) -> tuple[TuyaBLEDevice, TuyaBLECoordinator, TuyaBLEProductInfo]:
     """Build a device, coordinator, and product info triple for entity tests."""
     device = make_status_device(_EntityManager, device_cls=EntityDevice)
     coordinator = TuyaBLECoordinator(hass, device)
-    product = TuyaBLEProductInfo(name="Test Product", manufacturer="TestMfg")
-    return device, coordinator, product
+    return device, coordinator, make_product_info()
 
 
 def add_dp(

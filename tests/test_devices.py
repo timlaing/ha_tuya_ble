@@ -27,8 +27,6 @@ from custom_components.tuya_ble.device_registry import get_registry
 from custom_components.tuya_ble.devices import (
     TuyaBLECoordinator,
     TuyaBLEEntity,
-    TuyaBLEFingerbotInfo,
-    TuyaBLEProductInfo,
     get_device_info,
     get_device_product_info,
     get_device_readable_name,
@@ -42,7 +40,7 @@ from custom_components.tuya_ble.tuya_ble import (
     TuyaBLEDevice,
     TuyaBLEDeviceCredentials,
 )
-from tests.conftest import make_credentials, make_device
+from tests.conftest import make_credentials, make_device, make_product_info
 
 
 def test_found() -> None:
@@ -54,12 +52,12 @@ def test_found() -> None:
 
 def test_category_unknown() -> None:
     """Return None for an unknown category."""
-    assert get_product_info_by_ids("nonexistent", "x") is None
+    assert not get_product_info_by_ids("nonexistent", "x").entities
 
 
 def test_product_unknown_falls_back_to_category_info() -> None:
     """Return None when both the category and product are unknown."""
-    assert get_product_info_by_ids("ms", "unknown") is None
+    assert not get_product_info_by_ids("ms", "unknown").entities
 
 
 def test_co2() -> None:
@@ -69,12 +67,24 @@ def test_co2() -> None:
     assert info.name == "CO2 Detector"
 
 
+def test_descriptor_only_products_are_reachable() -> None:
+    """Products that only ever had a descriptor now resolve to one.
+
+    The hand-written product database had no entry for these two, so setup
+    refused the whole entry as an unknown device and no entity could ever be
+    created for them.
+    """
+    for category, product_id in (("cl", "qqdxfdht"), ("ms", "bvclwu9b")):
+        info = get_product_info_by_ids(category, product_id)
+        assert info.entities is not None, f"{category}/{product_id} has no descriptor"
+        assert info.entities.entities, f"{category}/{product_id} declares no entity"
+
+
 def test_fingerbot_product() -> None:
     """Look up a fingerbot product with its datapoint mapping."""
     info = get_product_info_by_ids("szjqr", "ltak7e1p")
-    assert info is not None
-    assert info.fingerbot is not None
-    assert info.fingerbot.switch == 2
+    assert info.fingerbot_switch_dp_id == 2
+    assert info.fingerbot_mode_dp_id is not None
 
 
 def test_diivoo_dual_water_timer_uses_cloud_category() -> None:
@@ -82,7 +92,7 @@ def test_diivoo_dual_water_timer_uses_cloud_category() -> None:
     info = get_product_info_by_ids("ggq", "fdrbxxbg")
     assert info is not None
     assert info.name == "Diivoo WT-05 dual water timer"
-    assert get_product_info_by_ids("sfkzq", "fdrbxxbg") is None
+    assert not get_product_info_by_ids("sfkzq", "fdrbxxbg").entities
 
 
 def test_device_product_info() -> None:
@@ -381,16 +391,7 @@ async def test_async_shutdown_without_timer(hass: HomeAssistant) -> None:
 async def test_handle_update_fires_fingerbot_event(hass: HomeAssistant) -> None:
     """Fire the fingerbot button event when the switch datapoint changes."""
     coordinator, device = _make_coord(hass)
-    fingerbot = TuyaBLEFingerbotInfo(
-        switch=2,
-        mode=1,
-        up_position=5,
-        down_position=6,
-        hold_time=3,
-        reverse_positions=4,
-        manual_control=7,
-    )
-    product = TuyaBLEProductInfo(name="Fingerbot", fingerbot=fingerbot)
+    product = make_product_info(name="Fingerbot", mode=1, switch=2, manual_control=7)
     with patch(
         "custom_components.tuya_ble.coordinator.get_device_product_info",
         return_value=product,
@@ -412,13 +413,13 @@ async def test_handle_update_fires_fingerbot_event(hass: HomeAssistant) -> None:
 
 
 async def test_handle_update_no_fingerbot_event(hass: HomeAssistant) -> None:
-    """Do not fire an event for devices without fingerbot specs."""
+    """Do not fire an event for products with no fingerbot sensor button."""
     coordinator, _ = _make_coord(hass)
     captured: list[Event[Any]] = []
     hass.bus.async_listen(FINGERBOT_BUTTON_EVENT, captured.append)
     with patch(
         "custom_components.tuya_ble.coordinator.get_device_product_info",
-        return_value=None,
+        return_value=make_product_info(),
     ):
         coordinator._async_handle_update([])
         await hass.async_block_till_done()
@@ -513,16 +514,7 @@ async def test_no_event_when_not_changed_by_device(hass: HomeAssistant) -> None:
     dev = make_device()
     dev._device_info = make_credentials()
     coordinator = TuyaBLECoordinator(hass, dev)
-    fingerbot = TuyaBLEFingerbotInfo(
-        switch=2,
-        mode=1,
-        up_position=5,
-        down_position=6,
-        hold_time=3,
-        reverse_positions=4,
-        manual_control=7,
-    )
-    product = TuyaBLEProductInfo(name="Fingerbot", fingerbot=fingerbot)
+    product = make_product_info(name="Fingerbot", mode=1, switch=2, manual_control=7)
     # Create a datapoint with changed_by_device=False
     device = dev
     device.datapoints.update_from_device(
