@@ -25,7 +25,7 @@ Systematic review checklist for the `ha_tuya_ble` Home Assistant custom integrat
 - `tuya_ble/` is a pure BLE protocol library. It must never import from `custom_components/`, `homeassistant.*`, or cloud modules.
 - All public BLE symbols (`TuyaBLEDevice`, `TuyaBLEDataPoint`, `TuyaBLEDataPointType`, `TuyaBLEDataPoints`, `BLEAK_EXCEPTIONS`, `BLE_CONNECTION_EXCEPTIONS`, `SERVICE_UUID`, `AbstractTuyaBLEDeviceManager`, `TuyaBLEDeviceCredentials`) must be re-exported from `tuya_ble/__init__.py`. Platform files import from the package, never from internal modules like `tuya_ble.datapoints` or `tuya_ble.protocol_mixin`.
 - `TUYA_CLIENT_ID` and `TUYA_SCHEMA` are imported from `homeassistant.components.tuya.const` — never redefine locally.
-- `devices.py`/`devices_database` is a pure registry. `coordinator.py` is the coordinator. `entity.py` is the entity base. `fingerbot.py` holds Fingerbot-specific helpers. Do not mix concerns.
+- `device_registry.py` owns descriptor loading/validation and `get_registry`; it is pure. `coordinator.py` is the coordinator. `entity.py` is the entity base. Fingerbot helpers live in `device_descriptors/handlers/fingerbot/`. `devices.py` is a re-export shim — never add code to it. Do not mix concerns.
 - Runtime dependency: only `tuya-device-sharing-sdk`. Never add `tuya-iot-py-sdk` back.
 
 ## 2. Imports & Circular Dependencies
@@ -38,10 +38,9 @@ Systematic review checklist for the `ha_tuya_ble` Home Assistant custom integrat
 ## 3. Type Safety & Typing
 
 - `Optional[X]` → `X | None`. Use modern union syntax throughout.
-- HA 2026.8+ `EntityDescription` subclasses use `frozen_dataclass_compat`, which does not honor class-level defaults for required `key` fields. Subclasses like `TemperatureUnitDescription`, `TuyaBLEDownPositionDescription`, `UpPositionDescription`, `HoldTimeDescription` must pass `key=` explicitly at every construction site.
+- Descriptions are always assembled into a `kwargs` dict that already contains `key`, so a subclass such as `TemperatureUnitDescription` (select.py) only ever supplies extra defaults like `icon` or `entity_category` — never `key`. Add a subclass for defaults, not for `key`.
 - `TuyaBLEDataPoints` has no `__contains__` — `x in datapoints` loops forever. Use `datapoints[key] is None` instead.
 - `bool` is a subclass of `int` in Python. `isinstance(True, int)` is `True`. If you need to distinguish bool from int, check `type(x) is bool` first.
-- `TuyaBLEWaterValveInfo.weather_delay` and `.smart_weather` are typed as `int`, not `str`.
 - `ColorMode` must be imported from `homeassistant.components.light.const` (not `homeassistant.components.light`).
 - In production source, `# type: ignore` suppressions are acceptable only for third-party SDKs missing stubs, unavoidable HA framework typing gaps, MRO-related attribute errors on `_QRCodeLoginMixin`, and HA entity `self.hass` assignment.
 - Test setup may use narrowly coded suppressions when fakes intentionally do not satisfy runtime types. Require the specific error code and keep the suppression on the affected expression.
@@ -52,7 +51,7 @@ Systematic review checklist for the `ha_tuya_ble` Home Assistant custom integrat
 - `get_or_create()` always returns non-None. Any `if datapoint:` guard after it is dead code — remove the guard or handle the `None` case explicitly at the call site.
 - `dict.fromkeys(keys, [mutable])` shares the same list object across all keys. Use `{k: [list] for k in keys}` (dict comprehension) to avoid SonarQube S8508.
 - Unreachable branches (`if x is None` after a function that guarantees `x is not None`) should be removed.
-- Duplicate function definitions (same logic in two files) should be consolidated into a shared helper in `fingerbot.py` or similar.
+- Duplicate function definitions (same logic in two files) should be consolidated into a shared handler under `custom_components/tuya_ble/device_descriptors/handlers/`.
 
 ## 5. HA Entity Conventions
 
@@ -60,7 +59,7 @@ Systematic review checklist for the `ha_tuya_ble` Home Assistant custom integrat
 - `config_flow.py` uses `_QRCodeLoginMixin` with plain protected attributes (not name-mangled). HA config flow steps (`async_step_*`) always receive `user_input: dict[str, Any] | None` even when unused — this is required by the interface.
 - `manifest.json` must include `bluetooth_adapters` as a dependency and an `issue_tracker` URL.
 - Entity description subclasses must be frozen dataclasses. Do not add mutable fields.
-- Fingerbot helpers (`get_fingerbot_program`, `set_fingerbot_program`, `is_fingerbot_in_program_mode`, `set_fingerbot_program_repeat_forever`) live in `fingerbot.py`. Platform files import from there.
+- Fingerbot logic is descriptor handlers in `device_descriptors/handlers/fingerbot/` (`mode.py`, `program.py`), reached from YAML by dotted path (`fingerbot.program.get_program`, `fingerbot.mode.in_program_mode`). Platform files do not import them; only `sensor.py` imports a handler directly, for the `rssi` getter.
 
 ## 6. Test Conventions
 
@@ -70,7 +69,7 @@ Systematic review checklist for the `ha_tuya_ble` Home Assistant custom integrat
 - Tests that mock `asyncio.create_task` or `asyncio.sleep` must use `pytestmark = pytest.mark.filterwarnings("ignore::RuntimeWarning")` and a `_close_task()` helper calling `coro.close()`.
 - Tests must not use `assert True` as a placeholder. If the test verifies no exception, add a comment explaining the intent or make a meaningful assertion.
 - Do not use class-based tests. Write module-level pytest test functions and share setup through fixtures or narrowly scoped helper functions.
-- Fingerbot helpers are imported from `fingerbot.py` directly, not through platform modules.
+- Fingerbot behaviour belongs in a descriptor handler under `handlers/fingerbot/`, not in a platform module. Add or change the handler and reference it from the descriptor.
 
 ## 7. Coverage Requirements
 

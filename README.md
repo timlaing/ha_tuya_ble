@@ -53,19 +53,21 @@ logger:
     custom_components.tuya_ble.coordinator: debug
     custom_components.tuya_ble.entity: debug
     custom_components.tuya_ble.cloud: debug
+    custom_components.tuya_ble.device_registry: debug
     custom_components.tuya_ble.tuya_ble: debug
 ```
 
 Restart Home Assistant (or reload the config entry), reproduce the problem, then read
 `home-assistant.log`.
 
-| Logger                                   | Covers                                                                                          |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `custom_components.tuya_ble.config_flow` | Discovery, QR login, active scanning, cloud credential lookup, entry setup                      |
-| `custom_components.tuya_ble.cloud`       | Token refresh, credential lookup by UUID, device cache refresh                                  |
-| `custom_components.tuya_ble.coordinator` | Connect/disconnect transitions, idle timeout, received data point batches, unmapped data points |
-| `custom_components.tuya_ble.entity`      | Unique-id resolution, DP-code matching, commands sent to the device                             |
-| `custom_components.tuya_ble.tuya_ble`    | Data point values, batch flushes, and the raw BLE protocol (packets, AES)                       |
+| Logger                                       | Covers                                                                                          |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `custom_components.tuya_ble.config_flow`     | Discovery, QR login, active scanning, cloud credential lookup, entry setup                      |
+| `custom_components.tuya_ble.cloud`           | Token refresh, credential lookup by UUID, device cache refresh                                  |
+| `custom_components.tuya_ble.coordinator`     | Connect/disconnect transitions, idle timeout, received data point batches, unmapped data points |
+| `custom_components.tuya_ble.entity`          | Unique-id resolution, DP-code matching, commands sent to the device                             |
+| `custom_components.tuya_ble.device_registry` | Descriptor loading, validation errors, which descriptor a product resolved to                   |
+| `custom_components.tuya_ble.tuya_ble`        | Data point values, batch flushes, and the raw BLE protocol (packets, AES)                       |
 
 Each received data point is traced as
 `Received DP id=<id> type=<type> flags=0x<flags> raw=<hex> decoded=<value>`. The `raw=`
@@ -81,13 +83,52 @@ separately:
 
 A product that is not in the descriptor registry at all is reported as
 `unknown product <category>/<product_id>` instead, because in that case every data point
-is effectively unknown. Repeat reports of an unchanged data point are suppressed; a data
+is effectively unknown. The config entry still loads — a descriptor-less device must not
+hold up the whole Home Assistant startup — so it appears with **no entities** and a second
+warning naming the category and product:
+
+```
+... : no descriptor for category ms / product unknownproduct; loading with no entities
+```
+
+Both are warnings, not debug output, so they are visible without any configuration. If a
+device you own shows up with no entities at all, that second line is the place to start: it
+means the integration has no descriptor for it yet, and the category/product pair above is
+what a new descriptor needs to be written against. Repeat reports of an unchanged data point are suppressed; a data
 point is traced again as soon as its type or its bytes change.
 
 **Credentials and tokens are never logged.** Local keys, access/refresh tokens, user codes,
 QR tokens, terminal IDs and cloud endpoints are excluded from every log statement, so a
 `debug` log can be attached to a bug report as-is. Device addresses, product IDs, data point
 ids and values _are_ logged, since those are what make a trace useful.
+
+## Diagnostics
+
+Both the integration and each device expose **Download diagnostics** from the Home Assistant
+UI, which produces a JSON file for a bug report:
+
+- **Device → ⋮ → Download diagnostics** — the live data points with their raw bytes, the
+  descriptor that was resolved for the product, and the Home Assistant device/registry entry.
+- **Settings → Devices & services → Tuya BLE → ⋮ → Download diagnostics** — the above for
+  every device, plus the entry-wide view.
+
+A download includes the device's **full cloud schema**: the local strategy for every data
+point with its value format, value type, enum mapping and scale, and the status range with
+each data point's `report_type`. That last field is the reason a download is often enough
+to settle a bug — it distinguishes a device that reports a data point incrementally
+(`sum`) from one that reports the running total (`minux`), which is the usual explanation
+for a value that looks too large.
+
+The schema is captured once at setup and stored on the config entry, so a download works
+even when the device is offline or the cloud is unreachable. When re-authentication
+credentials are available the integration refreshes the schema from the cloud first; if
+that fails it falls back to the stored copy and says so in the `schema_source` field.
+
+Secrets are removed before the file is written — local key, access and refresh tokens, user
+code, terminal ID and cloud endpoint. The MAC `uuid`, the cloud `device_id`, product and
+data point ids, and entity data are **not** removed: they identify the device without being
+able to reach it, and a download that cannot be matched to the reported problem is not much
+use. Review a file before attaching it to a public issue.
 
 ## Supported device platforms
 

@@ -44,6 +44,19 @@ This integration handles BLE encryption keys and device credentials. Key securit
 - The QR code login flow obtains device keys from Tuya's cloud API, but all subsequent communication is local (BLE only)
 - No telemetry or device data is sent to any cloud service after setup
 
+### Diagnostics files contain identifiers
+
+Downloading diagnostics from the UI is a local operation and never leaves your machine, but the
+resulting file is not free of identifiers. Credentials — the local key, access and refresh tokens,
+the user code, the terminal ID and the cloud endpoint — are redacted before the file is written.
+The MAC address (`uuid`), the cloud `device_id`, product and data point ids, and the device's
+reported values are **not** redacted: they are what make a download useful, and they cannot be
+used to reach the device. The persisted cloud schema is data-point metadata only and holds no
+credentials.
+
+Review a diagnostics file before attaching it to a public issue or a pull request. It names the
+device you own, so treat it as personal data.
+
 ## Supported Versions
 
 | Version  | Supported |
@@ -60,5 +73,5 @@ This project uses a number of automated checks to help keep the codebase secure:
   (`sonar.projectKey=timlaing_ha_tuya_ble`).
 - GitHub **Dependabot** monitors dependency updates and known-vulnerability
   advisories.
-- `prek run --all-files` runs hooks including `detect-private-key` and
-  `detect-secrets`-class checks to prevent committing secrets.
+- `prek run --all-files` runs a `detect-private-key` hook to prevent committing
+  private keys.

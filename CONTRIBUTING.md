@@ -2,13 +2,14 @@
 
 ## Adding a new device
 
-New device support requires a **YAML device descriptor**. All device configuration lives in `custom_components/tuya_ble/device_descriptors/` — you do **not** need to edit the Python platform files or `products.py`.
+New device support requires a **YAML device descriptor**. All device configuration lives in `custom_components/tuya_ble/device_descriptors/` — you do **not** need to edit the Python platform files.
 
 ### 0. Identify the category
 
 The descriptor filename is `<category>_<product_id>.yaml`, so you need the category first. Add the
-device through the config flow and look for the `unknown product <category>/<product_id>` debug
-line — both halves are in it.
+device through the config flow and look for the
+`no descriptor for category <category> / product <product_id>` warning — both halves are in it, and it
+is emitted at setup for every device with no descriptor.
 
 Check the code in [docs/TUYA_CATEGORIES.md](docs/TUYA_CATEGORIES.md) before mapping anything. Several
 category names do not mean what they suggest: `kg` is officially "Switch" and is where Fingerbot
@@ -42,32 +43,34 @@ model_name: 16wgjvck
 
 #### Top-level fields
 
-| Field         | Required | Description                                                                          |
-| ------------- | -------- | ------------------------------------------------------------------------------------ |
-| `category`    | Yes      | Tuya category ID (e.g. `sfkzq`, `ggq`, `ms`)                                         |
-| `product_id`  | Yes      | Tuya product ID                                                                      |
-| `entities`    | No       | Mapping of platform name → list of entity descriptors                                |
-| `device_name` | No       | Human-readable device name (used as the device-name fallback in the device registry) |
-| `model_name`  | No       | Model identifier (used as the model fallback in the device registry)                 |
+| Field          | Required | Description                                                                          |
+| -------------- | -------- | ------------------------------------------------------------------------------------ |
+| `category`     | Yes      | Tuya category ID (e.g. `sfkzq`, `ggq`, `ms`)                                         |
+| `product_id`   | Yes      | Tuya product ID                                                                      |
+| `entities`     | No       | Mapping of platform name → list of entity descriptors                                |
+| `device_name`  | No       | Human-readable device name (used as the device-name fallback in the device registry) |
+| `model_name`   | No       | Model identifier (used as the model fallback in the device registry)                 |
+| `manufacturer` | No       | Brand shown on the device in Home Assistant                                          |
 
 #### Entity fields (common)
 
-| Field                | Required | Description                                                                                                                                                                                            |
-| -------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `dp_id`              | Yes*     | Data-point ID on the device (*not required for `climate`, `cover`, `light`)                                                                                                                            |
-| `translation_key`    | No       | Translation key / entity ID (also accepts `key`)                                                                                                                                                       |
-| `name`               | No       | Literal display-name override (used when no translation exists for `translation_key`)                                                                                                                  |
-| `icon`               | No       | MDI icon override (e.g. `mdi:valve`)                                                                                                                                                                   |
-| `device_class`       | No       | HA device class (e.g. `battery`, `temperature`, `carbon_dioxide`)                                                                                                                                      |
-| `unit`               | No       | Unit of measurement (e.g. `%`, `°C`, `ppm`, `s`)                                                                                                                                                       |
-| `state_class`        | No       | HA state class (`measurement`, `total_increasing`, `total`)                                                                                                                                            |
-| `dp_type`            | No       | Wire type used to serialise the value. `select` only — see [Entity fields (by platform)](#entity-fields-by-platform)                                                                                   |
-| `entity_category`    | No       | `config` or `diagnostic`                                                                                                                                                                               |
-| `enabled_by_default` | No       | Set to `false` to hide the entity by default                                                                                                                                                           |
-| `force_add`          | No       | Defaults to `true`: the entity is created even if the device has never reported the data point. Set to `false` to only create it once the device has been seen                                         |
-| `restore`            | No       | Set to `true` to restore the last known value across a Home Assistant restart. The restored value is only applied while the device has not reported the data point. Supported by `sensor` and `select` |
-| `legacy_keys`        | No       | Previous `translation_key` values, so renaming one adopts the existing entity instead of recreating it                                                                                                 |
-| `handlers`           | No       | Mapping of role → handler path (see [Handlers](#handlers))                                                                                                                                             |
+| Field                         | Required | Description                                                                                                                                                                                            |
+| ----------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `dp_id`                       | Yes*     | Data-point ID on the device (*not required for `climate`, `cover`, `light`)                                                                                                                            |
+| `translation_key`             | No       | Translation key / entity ID (also accepts `key`)                                                                                                                                                       |
+| `name`                        | No       | Literal display-name override (used when no translation exists for `translation_key`)                                                                                                                  |
+| `icon`                        | No       | MDI icon override (e.g. `mdi:valve`)                                                                                                                                                                   |
+| `device_class`                | No       | HA device class (e.g. `battery`, `temperature`, `carbon_dioxide`)                                                                                                                                      |
+| `unit`                        | No       | Unit of measurement (e.g. `%`, `°C`, `ppm`, `s`)                                                                                                                                                       |
+| `state_class`                 | No       | HA state class (`measurement`, `total_increasing`, `total`)                                                                                                                                            |
+| `suggested_display_precision` | No       | Decimal places shown in Home Assistant. Set to `0` on integer count sensors so no decimals are rendered                                                                                                |
+| `dp_type`                     | No       | Wire type used to serialise the value. `select` only — see [Entity fields (by platform)](#entity-fields-by-platform)                                                                                   |
+| `entity_category`             | No       | `config` or `diagnostic`                                                                                                                                                                               |
+| `enabled_by_default`          | No       | Set to `false` to hide the entity by default                                                                                                                                                           |
+| `force_add`                   | No       | Defaults to `true`: the entity is created even if the device has never reported the data point. Set to `false` to only create it once the device has been seen                                         |
+| `restore`                     | No       | Set to `true` to restore the last known value across a Home Assistant restart. The restored value is only applied while the device has not reported the data point. Supported by `sensor` and `select` |
+| `legacy_keys`                 | No       | Previous `translation_key` values, so renaming one adopts the existing entity instead of recreating it                                                                                                 |
+| `handlers`                    | No       | Mapping of role → handler path (see [Handlers](#handlers))                                                                                                                                             |
 
 > **Translations**: `translation_key` values are looked up against `entity.<platform>.<translation_key>` in `strings.json` / `translations/en.json`. When you introduce a new `translation_key`, add the corresponding `name` entry there too — otherwise use a literal `name:` instead.
 
@@ -77,7 +80,15 @@ model_name: 16wgjvck
 
 #### Entity fields (by platform)
 
-**number**: `min_value`, `max_value`, `step`, `mode` (`box` or `slider`)
+**sensor**: `unit` (mapped through the integration's unit table, so both `°C` and `C` work), `state_class`, `device_class`, `options` and `values` for an enum sensor, `coefficient` to divide a raw reading into its real unit, `suggested_display_precision` to choose the number of decimals, `enabled_by_default: false` to hide the entity until enabled, and `restore`. Do **not** set `dp_type` — a sensor decodes whatever type the device pushed, and a test rejects the field.
+
+**binary_sensor**: `device_class` only (e.g. `problem`, `motion`, `moisture`). No `unit` or `state_class` — Home Assistant rejects both on a binary sensor. Use `handlers` for anything derived.
+
+**valve**: `device_class: water` only. A valve writes its own `dp_id` — a dual-zone timer has one valve entity per zone — and the translation key carries the zone (`valve_zone1`, `valve_zone2`). Use `handlers` on the `switch` entity when the value written differs from the one the device expects.
+
+**button**: no platform-specific fields. A button is a momentary press, so it needs no unit, range or options; pressing it writes the `dp_id` unless a `write` handler overrides that.
+
+**number**: `min_value`, `max_value`, `step`, `mode` (`box` or `slider`), `unit`, and `coefficient` to divide a raw reading into its real unit
 
 **select**: `options` (display values), `values` (raw DP values), and the `dp_type` describing how the selected value is written to the device (`3` for a string table, `4` for enum codes, `2` for a raw value)
 
@@ -160,7 +171,8 @@ The data-point list tells you which dp_ids the device uses and their types. You 
 When you open an issue for a device that is missing entities, include:
 
 1. **The product identity** — the `category` and `product_id`, both of which appear in the
-   `unknown product <category>/<product_id>` warning if the device is not in the registry yet
+   `no descriptor for category <category> / product <product_id>` warning if the device is not in
+   the registry yet, or the `unknown product <category>/<product_id>` line once it sends data
 2. **What you did** — the app action or physical interaction that produced the change
 3. **The relevant `Received DP` and `Unmapped DP` lines** from the log, copied as text
 4. **The integration version** — from the config entry or `manifest.json`

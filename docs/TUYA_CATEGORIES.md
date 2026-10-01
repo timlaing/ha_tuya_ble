@@ -18,22 +18,22 @@ is how most of the categories below got their first device.
 
 ## Categories this integration supports
 
-| Category  | Tuya's official name                       | Notes                                                                                                                                                                                |
-| --------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `szjqr`   | Fingerbot (undocumented)                   | Undocumented by Tuya; the community name is Fingerbot.                                                                                                                               |
-| `ms`      | Residential lock                           | Residential lock. Its accessories report `ms_category` — see [adjacent codes](#adjacent-codes).                                                                                      |
-| `sfkzq`   | Smart Water Timer (undocumented)           |                                                                                                                                                                                      |
-| `ggq`     | Irrigator                                  |                                                                                                                                                                                      |
-| `jtmspro` | Residential lock pro                       | Residential lock **PRO**. Its entity layout is identical to `ms`.                                                                                                                    |
-| `wsdcg`   | Temperature and humidity sensor            |                                                                                                                                                                                      |
-| `cl`      | Curtain                                    | Curtain **motors**. `_category_cl.yaml` supplies the default `cover` entity. Curtain robots are a different code — see [gotchas](#gotchas).                                          |
-| `kg`      | Switch                                     | Officially **Switch**. Fingerbot Plus is sold under it, which is why the [README table](../README.md#supported-device-categories) groups `kg` with `szjqr`. See [gotchas](#gotchas). |
-| `wk`      | Thermostat                                 |                                                                                                                                                                                      |
-| `dcb`     | _not in Tuya's list_                       | Not in Tuya's published list. PARKSIDE smart batteries.                                                                                                                              |
-| `zwjcy`   | Soil sensor - plant monitor (undocumented) |                                                                                                                                                                                      |
-| `co2bj`   | CO2 detector                               |                                                                                                                                                                                      |
-| `dd`      | Strip lights                               | Strip lights. `_category_dd.yaml` supplies the default `light` entity for every `dd` product that does not define its own.                                                           |
-| `znhsb`   | Smart glass (not in Tuya's list)           | Officially _Smart glass_, but the `cdlandip` product here is a smart water bottle. See [gotchas](#gotchas).                                                                          |
+| Category  | Tuya's official name                       | Notes                                                                                                                                                                                                               |
+| --------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `szjqr`   | Fingerbot (undocumented)                   | Undocumented by Tuya; the community name is Fingerbot.                                                                                                                                                              |
+| `ms`      | Residential lock                           | Residential lock. `_category_ms.yaml` supplies the default `lock` entity (DP 47) for every `ms` product that does not define its own. Its accessories report `ms_category` — see [adjacent codes](#adjacent-codes). |
+| `sfkzq`   | Smart Water Timer (undocumented)           |                                                                                                                                                                                                                     |
+| `ggq`     | Irrigator                                  |                                                                                                                                                                                                                     |
+| `jtmspro` | Residential lock pro                       | Residential lock **PRO**. Its entity layout is identical to `ms`.                                                                                                                                                   |
+| `wsdcg`   | Temperature and humidity sensor            |                                                                                                                                                                                                                     |
+| `cl`      | Curtain                                    | Curtain **motors**. `_category_cl.yaml` supplies the default `cover` entity. Curtain robots are a different code — see [gotchas](#gotchas).                                                                         |
+| `kg`      | Switch                                     | Officially **Switch**. Fingerbot Plus is sold under it, which is why the [README table](../README.md#supported-device-categories) groups `kg` with `szjqr`. See [gotchas](#gotchas).                                |
+| `wk`      | Thermostat                                 |                                                                                                                                                                                                                     |
+| `dcb`     | _not in Tuya's list_                       | Not in Tuya's published list. PARKSIDE smart batteries.                                                                                                                                                             |
+| `zwjcy`   | Soil sensor - plant monitor (undocumented) |                                                                                                                                                                                                                     |
+| `co2bj`   | CO2 detector                               |                                                                                                                                                                                                                     |
+| `dd`      | Strip lights                               | Strip lights. `_category_dd.yaml` supplies the default `light` entity for every `dd` product that does not define its own.                                                                                          |
+| `znhsb`   | Smart glass (not in Tuya's list)           | Officially _Smart glass_, but the `cdlandip` product here is a smart water bottle. See [gotchas](#gotchas).                                                                                                         |
 
 To see the products in a category:
 
@@ -56,7 +56,9 @@ These turn up in log lines and issue reports but are not categories with descrip
 
 The 138 category codes in Tuya's developer documentation, for reading a log line or a
 cloud response. Ones marked _undocumented_ are absent from that documentation but are known
-from shipped devices. ✓ marks the categories this integration supports.
+from shipped devices. ✓ marks the 12 of the 14 categories this integration supports that
+appear in Tuya's list. The other two, `dcb` and `znhsb`, are not in Tuya's documentation at
+all, so they have no row here — they are in the table above.
 
 | Category      | Official name                                                      | Used here |
 | ------------- | ------------------------------------------------------------------ | :-------: |
@@ -230,7 +232,8 @@ apply to them.
 ## Finding the category of a new device
 
 1. Add the device through the config flow, then look for the
-   `unknown product <category>/<product_id>` debug line — both halves are in it.
+   `no descriptor for category <category> / product <product_id>` warning — both halves are
+   in it, and it is emitted at setup for every device with no descriptor.
 2. The cloud `dev_category` field in the device list response carries it, if you read the
    response with the integration's debug logging enabled.
 3. Look the code up in the table above to confirm the official name before guessing at a

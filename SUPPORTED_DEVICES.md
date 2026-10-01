@@ -28,6 +28,7 @@ Programming (series of actions) is implemented for Fingerbot Plus. Exposed entit
 ## Smart Locks (category_id `ms`)
 
 - Smart Lock (product_ids `ludzroix`, `isk2p555`, `gumrixyt`, `uamrw6h3`, `sidhzylo`, `mqc2hevy`, `a6nttc41`, `okkyfgfs`, `k53ok3u9`). Supports lock/unlock, alarm events, door status, and per-device unlock tracking (BLE, fingerprint, password, card, phone remote, dynamic code).
+- Unnamed lock (product_id `bvclwu9b`). Read-only: battery, door status and lock alarm status. Contributes no lock entity, so it is monitored rather than controllable.
 
 ## Smart Locks (category_id `jtmspro`)
 
@@ -64,7 +65,9 @@ Supports lock/unlock, alarm events, fingerprint/card/password unlock tracking, a
 - Water valve controller (product_ids `46zia2nz`, `1fcnd8xk`).
 - ZX-7378 Smart Irrigation Controller (product_id `ldcdnigc`).
 
-Entities: valve (open/close/stop), battery, countdown timer, weather delay, smart weather, work state, use time.
+Entities available across this category: valve (open/close/stop), the matching water-valve switch, battery (with battery-state and alternate-percentage diagnostics on some models), countdown/irrigation timers, accumulated use time, work state, weather forecast, weather-delay select, smart-weather switch, fault code, soak and irrigation schedules, and valve opening percentage on `16wgjvck`.
+
+Per-product coverage varies — `0axr5s0b` exposes only five entities, while the SOP10 timers expose twelve. Check the descriptor for the exact set.
 
 ## PARKSIDE Smart batteries (category_id `dcb`)
 
@@ -87,8 +90,9 @@ Entities: on/off, brightness, color temperature, RGB color.
 - Blind Controller (product_ids `4pbr8eig`, `vlwf3ud6`).
 - Curtain Controller (product_id `kcy0x4pi`).
 - AOK AM24 Venetian Blinds Motor (product_id `dy4dh1q0`).
+- Unnamed curtain motor (product_id `qqdxfdht`). Battery and work state are read-only; speed (DP 105) is settable, but the descriptor contributes no cover entity, so the curtain itself cannot be driven.
 
-Entities: open/close/stop, battery, work state, cover speed.
+Entities: open/close/stop, battery, work state and cover speed. `qqdxfdht` contributes only the last two — it has no cover entity.
 
 ## Plant sensors (category_id `zwjcy`)
 

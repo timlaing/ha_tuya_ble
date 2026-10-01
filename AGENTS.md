@@ -8,7 +8,7 @@ Forked from [PlusPlus-ua/ha_tuya_ble](https://github.com/PlusPlus-ua/ha_tuya_ble
 
 ## Tests
 
-A pytest unit-test suite lives in `tests/` (721 tests, 98% branch coverage of `custom_components/tuya_ble`, incl. entity platforms and config flow). CI runs it on every push/PR (`.github/workflows/test.yml`) with a `--cov-fail-under=90` gate, and `lint.yml` runs `prek run --all-files`. Run locally with coverage:
+A pytest unit-test suite lives in `tests/` (1093 tests, 99% branch coverage of `custom_components/tuya_ble`, incl. entity platforms and config flow). CI runs it on every push/PR (`.github/workflows/test.yml`) with a `--cov-fail-under=90` gate, and `lint.yml` runs `prek run --all-files`. Other workflows: `checks.yml` (required statuses), `hass.yml`/`hacs.yml` (metadata validation), `codeql.yml`, `sonarqube.yml`, `release-drafter.yml` with `autolabeler.yml` (PR labels), `stale.yml` (60-day issue lifecycle, PRs excluded) and `issue-autolabeler.yml` (adds `needs-triage` on open/reopen). Run locally with coverage:
 
 ```sh
 .venv/bin/python -m pytest --cov=custom_components.tuya_ble --cov-branch --cov-report=term-missing
@@ -21,11 +21,11 @@ A pytest unit-test suite lives in `tests/` (721 tests, 98% branch coverage of `c
 ### Test conventions
 
 - Tests import via `custom_components.tuya_ble.*` (never bare `tuya_ble.*`); `custom_components/` is added to `sys.path` in `tests/conftest.py`. **Do not** add `custom_components/tuya_ble` itself to `sys.path` — its `select.py`/`text.py` etc. shadow stdlib modules.
-- Tests exercise **public** entry points. Setting device/flow internals (`_client`, `_session_key`, `_manager`, name-mangled login state) as **test setup state** is acceptable.
+- Tests exercise **public** entry points. Setting device/flow internals (`_client`, `_session_key`, `_manager`, protected `_qr_*` login state) as **test setup state** is acceptable.
 - Real `TuyaBLEDevice` + `TuyaBLECoordinator` are built in tests; the device's `send_datapoints` is stubbed so no BLE I/O occurs. Data points are driven via the public `TuyaBLEDataPoints.update_from_device`.
 - Entity classes register their coordinator listener in `async_added_to_hass()`, not `__init__` — call `await entity.async_added_to_hass()` before asserting on coordinator-triggered updates, or call the handler directly.
-- `products.py`'s `devices_database` is a pure registry: `get_product_info_by_ids`, `get_device_product_info`, `get_short_address`, `get_device_info` are unit-tested directly (via the `devices.py` shim in `test_devices.py`).
-- The `hass` fixture comes from `pytest-homeassistant-custom-component`; config-flow tests build flow objects directly and drive `async_step_*`, patching `config_flow.HASSTuyaBLEDeviceManager` and the (name-mangled) `login_control`/`qr_code`/`login_result` with fakes.
+- The descriptor registry in `device_registry.py` is pure: `get_registry`, `get_mapped_dp_ids` and descriptor validation are unit-tested directly. `get_product_info_by_ids`, `get_device_product_info`, `get_short_address` and `get_device_info` live in `entity.py` and are also unit-tested directly (via the `devices.py` shim in `test_devices.py`).
+- The `hass` fixture comes from `pytest-homeassistant-custom-component`; config-flow tests build flow objects directly and drive `async_step_*`, patching `config_flow.HASSTuyaBLEDeviceManager` and the protected `_qr_login_control` / `_qr_code` / `_qr_user_code` attributes with fakes. They are single-underscore attributes — there is no name mangling in `config_flow.py`.
 - Tests that mock `asyncio.create_task` or `asyncio.sleep` should use a module-level `pytestmark = pytest.mark.filterwarnings("ignore::RuntimeWarning")` and a `_close_task()` helper that calls `coro.close()` on the mocked coroutine to prevent unawaited-coroutine warnings from leaking into other tests via `gc.collect()`.
 - Most modules log at `debug`, and pytest's `caplog` does **not** capture `DEBUG` unless the level is raised. Every assertion against a debug message needs `caplog.at_level(logging.DEBUG)` (as a context manager, or `caplog.set_level(logging.DEBUG)` for the whole test) — the warning-level pattern in `test_protocol.py` does not transfer. Use `caplog.clear()` between two phases of one test, since the text accumulates.
 - Logging conventions for the integration: module-level `_LOGGER = logging.getLogger(__name__)`, lazy `%`-style formatting only (never f-strings, to match the existing call sites), `debug` for happy-path traces, `warning` for recoverable anomalies, `error` only where the user is shown a failure form. **Never log** `local_key`, `access_token`, `refresh_token`, `terminal_id`, `user_code`, QR tokens, or `endpoint`.
@@ -47,44 +47,45 @@ If a file falls below the threshold, add tests until it passes before committing
 
 ### Test files
 
-| File                                                                       | Covers                                                                                            |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `tests/conftest.py`                                                        | `sys.path`, fakes (`FakeBLEManager`, `FakeBleakClient`, …), `make_device()`, `make_credentials()` |
-| `tests/protocol_harness.py`                                                | packet building/encryption helpers for protocol tests                                             |
-| `tests/test_datapoints.py`                                                 | `TuyaBLEDataPoint`/`TuyaBLEDataPoints`                                                            |
-| `tests/test_manager.py`, `tests/test_const.py`, `tests/test_exceptions.py` | manager, consts, exceptions                                                                       |
-| `tests/test_protocol.py`                                                   | `protocol_mixin` packet/AES logic                                                                 |
-| `tests/test_base.py`                                                       | `base.IntegerTypeData`/`EnumTypeData`                                                             |
-| `tests/test_device.py`                                                     | `TuyaBLEDevice` connection/state (mocked connect flow)                                            |
-| `tests/test_connection.py`                                                 | BLE connection lifecycle, error paths, protocol edge cases                                        |
-| `tests/test_cloud.py`                                                      | `cloud.py`                                                                                        |
-| `tests/test_coordinator.py`                                                | `coordinator.py` connect/disconnect transitions, update batches, delayed-disconnect timer         |
-| `tests/test_entity.py`                                                     | `entity.py` unique-id resolution, DP-code matching, data point sends                              |
-| `tests/test_devices.py`                                                    | pure devices.py functions                                                                         |
-| `tests/test_mappings.py`                                                   | per-platform `get_mapping_by_device` + pure Fingerbot/sensor helpers                              |
-| `tests/test_device_registry.py`                                            | `device_registry.py` (load/validate/resolve, `EntityDescriptor`)                                  |
-| `tests/test_handlers.py`                                                   | YAML descriptor handler callables (`battery`, `co2`, `rssi`, `water_valve`, Fingerbot)            |
-| `tests/test_entity_binary_sensor.py`                                       | binary_sensor entity methods                                                                      |
-| `tests/test_entity_button.py`                                              | button entity methods                                                                             |
-| `tests/test_entity_climate.py`                                             | climate entity methods                                                                            |
-| `tests/test_entity_number.py`                                              | number entity methods (incl. fingerbot number handler aliases)                                    |
-| `tests/test_entity_select.py`                                              | select entity methods                                                                             |
-| `tests/test_entity_sensor.py`                                              | sensor entity methods                                                                             |
-| `tests/test_entity_switch.py`                                              | switch entity methods                                                                             |
-| `tests/test_entity_text.py`                                                | text entity methods                                                                               |
-| `tests/test_entity_valve.py`                                               | valve entity methods                                                                              |
-| `tests/test_entity_lock.py`                                                | lock entity methods                                                                               |
-| `tests/test_entity_cover.py`                                               | cover entity methods                                                                              |
-| `tests/test_entity_light.py`                                               | light entity methods                                                                              |
-| `tests/test_config_flow.py`                                                | config/options flow steps                                                                         |
-| `tests/test_config_flow_logging.py`                                        | `config_flow.py` debug/warning log output (reuses the fakes from `test_config_flow.py`)           |
-| `tests/test_init.py`                                                       | integration `async_setup_entry`/`async_unload_entry`, offline manager, update listener            |
-| `tests/test_setup_entries.py`                                              | per-platform `async_setup_entry` boilerplate                                                      |
-| `tests/test_util.py`                                                       | `util.py` (e.g. `remap_value`)                                                                    |
+| File                                                                       | Covers                                                                                             |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `tests/conftest.py`                                                        | `sys.path`, fakes (`FakeBLEManager`, `FakeBleakClient`, …), `make_device()`, `make_credentials()`  |
+| `tests/protocol_harness.py`                                                | packet building/encryption helpers for protocol tests                                              |
+| `tests/test_datapoints.py`                                                 | `TuyaBLEDataPoint`/`TuyaBLEDataPoints`                                                             |
+| `tests/test_manager.py`, `tests/test_const.py`, `tests/test_exceptions.py` | manager, consts, exceptions                                                                        |
+| `tests/test_protocol.py`                                                   | `protocol_mixin` packet/AES logic                                                                  |
+| `tests/test_base.py`                                                       | `base.IntegerTypeData`/`EnumTypeData`                                                              |
+| `tests/test_device.py`                                                     | `TuyaBLEDevice` connection/state (mocked connect flow)                                             |
+| `tests/test_connection.py`                                                 | BLE connection lifecycle, error paths, protocol edge cases                                         |
+| `tests/test_cloud.py`                                                      | `cloud.py`                                                                                         |
+| `tests/test_coordinator.py`                                                | `coordinator.py` connect/disconnect transitions, update batches, delayed-disconnect timer          |
+| `tests/test_entity.py`                                                     | `entity.py` unique-id resolution, DP-code matching, data point sends                               |
+| `tests/test_devices.py`                                                    | product lookup, coordinator and device-info helpers; descriptor-vs-cloud-metadata precedence tests |
+| `tests/test_mappings.py`                                                   | per-platform `get_mapping_by_device` + pure Fingerbot/sensor helpers                               |
+| `tests/test_device_registry.py`                                            | `device_registry.py` (load/validate/resolve, `EntityDescriptor`)                                   |
+| `tests/test_handlers.py`                                                   | YAML descriptor handler callables (`battery`, `raw`, `rssi`, `water_valve`, Fingerbot)             |
+| `tests/test_entity_binary_sensor.py`                                       | binary_sensor entity methods                                                                       |
+| `tests/test_entity_button.py`                                              | button entity methods                                                                              |
+| `tests/test_entity_climate.py`                                             | climate entity methods                                                                             |
+| `tests/test_entity_number.py`                                              | number entity methods (incl. fingerbot number handler aliases)                                     |
+| `tests/test_entity_select.py`                                              | select entity methods                                                                              |
+| `tests/test_entity_sensor.py`                                              | sensor entity methods                                                                              |
+| `tests/test_entity_switch.py`                                              | switch entity methods                                                                              |
+| `tests/test_entity_text.py`                                                | text entity methods                                                                                |
+| `tests/test_entity_valve.py`                                               | valve entity methods                                                                               |
+| `tests/test_entity_lock.py`                                                | lock entity methods                                                                                |
+| `tests/test_entity_cover.py`                                               | cover entity methods                                                                               |
+| `tests/test_entity_light.py`                                               | light entity methods                                                                               |
+| `tests/test_config_flow.py`                                                | config/options flow steps                                                                          |
+| `tests/test_config_flow_logging.py`                                        | `config_flow.py` debug/warning log output (reuses the fakes from `test_config_flow.py`)            |
+| `tests/test_init.py`                                                       | integration `async_setup_entry`/`async_unload_entry`, offline manager, update listener             |
+| `tests/test_setup_entries.py`                                              | per-platform `async_setup_entry` boilerplate                                                       |
+| `tests/test_util.py`                                                       | `util.py` (e.g. `remap_value`)                                                                     |
+| `tests/test_diagnostics.py`                                                | config-entry and device diagnostics, redaction, schema refresh and fallback                        |
 
 ### prek
 
-Use `.venv/bin/prek run --all-files` for the full check set (trim, ruff, ruff-format, cspell, yamllint, prettier, mypy, pylint). Do **not** use `pre-commit` directly — this repo drives the same hook config through `prek` from the virtual environment. Run prek on new/changed test files too.
+Use `.venv/bin/prek run --all-files` for the full check set (trailing-whitespace, end-of-file, ruff, ruff-format, cspell, yamllint, prettier, mypy, pylint). Do **not** use `pre-commit` directly — this repo drives the same hook config through `prek` from the virtual environment. Run prek on new/changed test files too.
 
 Pytest is also available as a manual `prek` hook, including branch coverage. Run the complete suite with:
 
@@ -125,36 +126,38 @@ Tuya BLE Device <-> Home Assistant (ha_tuya_ble)
                 Tuya Cloud (QR code login, key exchange only)
 ```
 
-All public BLE symbols — `TuyaBLEDevice`, `TuyaBLEDataPoint`, `TuyaBLEDataPointType`, `TuyaBLEDataPoints`, `BLE_CONNECTION_EXCEPTIONS`, `BLEAK_EXCEPTIONS`, `SERVICE_UUID`, `AbstractTuyaBLEDeviceManager`, `TuyaBLEDeviceCredentials` — are re-exported from `tuya_ble/__init__.py`. Platform files and `cloud.py`/`devices.py` import them from the package (`from .tuya_ble import ...`), never from the internal defining module. After the split of `tuya_ble.py`, `TuyaBLEDataPoint` lives in `datapoints.py` and protocol logic in `protocol_mixin.py`, but you must still import them via the package.
+All public BLE symbols — `TuyaBLEDevice`, `TuyaBLEDataPoint`, `TuyaBLEDataPointType`, `TuyaBLEDataPoints`, `BLE_CONNECTION_EXCEPTIONS`, `BLEAK_EXCEPTIONS`, `SERVICE_UUID`, `AbstractTuyaBLEDeviceManager`, `TuyaBLEDeviceCredentials` — are re-exported from `tuya_ble/__init__.py`. Platform files and `cloud.py` import them from the package (`from .tuya_ble import ...`), never from the internal defining module. After the split of `tuya_ble.py`, `TuyaBLEDataPoint` lives in `datapoints.py` and protocol logic in `protocol_mixin.py`, but you must still import them via the package.
 
-`devices.py` is a **pure re-export shim** — all of its former contents now live in `products.py` (dataclasses, `devices_database`, helper functions), `entity.py` (`TuyaBLEEntity`, `get_device_info`), and `coordinator.py` (`TuyaBLECoordinator`). Don't add new code to `devices.py`; import these symbols from their defining modules.
+`devices.py` is a **pure re-export shim** — all of its former contents now live in `device_registry.py` (`EntityDescriptor`, descriptor loading/validation, `get_registry`), `entity.py` (`TuyaBLEEntity`, `get_device_info`, `get_product_info_by_ids`), and `coordinator.py` (`TuyaBLECoordinator`). `products.py` no longer exists: product metadata moved into the YAML descriptors in `device_descriptors/`. Don't add new code to `devices.py`; import these symbols from their defining modules.
 
 ## Key files
 
-| File                                     | Purpose                                                                                                                      |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `config_flow.py`                         | QR code login flow (user code → scan → device selection)                                                                     |
-| `cloud.py`                               | `tuya_sharing.Manager` wrapper, MAC-based device credential lookup                                                           |
-| `const.py`                               | Constants — imports shared names from `homeassistant.components.tuya.const`; re-exports `DPType` from `tuya_ble.const`       |
-| `products.py`                            | Dataclasses (`TuyaBLECategoryInfo`, …), `devices_database` registry, product lookup helpers                                  |
-| `entity.py`                              | `TuyaBLEEntity` base class, `get_device_info`                                                                                |
-| `coordinator.py`                         | `TuyaBLECoordinator` (DataUpdateCoordinator subclass)                                                                        |
-| `device_descriptors/handlers/fingerbot/` | Shared Fingerbot handlers (`in_program_mode`, `get/set_program`, repeat/maintenance helpers, etc.) in `mode.py`/`program.py` |
-| `devices.py`                             | **Re-export shim** — imports from the split modules above; don't add code here                                               |
-| `tuya_ble/`                              | Vendored BLE protocol library (encryption, pairing) — no cloud dependency                                                    |
-| `tuya_ble/__init__.py`                   | **Re-exports** all public BLE symbols — import from here, not the internal modules                                           |
-| `tuya_ble/manager.py`                    | `AbstractTuyaBLEDeviceManager` interface + `TuyaBLEDeviceCredentials` that `cloud.py` implements                             |
-| `tuya_ble/tuya_ble.py`                   | `TuyaBLEDevice(TuyaBLEProtocol)` — BLE connection management, device state                                                   |
-| `tuya_ble/protocol_mixin.py`             | `TuyaBLEProtocol` mixin — packet building/sending/parsing, AES encryption (`BLEAK_EXCEPTIONS`, `BLE_CONNECTION_EXCEPTIONS`)  |
-| `tuya_ble/datapoints.py`                 | `TuyaBLEDataPoint`, `TuyaBLEDataPoints`                                                                                      |
-| `tuya_ble/const.py`                      | `TuyaBLECode`, `TuyaBLEDataPointType`, `DPType`, UUIDs                                                                       |
-| `strings.json`                           | UI strings for config flow and entity translations                                                                           |
+| File                                     | Purpose                                                                                                                                    |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `config_flow.py`                         | QR code login flow (user code → scan → device selection)                                                                                   |
+| `cloud.py`                               | `tuya_sharing.Manager` wrapper, MAC-based device credential lookup                                                                         |
+| `const.py`                               | Constants — imports shared names from `homeassistant.components.tuya.const`; re-exports `DPType` from `tuya_ble.const`                     |
+| `device_registry.py`                     | `EntityDescriptor`, YAML descriptor loading/validation, `get_registry`, `get_mapped_dp_ids` — the product registry                         |
+| `device_descriptors/`                    | **Source of truth** for product metadata: one `<category>_<product_id>.yaml` per product, plus `_category_*.yaml` defaults and `handlers/` |
+| `device_descriptors/handlers/fingerbot/` | Shared Fingerbot handlers (`in_program_mode`, `get/set_program`, repeat/maintenance helpers, etc.) in `mode.py`/`program.py`               |
+| `diagnostics.py`                         | `async_get_config_entry_diagnostics` / `async_get_device_diagnostics`, redaction, cloud-schema refresh                                     |
+| `entity.py`                              | `TuyaBLEEntity` base class, `get_device_info`                                                                                              |
+| `coordinator.py`                         | `TuyaBLECoordinator` (DataUpdateCoordinator subclass)                                                                                      |
+| `devices.py`                             | **Re-export shim** — imports from the split modules above; don't add code here                                                             |
+| `tuya_ble/`                              | Vendored BLE protocol library (encryption, pairing) — no cloud dependency                                                                  |
+| `tuya_ble/__init__.py`                   | **Re-exports** all public BLE symbols — import from here, not the internal modules                                                         |
+| `tuya_ble/manager.py`                    | `AbstractTuyaBLEDeviceManager` interface + `TuyaBLEDeviceCredentials` that `cloud.py` implements                                           |
+| `tuya_ble/tuya_ble.py`                   | `TuyaBLEDevice(TuyaBLEProtocol)` — BLE connection management, device state                                                                 |
+| `tuya_ble/protocol_mixin.py`             | `TuyaBLEProtocol` mixin — packet building/sending/parsing, AES encryption (`BLEAK_EXCEPTIONS`, `BLE_CONNECTION_EXCEPTIONS`)                |
+| `tuya_ble/datapoints.py`                 | `TuyaBLEDataPoint`, `TuyaBLEDataPoints`                                                                                                    |
+| `tuya_ble/const.py`                      | `TuyaBLECode`, `TuyaBLEDataPointType`, `DPType`, UUIDs                                                                                     |
+| `strings.json`                           | UI strings for config flow and entity translations                                                                                         |
 
 ## Entity platforms
 
-Each platform file (binary_sensor, button, climate, number, select, sensor, switch, text, valve) follows the same pattern: a mapping dict keyed by Tuya category ID → product ID → list of data-point mappings. To add a new device, add entries to `devices_database` in `products.py` and add data-point mappings in the relevant platform files.
+There are **12 platform files** (binary_sensor, button, climate, cover, light, lock, number, select, sensor, switch, text, valve) and they all follow the same pattern: a `_build_mapping()` function that walks `get_registry().products.values()` and returns a dict keyed by Tuya category ID → product ID → list of data-point mappings. The mappings are **built from the YAML descriptors, not authored by hand**, so adding a device means writing one descriptor file and no platform edits.
 
-Some platforms carry bespoke per-device logic beyond the mapping dict — notably the shared Fingerbot handlers in `device_descriptors/handlers/fingerbot/`, consumed by `text.py`, `switch.py`, `number.py`, and `button.py` (e.g. `program.get_program`, `program.set_program`, `mode.in_program_mode`, `program.set_repeat_forever`), and custom getters in `sensor.py` (`battery_enum_getter`, `rssi_getter`) and `select.py` (`TemperatureUnitDescription`). Editing a device that needs special handling means touching these handlers, not just the mappings.
+Some platforms carry bespoke per-device logic beyond the mapping dict. It lives in YAML descriptor `handlers:` blocks that name a callable under `device_descriptors/handlers/`, not in the platform files — `battery.battery_enum` and `rssi.rssi` for sensors, `raw.raw_hex`, `water_valve.*` for valves, and the shared Fingerbot handlers under `handlers/fingerbot/` (`program.get_program`, `program.set_program`, `mode.in_program_mode`, `program.set_repeat_forever`), consumed by `text.py`, `switch.py`, `number.py` and `button.py`. `select.py` also defines a `TemperatureUnitDescription` entity-description subclass. Editing a device that needs special handling means adding or changing a handler module and referencing it from the descriptor, not editing the mappings.
 
 ## Dependencies
 
@@ -173,6 +176,7 @@ Do not add `tuya-iot-py-sdk` back. The integration migrated away from it in `e5c
 - `TUYA_CLIENT_ID` and `TUYA_SCHEMA` are imported from HA core's Tuya integration — do not redefine locally
 - `tuya_ble/` is a clean abstraction boundary — it knows nothing about cloud auth, only BLE encryption
 - Diivoo timers using the **Homgar app** (not Tuya Smart Life) won't appear in Tuya cloud — no local key extractable
-- `CONF_FUNCTIONS` / `CONF_STATUS_RANGE` on `TuyaBLEDeviceCredentials` carry device specs from cloud
+- `functions` / `status_range` on `TuyaBLEDeviceCredentials` carry the device specs from cloud, under the `CONF_FUNCTIONS` / `CONF_STATUS_RANGE` keys
+- `local_schema` on `TuyaBLEDeviceCredentials` carries the captured cloud schema (full local strategy, full status range with `report_type`, and `captured_at`), persisted under `CONF_LOCAL_SCHEMA` in the config entry's `data` by `config_flow.py` and exported by `diagnostics.py`. DP metadata only — never credentials
 - `tuya_ble/tuya_ble.py` and `tuya_ble/protocol_mixin.py` use `from Crypto.Cipher import AES` (pycryptodome/pycryptodomex) — not a listed runtime requirement but always available in HA
-- Since HA 2026.8, entity `EntityDescription` subclasses are built through `homeassistant.util.frozen_dataclass_compat`, which does **not** honor a class-level default for the required `key` field. `TemperatureUnitDescription` (select.py) and `TuyaBLEDownPositionDescription`/`UpPositionDescription`/`HoldTimeDescription` (number.py) therefore must pass `key=` explicitly at every construction site or the module fails to import (`SelectEntityDescription.__init__() missing 1 required positional argument: 'key'`). Keep this pattern in mind when adding new description subclasses.
+- `select.py` subclasses `SelectEntityDescription` as `TemperatureUnitDescription` (select.py:43) purely to supply the `icon` and `entity_category` defaults for the `temperature_unit` translation key. Descriptions are always assembled into a `kwargs` dict that already contains `key`, so a subclass never has to repeat it — add a new subclass for its defaults, not for `key`.
