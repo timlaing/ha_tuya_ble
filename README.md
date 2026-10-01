@@ -116,8 +116,8 @@ A download includes the device's **full cloud schema**: the local strategy for e
 point with its value format, value type, enum mapping and scale, and the status range with
 each data point's `report_type`. That last field is the reason a download is often enough
 to settle a bug — it distinguishes a device that reports a data point incrementally
-(`sum`) from one that reports the running total (`minux`), which is the usual explanation
-for a value that looks too large.
+(`sum`) from one that reports the running total (`minux`, Tuya's own name for a full value).
+Treating full values as increments is the usual explanation for a number that looks too large.
 
 The schema is captured once at setup and stored on the config entry, so a download works
 even when the device is offline or the cloud is unreachable. When re-authentication
