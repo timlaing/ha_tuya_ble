@@ -503,13 +503,16 @@ async def test_async_setup_entry_unknown_product(
     entry.add_to_hass(hass)
 
     deps = _patch_deps(hass, product_info=get_product_info_by_ids("ms", "unknown"))
-    caplog.set_level(logging.DEBUG)
     with ExitStack() as stack:
         for p in deps["patches"]:
             stack.enter_context(p)
         assert await async_setup_entry(hass, entry) is True
 
-    assert "no descriptor for category" in caplog.text
+    # Asserted at warning, not just on presence: the config entry now succeeds,
+    # so a silent log would leave a device with no entities and no explanation.
+    warnings = [r for r in caplog.records if "no descriptor for category" in r.message]
+    assert len(warnings) == 1
+    assert warnings[0].levelno == logging.WARNING
     deps["device"].initialize_with_credentials.assert_awaited_once()
     assert hass.data[DOMAIN][entry.entry_id].product.name == ""
     await deps["background_tasks"][0]["target"]

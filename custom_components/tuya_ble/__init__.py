@@ -126,10 +126,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await device.initialize_with_credentials(credentials)
 
     # An unknown product is not an error: it still loads, it just gets no
-    # entities, since there is no descriptor to build them from.
+    # entities, since there is no descriptor to build them from. It is still
+    # logged as a warning, because the config entry now succeeds silently and a
+    # device with no entities is otherwise invisible to the user. This fires once
+    # per config entry, and never for a device that has a descriptor.
     product_info = get_device_product_info(device)
     if not product_info.entities:
-        _LOGGER.debug(
+        _LOGGER.warning(
             "%s: no descriptor for category %s / product %s; loading with no entities",
             address,
             device.category,
