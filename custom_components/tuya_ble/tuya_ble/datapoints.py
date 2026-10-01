@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 import logging
 from struct import pack
 import time
@@ -218,6 +219,10 @@ class TuyaBLEDataPoints:
 
     def __getitem__(self, key: int) -> TuyaBLEDataPoint | None:
         return self._datapoints.get(key)
+
+    def values(self) -> Iterable[TuyaBLEDataPoint]:
+        """Iterate over every data point known so far, in dp id order."""
+        return [self._datapoints[dp_id] for dp_id in sorted(self._datapoints)]
 
     def has_id(self, dp_id: int, dp_type: TuyaBLEDataPointType | None = None) -> bool:
         """Check if a data point with the given ID exists."""

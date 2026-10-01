@@ -7,6 +7,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.util import dt as dt_util
 from tuya_sharing import CustomerDevice, Manager, SharingTokenListener
 
 from .const import (
@@ -63,13 +64,13 @@ class HASSTuyaBLEDeviceManager:
             len(self._manager.device_map),
         )
 
-    async def get_device_credentials_by_uuid(
+    async def get_cloud_device_by_uuid(
         self,
         uuid: str,
         *,
         force_update: bool = False,
-    ) -> TuyaBLEDeviceCredentials | None:
-        """Get cloud credentials matching a decoded BLE device UUID."""
+    ) -> CustomerDevice | None:
+        """Return the raw cloud device matching a decoded BLE device UUID."""
         if self._manager is None:
             await self.initialize()
 
@@ -80,13 +81,24 @@ class HASSTuyaBLEDeviceManager:
             await self._hass.async_add_executor_job(self._manager.update_device_cache)
 
         for device in self._manager.device_map.values():
-            if device.uuid != uuid:
-                continue
-            _LOGGER.debug("Retrieved credentials for Tuya UUID %s", uuid)
-            return _build_credentials(device)
-
-        _LOGGER.warning("No Tuya credentials found for UUID %s", uuid)
+            if device.uuid == uuid:
+                return device
         return None
+
+    async def get_device_credentials_by_uuid(
+        self,
+        uuid: str,
+        *,
+        force_update: bool = False,
+    ) -> TuyaBLEDeviceCredentials | None:
+        """Get cloud credentials matching a decoded BLE device UUID."""
+        device = await self.get_cloud_device_by_uuid(uuid, force_update=force_update)
+        if device is None:
+            _LOGGER.warning("No Tuya credentials found for UUID %s", uuid)
+            return None
+
+        _LOGGER.debug("Retrieved credentials for Tuya UUID %s", uuid)
+        return _build_credentials(device)
 
     @property
     def data(self) -> dict[str, Any]:
@@ -125,6 +137,48 @@ def _extract_status_range(device: CustomerDevice) -> list[dict[str, Any]]:
     return _extract_local_strategy(device, set(device.status_range or {}))
 
 
+def _extract_full_status_range(device: CustomerDevice) -> list[dict[str, Any]]:
+    """Extract every status specification, including the SDK-resolved report type."""
+    status_range: dict[str, Any] = getattr(device, "status_range", None) or {}
+    return [
+        {
+            "code": code,
+            "type": getattr(spec, "type", None),
+            "values": getattr(spec, "values", None),
+            "report_type": getattr(spec, "report_type", None),
+        }
+        for code, spec in status_range.items()
+    ]
+
+
+def _extract_full_local_strategy(device: CustomerDevice) -> list[dict[str, Any]]:
+    """Return the device's local strategy unfiltered, keyed by dp id.
+
+    The runtime ``function``/``status_range`` lists drop every field but
+    ``code``/``dp_id``/``type``/``values``, so they cannot explain why a data
+    point decodes or scales the way it does. Persist the strategy as the cloud
+    returned it, keeping ``statusFormat``, ``enumMappingMap`` and
+    ``valueConvert``, which are what the DP value handlers actually read.
+    """
+    strategy: dict[int, dict[str, Any]] = getattr(device, "local_strategy", None) or {}
+    return [{"dp_id": dp_id, **details} for dp_id, details in sorted(strategy.items())]
+
+
+def capture_local_schema(device: CustomerDevice) -> dict[str, Any]:
+    """Capture the device's complete local schema for later diagnostics.
+
+    This is DP metadata only — it deliberately carries no credentials, so it is
+    safe to persist alongside the config entry. ``captured_at`` records when the
+    cloud answered, because the schema is a one-off snapshot and never
+    refreshed by the integration.
+    """
+    return {
+        "captured_at": dt_util.utcnow().isoformat(),
+        "local_strategy": _extract_full_local_strategy(device),
+        "status_range": _extract_full_status_range(device),
+    }
+
+
 def _build_credentials(device: CustomerDevice) -> TuyaBLEDeviceCredentials:
     """Build Tuya BLE credentials from a cloud device."""
     return TuyaBLEDeviceCredentials(
@@ -138,4 +192,5 @@ def _build_credentials(device: CustomerDevice) -> TuyaBLEDeviceCredentials:
         product_name=device.product_name,
         functions=_extract_functions(device),
         status_range=_extract_status_range(device),
+        local_schema=capture_local_schema(device),
     )

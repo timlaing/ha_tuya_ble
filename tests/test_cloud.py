@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 import pytest
 
@@ -16,6 +17,7 @@ from custom_components.tuya_ble.cloud import (
     _build_credentials,
     _extract_functions,
     _extract_status_range,
+    capture_local_schema,
 )
 
 
@@ -288,3 +290,104 @@ async def test_get_device_credentials_by_uuid_no_manager_raises() -> None:
         pytest.raises(ConfigEntryNotReady),
     ):
         await mgr.get_device_credentials_by_uuid("uuid")
+
+
+def test_build_credentials_captures_local_schema() -> None:
+    """Credentials carry the full unfiltered schema for diagnostics."""
+    creds = _build_credentials(make_device())
+
+    assert creds.local_schema is not None
+    assert creds.local_schema["captured_at"].endswith("+00:00")
+    # Sorted by dp id and flattened with the dp id promoted to a key.
+    assert [item["dp_id"] for item in creds.local_schema["local_strategy"]] == [1, 2]
+    assert creds.local_schema["local_strategy"][0]["config_item"] == {
+        "valueType": "Boolean",
+        "valueDesc": "{}",
+    }
+    assert creds.local_schema["status_range"] == [
+        {"code": "s", "type": "t", "values": "v", "report_type": None}
+    ]
+
+
+def test_capture_local_schema_keeps_fields_the_runtime_lists_drop() -> None:
+    """statusFormat, enumMappingMap and valueConvert survive the capture."""
+    device = make_device(
+        local_strategy={
+            1: {
+                "value_convert": {"scale": 10},
+                "status_code": "c",
+                "config_item": {
+                    "statusFormat": "value",
+                    "valueType": "Integer",
+                    "valueDesc": '{"scale":10}',
+                    "enumMappingMap": {"0": "off"},
+                    "pid": "product",
+                },
+            }
+        },
+        status_range={
+            "c": SimpleNamespace(
+                code="c", type="Integer", values="{}", report_type="sum"
+            )
+        },
+    )
+
+    schema = capture_local_schema(device)
+
+    entry = schema["local_strategy"][0]
+    assert entry["dp_id"] == 1
+    assert entry["value_convert"] == {"scale": 10}
+    assert entry["config_item"]["statusFormat"] == "value"
+    assert entry["config_item"]["enumMappingMap"] == {"0": "off"}
+    assert entry["config_item"]["pid"] == "product"
+    assert schema["status_range"][0]["report_type"] == "sum"
+
+
+def test_capture_local_schema_without_strategy_or_status_range() -> None:
+    """A device reporting no schema captures an empty, well-formed blob."""
+    device = make_device(local_strategy={}, status_range={})
+
+    schema = capture_local_schema(device)
+
+    assert schema["local_strategy"] == []
+    assert schema["status_range"] == []
+
+
+def test_capture_local_schema_tolerates_missing_attributes() -> None:
+    """A device object missing the strategy attributes still yields a blob."""
+    schema = capture_local_schema(SimpleNamespace())
+
+    assert schema["local_strategy"] == []
+    assert schema["status_range"] == []
+
+
+async def test_get_cloud_device_by_uuid_returns_raw_device() -> None:
+    """The raw cloud device is returned without building credentials."""
+    device = make_device()
+    mgr = _manager(devices=[device, make_device(id="other-id", uuid="other")])
+
+    assert await mgr.get_cloud_device_by_uuid("uuid") is device
+    assert await mgr.get_cloud_device_by_uuid("nope") is None
+
+
+async def test_get_cloud_device_by_uuid_force_update_refreshes_cache() -> None:
+    """force_update asks the SDK to refresh its device cache first."""
+    mgr = _manager()
+    calls = mgr._manager.update_device_cache  # pylint: disable=protected-access
+
+    assert await mgr.get_cloud_device_by_uuid("uuid", force_update=True) is None
+
+    assert calls
+
+
+async def test_get_cloud_device_by_uuid_initializes_manager() -> None:
+    """A manager that was never initialized builds itself on first use."""
+    device = make_device()
+    mgr = HASSTuyaBLEDeviceManager(cast(HomeAssistant, FakeHass()), {})
+    mgr._manager = None  # pylint: disable=protected-access
+
+    async def fake_initialize() -> None:
+        mgr._manager = SimpleNamespace(device_map={"a": device})  # pylint: disable=protected-access
+
+    with patch.object(mgr, "initialize", new=fake_initialize):
+        assert await mgr.get_cloud_device_by_uuid("uuid") is device

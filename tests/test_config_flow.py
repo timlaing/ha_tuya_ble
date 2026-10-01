@@ -22,6 +22,7 @@ from custom_components.tuya_ble.config_flow import (
 from custom_components.tuya_ble.const import (
     CONF_CATEGORY,
     CONF_DEVICE_NAME,
+    CONF_LOCAL_SCHEMA,
     CONF_PRODUCT_ID,
     CONF_PRODUCT_NAME,
     CONF_USER_CODE,
@@ -320,6 +321,13 @@ async def test_bluetooth_flow_sets_up_discovery_directly_after_login(
             device_name="Irrigation (Irrigation - Main)",
             product_model=None,
             product_name="Diivoo smart dual water timer",
+            local_schema={
+                "captured_at": "2026-09-30T00:00:00+00:00",
+                "local_strategy": [{"dp_id": 117, "status_code": "weather_delay_1"}],
+                "status_range": [
+                    {"code": "battery_percentage", "report_type": "minux"},
+                ],
+            },
         )
     )
     with (
@@ -340,6 +348,12 @@ async def test_bluetooth_flow_sets_up_discovery_directly_after_login(
     assert entry_data[CONF_PRODUCT_ID] == "fdrbxxbg"
     assert entry_data[CONF_DEVICE_NAME] == "Irrigation (Irrigation - Main)"
     assert entry_data[CONF_PRODUCT_NAME] == "Diivoo smart dual water timer"
+    # The complete cloud schema is persisted for diagnostics.
+    assert entry_data[CONF_LOCAL_SCHEMA] == {
+        "captured_at": "2026-09-30T00:00:00+00:00",
+        "local_strategy": [{"dp_id": 117, "status_code": "weather_delay_1"}],
+        "status_range": [{"code": "battery_percentage", "report_type": "minux"}],
+    }
 
 
 async def test_is_matching(hass: HomeAssistant) -> None:

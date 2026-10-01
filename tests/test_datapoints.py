@@ -367,6 +367,26 @@ def test_set_value_dt_enum_wrong_type_raises(datapoints: TuyaBLEDataPoints) -> N
         dp._set_enum_value(b"\x01")  # pylint: disable=protected-access
 
 
+def test_set_value_no_notify_dt_enum(datapoints: TuyaBLEDataPoints) -> None:
+    """A DT_ENUM datapoint narrows through the enum setter, not int()."""
+    dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_ENUM, value=1)
+
+    dp.set_value_no_notify("Auto")
+
+    assert dp.value == "Auto"
+    assert dp.changed_by_device is False
+
+
+def test_set_value_no_notify_dt_enum_negative_string_raises(
+    datapoints: TuyaBLEDataPoints,
+) -> None:
+    """A negative numeric enum name is rejected like a negative int."""
+    dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_ENUM, value=1)
+
+    with pytest.raises(TuyaBLEEnumValueError):
+        dp.set_value_no_notify("-2")
+
+
 # --------------------------------------------------------------------------
 # Debug logging
 # --------------------------------------------------------------------------
@@ -537,3 +557,45 @@ def test_collection_update_logs_creation(
         datapoints.update_from_device(8, 1000.0, 0, TuyaBLEDataPointType.DT_BOOL, True)
     assert "Data point 8 created from device update" in caplog.text
     assert "changed by device" not in caplog.text
+
+
+def test_values_returns_datapoints_in_dp_id_order(
+    datapoints: TuyaBLEDataPoints,
+) -> None:
+    """values() is the public iteration order, sorted by dp id."""
+    datapoints.update_from_device(20, 0.0, 0, TuyaBLEDataPointType.DT_BOOL, True)
+    datapoints.update_from_device(3, 0.0, 0, TuyaBLEDataPointType.DT_VALUE, 5)
+    datapoints.update_from_device(11, 0.0, 0, TuyaBLEDataPointType.DT_VALUE, 7)
+
+    result = datapoints.values()
+
+    assert [dp.dp_id for dp in result] == [3, 11, 20]
+    assert [dp.value for dp in result] == [5, 7, True]
+
+
+def test_values_is_empty_without_datapoints(
+    datapoints: TuyaBLEDataPoints,
+) -> None:
+    """An untouched collection iterates empty."""
+    assert datapoints.values() == []
+
+
+def test_set_value_no_notify_handles_string_bool_and_value(
+    datapoints: TuyaBLEDataPoints,
+) -> None:
+    """set_value_no_notify coerces types for string/int forms."""
+    dp_bool = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_BOOL, value=False)
+    dp_bool.set_value_no_notify("1")
+    assert dp_bool.value is True
+
+    dp_value = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_VALUE, value=0)
+    dp_value.set_value_no_notify("42")
+    assert dp_value.value == 42
+
+    dp_str = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_STRING, value="")
+    dp_str.set_value_no_notify(123)
+    assert dp_str.value == "123"
+
+    dp_raw = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_RAW, value=b"")
+    dp_raw.set_value_no_notify("abc")
+    assert dp_raw.value == b"abc"

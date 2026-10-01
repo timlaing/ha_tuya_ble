@@ -30,6 +30,7 @@ from .const import (
     CONF_ENDPOINT,
     CONF_FUNCTIONS,
     CONF_LOCAL_KEY,
+    CONF_LOCAL_SCHEMA,
     CONF_PRODUCT_ID,
     CONF_PRODUCT_MODEL,
     CONF_PRODUCT_NAME,
@@ -346,6 +347,7 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             CONF_PRODUCT_NAME: credentials.product_name,
             CONF_FUNCTIONS: credentials.functions,
             CONF_STATUS_RANGE: credentials.status_range,
+            CONF_LOCAL_SCHEMA: credentials.local_schema,
         }
         _LOGGER.debug(
             "%s: config entry created (category: %s, product_id: %s, device_name: %s)",

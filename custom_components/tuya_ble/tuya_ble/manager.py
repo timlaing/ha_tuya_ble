@@ -21,6 +21,7 @@ class TuyaBLEDeviceCredentials:
     product_name: str | None
     functions: list[Any] | None = None
     status_range: list[Any] | None = None
+    local_schema: dict[str, Any] | None = None
 
     def __str__(self) -> str:
         return (
