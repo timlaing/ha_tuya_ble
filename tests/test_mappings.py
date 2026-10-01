@@ -541,14 +541,23 @@ def test_get_mapped_dp_ids_includes_the_water_valve_entity() -> None:
     assert {1, 2, 11, 15} <= get_mapped_dp_ids("sfkzq", "16wgjvck")
 
 
+def test_get_mapped_dp_ids_includes_weather_data_points_with_entities() -> None:
+    """Data points 10 and 13 are mapped because entities now declare them.
+
+    They used to be declared mapped by the water valve spec while no entity read
+    them, which silenced the unmapped-data-point diagnostic. The descriptor now
+    exposes both, so the claim is backed by a real entity.
+    """
+    assert {10, 13} <= get_mapped_dp_ids("sfkzq", "16wgjvck")
+
+
 def test_get_mapped_dp_ids_excludes_data_points_no_entity_uses() -> None:
     """A data point no entity declares is not treated as mapped.
 
-    Data points 10 and 13 used to be declared mapped by the water valve spec, so
-    the unmapped-data-point diagnostic stayed quiet about them even though
-    nothing read them.
+    12 and 9 exist on the sibling sfkzq products but not on this one, so they
+    stay unmapped and are still reported.
     """
-    assert {10, 13}.isdisjoint(get_mapped_dp_ids("sfkzq", "16wgjvck"))
+    assert {9, 12}.isdisjoint(get_mapped_dp_ids("sfkzq", "16wgjvck"))
 
 
 def test_product_info_dp_ids_are_descriptor_derived() -> None:

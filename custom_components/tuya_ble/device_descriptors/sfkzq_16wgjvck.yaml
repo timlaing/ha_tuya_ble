@@ -24,6 +24,16 @@ entities:
       unit: "%"
       state_class: measurement
       entity_category: diagnostic
+    - dp_id: 13
+      translation_key: weather
+      name: Weather
+      icon: mdi:weather-cloudy-alert
+      device_class: enum
+      options:
+        - no_forecast
+        - sunny
+        - cloudy
+        - rainy
   number:
     - dp_id: 2
       translation_key: valve_opening_percentage
@@ -62,5 +72,17 @@ entities:
     - dp_id: 1
       translation_key: valve
       device_class: water
+  select:
+    - dp_id: 10
+      translation_key: weather_delay
+      name: Weather delay
+      icon: mdi:weather-partly-cloudy
+      entity_category: config
+      dp_type: 4
+      options:
+        - cancel
+        - 24h
+        - 48h
+        - 72h
 device_name: Aldi/Ferrex Smart Water Valve
 model_name: 16wgjvck
