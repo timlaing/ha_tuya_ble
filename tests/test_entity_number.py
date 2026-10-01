@@ -35,7 +35,6 @@ from custom_components.tuya_ble.device_descriptors.handlers.fingerbot.program im
 )
 from custom_components.tuya_ble.devices import (
     TuyaBLECoordinator,
-    TuyaBLEFingerbotInfo,
     TuyaBLEProductInfo,
 )
 from custom_components.tuya_ble.number import TuyaBLENumber
@@ -43,7 +42,7 @@ from custom_components.tuya_ble.tuya_ble import (
     TuyaBLEDataPointType,
     TuyaBLEDevice,
 )
-from tests.conftest import add_dp, build_context, connect
+from tests.conftest import add_dp, build_context, connect, make_product_info
 
 # Short aliases for fingerbot helpers (keeps lines under pylint limit).
 _not_in_prog = is_fingerbot_not_in_program_mode
@@ -187,15 +186,7 @@ async def test_fingerbot_in_program_mode_no_datapoint(
     """Verify is_fingerbot_in_program_mode with fingerbot set but no mode dp."""
 
     device, coordinator, product = build_context(hass)
-    product.fingerbot = TuyaBLEFingerbotInfo(
-        switch=2,
-        mode=8,
-        up_position=5,
-        down_position=6,
-        hold_time=3,
-        reverse_positions=0,
-        program=99,
-    )
+    product = make_product_info(mode=8, switch=2, program=99)
     entity = _make_entity(
         hass,
         device,
@@ -343,12 +334,9 @@ def _make_number(dp_dict: dict[int, Any]) -> Any:
 def _make_product(
     mode_dp: int | None = None,
     program_dp: int | None = None,
-) -> Any:
-    """Build a fake product info with optional fingerbot."""
-    fingerbot = None
-    if mode_dp is not None or program_dp is not None:
-        fingerbot = SimpleNamespace(mode=mode_dp, program=program_dp)
-    return SimpleNamespace(fingerbot=fingerbot)
+) -> TuyaBLEProductInfo:
+    """Build product info whose fingerbot entities have the given dp ids."""
+    return make_product_info(mode=mode_dp, program=program_dp)
 
 
 def test_no_fingerbot_returns_true() -> None:

@@ -29,16 +29,20 @@ from custom_components.tuya_ble.device_descriptors.handlers.water_valve import (
 )
 from custom_components.tuya_ble.devices import (
     TuyaBLECoordinator,
-    TuyaBLEFingerbotInfo,
     TuyaBLEProductInfo,
-    TuyaBLEWaterValveInfo,
 )
 from custom_components.tuya_ble.switch import TuyaBLESwitch
 from custom_components.tuya_ble.tuya_ble import (
     TuyaBLEDataPointType,
     TuyaBLEDevice,
 )
-from tests.conftest import add_dp, build_context, connect, make_credentials
+from tests.conftest import (
+    add_dp,
+    build_context,
+    connect,
+    make_credentials,
+    make_product_info,
+)
 
 
 def _make_entity(
@@ -252,14 +256,7 @@ async def test_fingerbot_in_switch_mode_no_datapoint(
     """Verify is_fingerbot_in_switch_mode with fingerbot set but no mode dp."""
 
     device, coordinator, product = build_context(hass)
-    product.fingerbot = TuyaBLEFingerbotInfo(
-        switch=2,
-        mode=8,
-        up_position=5,
-        down_position=6,
-        hold_time=3,
-        reverse_positions=0,
-    )
+    product = make_product_info(mode=8, switch=2)
     entity = _make_entity(
         hass,
         device,
@@ -292,16 +289,7 @@ async def test_is_fingerbot_in_program_mode_with_fingerbot(
 ) -> None:
     """Verify is_fingerbot_in_program_mode checks the mode datapoint."""
     device, coordinator, product = build_context(hass)
-    product.fingerbot = TuyaBLEFingerbotInfo(
-        switch=2,
-        mode=8,
-        up_position=15,
-        down_position=9,
-        hold_time=10,
-        reverse_positions=11,
-        manual_control=17,
-        program=121,
-    )
+    product = make_product_info(mode=8, switch=2, manual_control=17, program=121)
     entity = _make_entity(
         hass,
         device,
@@ -325,14 +313,7 @@ async def test_is_fingerbot_in_switch_mode_with_mode_datapoint(
 ) -> None:
     """Verify is_fingerbot_in_switch_mode checks the mode datapoint."""
     device, coordinator, product = build_context(hass)
-    product.fingerbot = TuyaBLEFingerbotInfo(
-        switch=2,
-        mode=8,
-        up_position=15,
-        down_position=9,
-        hold_time=10,
-        reverse_positions=11,
-    )
+    product = make_product_info(mode=8, switch=2)
     entity = _make_entity(
         hass,
         device,
@@ -354,15 +335,7 @@ async def test_get_fingerbot_program_repeat_forever(
 ) -> None:
     """Verify get_fingerbot_program_repeat_forever reads the program datapoint."""
     device, coordinator, product = build_context(hass)
-    product.fingerbot = TuyaBLEFingerbotInfo(
-        switch=2,
-        mode=8,
-        up_position=15,
-        down_position=9,
-        hold_time=10,
-        reverse_positions=11,
-        program=121,
-    )
+    product = make_product_info(mode=8, switch=2, program=121)
     entity = _make_entity(
         hass,
         device,
@@ -387,15 +360,7 @@ async def test_get_fingerbot_program_repeat_forever_program_zero(
 ) -> None:
     """Verify get_fingerbot_program_repeat_forever returns None when program is 0."""
     device, coordinator, product = build_context(hass)
-    product.fingerbot = TuyaBLEFingerbotInfo(
-        switch=2,
-        mode=8,
-        up_position=15,
-        down_position=9,
-        hold_time=10,
-        reverse_positions=11,
-        program=0,
-    )
+    product = make_product_info(mode=8, switch=2)
     entity = _make_entity(
         hass,
         device,
@@ -412,15 +377,7 @@ async def test_set_fingerbot_program_repeat_forever(
 ) -> None:
     """Verify set_fingerbot_program_repeat_forever modifies the program datapoint."""
     device, coordinator, product = build_context(hass)
-    product.fingerbot = TuyaBLEFingerbotInfo(
-        switch=2,
-        mode=8,
-        up_position=15,
-        down_position=9,
-        hold_time=10,
-        reverse_positions=11,
-        program=121,
-    )
+    product = make_product_info(mode=8, switch=2, program=121)
     entity = _make_entity(
         hass,
         device,
@@ -448,15 +405,7 @@ async def test_set_fingerbot_program_no_program_dp(
 ) -> None:
     """Verify set_fingerbot_program_repeat_forever exits early when no program dp."""
     device, coordinator, product = build_context(hass)
-    product.fingerbot = TuyaBLEFingerbotInfo(
-        switch=2,
-        mode=8,
-        up_position=15,
-        down_position=9,
-        hold_time=10,
-        reverse_positions=11,
-        program=121,
-    )
+    product = make_product_info(mode=8, switch=2, program=121)
     entity = _make_entity(
         hass,
         device,
@@ -589,13 +538,7 @@ async def test_write_bitmap_none_mask(
 async def test_is_water_valve_in_switch_mode_true(hass: HomeAssistant) -> None:
     """Verify is_water_valve_in_switch_mode returns True when watervalve is set."""
     device, coordinator, product = build_context(hass)
-    product.watervalve = TuyaBLEWaterValveInfo(
-        switch=1,
-        countdown=2,
-        weather_delay=3,
-        smart_weather=4,
-        use_time=5,
-    )
+    product = make_product_info(water_valve=1)
     entity = _make_entity(
         hass,
         device,

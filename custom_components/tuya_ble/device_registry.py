@@ -107,6 +107,18 @@ class DeviceEntities:
             return self.entities[platform]
         return self.category_defaults.get(platform, [])
 
+    def dp_id_for(self, platform: str, translation_key: str) -> int | None:
+        """Return the dp_id of the entity named *translation_key*, if any.
+
+        Looks through ``get`` so a category default counts the same as a
+        product-specific entity, and returns None when the product declares no
+        such entity on that platform.
+        """
+        for descriptor in self.get(platform):
+            if descriptor.translation_key == translation_key:
+                return descriptor.dp_id
+        return None
+
 
 def _parse_entity(platform: str, raw: dict[str, Any]) -> EntityDescriptor:
     """Parse a raw entity mapping dict into an EntityDescriptor."""
@@ -375,8 +387,11 @@ def get_mapped_dp_ids(category: str, product_id: str) -> frozenset[int]:
     Used to tell a genuinely unsupported data point apart from one that simply
     has no entity yet, so diagnostics only report the former. Product-specific
     overrides take precedence over the category defaults, matching how
-    entities are actually created, and data points referenced only by a shared
-    handler (the fingerbot and water valve specs) are included as well.
+    entities are actually created.
+
+    Every data point a shared handler reads is declared as an entity of its own
+    -- the fingerbot mode, switch, manual control and program entities, and the
+    water valve -- so scanning the entities covers them too.
 
     An empty result means the product is unknown to the descriptor registry.
     """
@@ -386,16 +401,4 @@ def get_mapped_dp_ids(category: str, product_id: str) -> frozenset[int]:
         for platform in {*device.entities, *device.category_defaults}:
             for descriptor in device.get(platform):
                 ids.update(_descriptor_dp_ids(descriptor))
-
-    from .products import (  # pylint: disable=import-outside-toplevel
-        get_product_info_by_ids,
-    )
-
-    product_info = get_product_info_by_ids(category, product_id)
-    if product_info is not None:
-        for spec in (product_info.fingerbot, product_info.watervalve):
-            if spec is None:
-                continue
-            for value in vars(spec).values():
-                ids.update(_iter_dp_reference(value))
     return frozenset(ids)

@@ -19,7 +19,6 @@ from custom_components.tuya_ble.device_descriptors.handlers.fingerbot.program im
 )
 from custom_components.tuya_ble.devices import (
     TuyaBLECoordinator,
-    TuyaBLEFingerbotInfo,
     TuyaBLEProductInfo,
 )
 from custom_components.tuya_ble.text import TuyaBLEText
@@ -27,7 +26,7 @@ from custom_components.tuya_ble.tuya_ble import (
     TuyaBLEDataPointType,
     TuyaBLEDevice,
 )
-from tests.conftest import add_dp, build_context, connect
+from tests.conftest import add_dp, build_context, connect, make_product_info
 
 
 def _make_entity(
@@ -146,14 +145,7 @@ async def test_fingerbot_in_program_mode_no_datapoint(
     """Verify is_fingerbot_in_program_mode with fingerbot set but no mode dp."""
 
     device, coordinator, product = build_context(hass)
-    product.fingerbot = TuyaBLEFingerbotInfo(
-        switch=2,
-        mode=8,
-        up_position=5,
-        down_position=6,
-        hold_time=3,
-        reverse_positions=0,
-    )
+    product = make_product_info(mode=8, switch=2)
     entity = _make_entity(
         hass,
         device,
@@ -195,15 +187,7 @@ async def test_get_fingerbot_program_no_datapoint(hass: HomeAssistant) -> None:
     """Verify get_fingerbot_program returns None when program dp is absent."""
 
     device, coordinator, product = build_context(hass)
-    product.fingerbot = TuyaBLEFingerbotInfo(
-        switch=2,
-        mode=8,
-        up_position=5,
-        down_position=6,
-        hold_time=3,
-        reverse_positions=0,
-        program=99,
-    )
+    product = make_product_info(mode=8, switch=2, program=99)
     entity = _make_entity(
         hass,
         device,
@@ -218,15 +202,7 @@ async def test_set_fingerbot_program_no_datapoint(hass: HomeAssistant) -> None:
     """Verify set_fingerbot_program exits early when program dp is absent."""
 
     device, coordinator, product = build_context(hass)
-    product.fingerbot = TuyaBLEFingerbotInfo(
-        switch=2,
-        mode=8,
-        up_position=5,
-        down_position=6,
-        hold_time=3,
-        reverse_positions=0,
-        program=99,
-    )
+    product = make_product_info(mode=8, switch=2, program=99)
     entity = _make_entity(
         hass,
         device,

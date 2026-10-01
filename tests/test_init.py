@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import ExitStack
+import logging
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -10,7 +11,6 @@ from bleak.backends.device import BLEDevice
 from bleak_retry_connector import BleakNotFoundError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import entity_registry as er
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -36,6 +36,7 @@ from custom_components.tuya_ble.const import (
     DOMAIN,
 )
 from custom_components.tuya_ble.device_registry import DeviceEntities, EntityDescriptor
+from custom_components.tuya_ble.devices import get_product_info_by_ids
 from custom_components.tuya_ble.entity import _find_legacy_keys, _resolve_unique_id
 
 
@@ -278,9 +279,7 @@ def test_find_legacy_keys_from_category_default(
 
     reg = MagicMock()
     reg.get.return_value = entities
-    with patch(
-        "custom_components.tuya_ble.device_registry.get_registry", return_value=reg
-    ):
+    with patch("custom_components.tuya_ble.entity.get_registry", return_value=reg):
         assert _find_legacy_keys(device, "countdown_zone1") == ["countdown_duration_z1"]
     assert "number" not in entities.entities
 
@@ -312,9 +311,7 @@ def test_find_legacy_keys_product_override_wins(
 
     reg = MagicMock()
     reg.get.return_value = entities
-    with patch(
-        "custom_components.tuya_ble.device_registry.get_registry", return_value=reg
-    ):
+    with patch("custom_components.tuya_ble.entity.get_registry", return_value=reg):
         assert _find_legacy_keys(device, "countdown_zone1") == []
 
 
@@ -346,9 +343,7 @@ def test_find_legacy_keys_match_without_legacy_keys_stops_scan(
 
     reg = MagicMock()
     reg.get.return_value = entities
-    with patch(
-        "custom_components.tuya_ble.device_registry.get_registry", return_value=reg
-    ):
+    with patch("custom_components.tuya_ble.entity.get_registry", return_value=reg):
         assert _find_legacy_keys(device, "countdown_zone1") == []
 
 
@@ -490,8 +485,15 @@ async def test_async_setup_entry_initial_update_failure_is_suppressed(
     await hass.async_stop()
 
 
-async def test_async_setup_entry_unknown_product(hass: HomeAssistant) -> None:
-    """Assert setup raises ConfigEntryNotReady when the product info is unknown."""
+async def test_async_setup_entry_unknown_product(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An unknown product still loads, with no entities, and says so.
+
+    Retrying the entry forever would hold up the whole Home Assistant startup
+    over a device that simply has no descriptor yet, and the product id can be
+    picked up later without touching the entry.
+    """
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Device",
@@ -500,12 +502,19 @@ async def test_async_setup_entry_unknown_product(hass: HomeAssistant) -> None:
     )
     entry.add_to_hass(hass)
 
-    deps = _patch_deps(hass, product_info=None)
+    deps = _patch_deps(hass, product_info=get_product_info_by_ids("ms", "unknown"))
+    caplog.set_level(logging.DEBUG)
     with ExitStack() as stack:
         for p in deps["patches"]:
             stack.enter_context(p)
-        with pytest.raises(ConfigEntryNotReady):
-            await async_setup_entry(hass, entry)
+        assert await async_setup_entry(hass, entry) is True
+
+    assert "no descriptor for category" in caplog.text
+    deps["device"].initialize_with_credentials.assert_awaited_once()
+    assert hass.data[DOMAIN][entry.entry_id].product.name == ""
+    await deps["background_tasks"][0]["target"]
+    deps["device"].update.assert_awaited_once()
+    await hass.async_stop()
 
 
 async def test_setup_registers_and_calls_ble_callback(hass: HomeAssistant) -> None:

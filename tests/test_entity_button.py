@@ -11,14 +11,13 @@ from custom_components.tuya_ble.device_descriptors.handlers.fingerbot.mode impor
 )
 from custom_components.tuya_ble.devices import (
     TuyaBLECoordinator,
-    TuyaBLEFingerbotInfo,
     TuyaBLEProductInfo,
 )
 from custom_components.tuya_ble.tuya_ble import (
     TuyaBLEDataPointType,
     TuyaBLEDevice,
 )
-from tests.conftest import add_dp, build_context, connect
+from tests.conftest import add_dp, build_context, connect, make_product_info
 
 
 def _btn_desc() -> ButtonEntityDescription:
@@ -95,14 +94,7 @@ async def test_fingerbot_in_push_mode_no_datapoint(hass: HomeAssistant) -> None:
     """Verify is_fingerbot_in_push_mode with fingerbot set but no mode dp."""
 
     device, coordinator, product = build_context(hass)
-    product.fingerbot = TuyaBLEFingerbotInfo(
-        switch=2,
-        mode=8,
-        up_position=5,
-        down_position=6,
-        hold_time=3,
-        reverse_positions=0,
-    )
+    product = make_product_info(mode=8, switch=2)
     mapping = button.TuyaBLEButtonMapping(
         dp_id=2,
         description=_btn_desc(),

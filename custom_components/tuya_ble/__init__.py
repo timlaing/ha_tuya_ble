@@ -14,7 +14,6 @@ from homeassistant.const import (
     Platform,
 )
 from homeassistant.core import Event, HomeAssistant, callback
-from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import entity_registry as er
 
 from .const import (
@@ -126,9 +125,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     device = TuyaBLEDevice(manager, ble_device)
     await device.initialize_with_credentials(credentials)
 
+    # An unknown product is not an error: it still loads, it just gets no
+    # entities, since there is no descriptor to build them from.
     product_info = get_device_product_info(device)
-    if product_info is None:
-        raise ConfigEntryNotReady(f"Unknown device: {device.product_id}")
+    if not product_info.entities:
+        _LOGGER.debug(
+            "%s: no descriptor for category %s / product %s; loading with no entities",
+            address,
+            device.category,
+            device.product_id,
+        )
 
     coordinator = TuyaBLECoordinator(hass, device)
 

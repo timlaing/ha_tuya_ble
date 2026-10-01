@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 from typing import TYPE_CHECKING, Any
 
+from home_assistant_bluetooth import BluetoothServiceInfoBleak
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityDescription
 from homeassistant.helpers.entity_registry import (
@@ -20,17 +22,18 @@ from .const import (
     DPCode,
     DPType,
 )
-from .products import TuyaBLEProductInfo, get_product_info_by_ids
+from .device_registry import DeviceEntities, get_registry
 from .tuya_ble import (
+    AbstractTuyaBLEDeviceManager,
     TuyaBLEDataPointType,
     TuyaBLEDevice,
+    TuyaBLEDeviceCredentials,
 )
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
     from .coordinator import TuyaBLECoordinator
-    from .device_registry import DeviceEntities
 
 
 _HASS_DATA_LEGACY_KEYS = "legacy_unique_id_suffixes"
@@ -38,11 +41,115 @@ _HASS_DATA_LEGACY_KEYS = "legacy_unique_id_suffixes"
 _LOGGER = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class TuyaBLEProductInfo:
+    """Product metadata, backed by the device descriptor.
+
+    A thin view over a descriptor, which is the single source of truth for a
+    product's name, manufacturer and data point layout. A device with no
+    descriptor yields an empty view, so an unsupported product still loads with
+    no entities instead of failing setup.
+
+    The data point ids are looked up by entity rather than stored here, so
+    adding an entity to a descriptor is all it takes to make the handlers below
+    see it -- there is no second copy of the layout to keep in step.
+    """
+
+    name: str = ""
+    manufacturer: str = DEVICE_DEF_MANUFACTURER
+    entities: DeviceEntities | None = None
+
+    @classmethod
+    def from_descriptor(cls, entities: DeviceEntities | None) -> TuyaBLEProductInfo:
+        """Build a view of *entities*, or an empty view when it is None."""
+        if entities is None:
+            return cls()
+        return cls(
+            name=entities.device_name or "",
+            manufacturer=entities.manufacturer or DEVICE_DEF_MANUFACTURER,
+            entities=entities,
+        )
+
+    def dp_id_for(self, platform: str, translation_key: str) -> int | None:
+        """Return the dp_id of the named entity, or None if the product lacks it."""
+        if self.entities is None:
+            return None
+        return self.entities.dp_id_for(platform, translation_key)
+
+    @property
+    def fingerbot_mode_dp_id(self) -> int | None:
+        """The mode dp_id, which is also what identifies a Fingerbot."""
+        return self.dp_id_for("select", "fingerbot_mode")
+
+    @property
+    def fingerbot_switch_dp_id(self) -> int | None:
+        """The dp_id that switches the Fingerbot on and off."""
+        return self.dp_id_for("switch", "switch")
+
+    @property
+    def fingerbot_manual_control_dp_id(self) -> int | None:
+        """The sensor button dp_id, or None on a Fingerbot that has no button."""
+        return self.dp_id_for("switch", "manual_control")
+
+    @property
+    def fingerbot_program_dp_id(self) -> int | None:
+        """The program dp_id, or None on a Fingerbot with no program entity.
+
+        Only the products whose descriptors use a ``fingerbot.program.*``
+        handler declare a program, so a plain Fingerbot has none.
+        """
+        return self.dp_id_for("number", "program_idle_position")
+
+    @property
+    def is_water_valve(self) -> bool:
+        """Whether this product is a water valve.
+
+        A water valve is the only kind of device that declares a ``valve``.
+        """
+        return self.dp_id_for("valve", "valve") is not None
+
+
+def get_product_info_by_ids(category: str, product_id: str) -> TuyaBLEProductInfo:
+    """Look up product info by category and product ID."""
+    return TuyaBLEProductInfo.from_descriptor(get_registry().get(category, product_id))
+
+
+def get_device_product_info(device: TuyaBLEDevice) -> TuyaBLEProductInfo:
+    """Get product info for a Tuya BLE device."""
+    return get_product_info_by_ids(device.category, device.product_id)
+
+
+def get_short_address(address: str) -> str:
+    """Get a short formatted address from a Bluetooth MAC address."""
+    results = address.replace("-", ":").upper().split(":")
+    return f"{results[-3]}{results[-2]}{results[-1]}"[-6:]
+
+
+async def get_device_readable_name(
+    discovery_info: BluetoothServiceInfoBleak,
+    manager: AbstractTuyaBLEDeviceManager | None,
+) -> str:
+    """Get a human-readable name for a discovered BLE device."""
+    credentials: TuyaBLEDeviceCredentials | None = None
+    product_info: TuyaBLEProductInfo | None = None
+    if manager:
+        credentials = await manager.get_device_credentials(discovery_info.address)
+        if credentials:
+            product_info = get_product_info_by_ids(
+                credentials.category,
+                credentials.product_id,
+            )
+    short_address = get_short_address(discovery_info.address)
+    if product_info and product_info.name:
+        return f"{product_info.name} {short_address}"
+    if credentials:
+        return f"{credentials.device_name} {short_address}"
+    return f"{discovery_info.device.name} {short_address}"
+
+
 def get_device_info(device: TuyaBLEDevice) -> DeviceInfo | None:
     """Get Home Assistant device registry info for a Tuya BLE device."""
-    product_info = None
-    if device.category and device.product_id:
-        product_info = get_product_info_by_ids(device.category, device.product_id)
+    product_info = get_device_product_info(device)
     device_name = (
         device.cloud_name
         or _descriptor_device_name(device)
@@ -53,7 +160,7 @@ def get_device_info(device: TuyaBLEDevice) -> DeviceInfo | None:
         device.product_name
         or device.product_model
         or _descriptor_model_name(device)
-        or (product_info.name if product_info else "")
+        or product_info.name
         or device.product_id
     )
     sw_version = device.device_version or None
@@ -63,11 +170,7 @@ def get_device_info(device: TuyaBLEDevice) -> DeviceInfo | None:
         connections={("bluetooth", device.address)},
         hw_version=device.hardware_version or None,
         identifiers={(DOMAIN, device.address)},
-        manufacturer=(
-            _descriptor_manufacturer(device)
-            or (product_info.manufacturer if product_info else None)
-            or DEVICE_DEF_MANUFACTURER
-        ),
+        manufacturer=_descriptor_manufacturer(device) or product_info.manufacturer,
         model=model or None,
         name=device_name,
         sw_version=sw_version,
@@ -79,8 +182,6 @@ def _descriptor(device: TuyaBLEDevice) -> DeviceEntities | None:
     """Return the device's descriptor, if it has one."""
     if not device.category or not device.product_id:
         return None
-    from .device_registry import get_registry  # pylint: disable=C0415
-
     return get_registry().get(device.category, device.product_id)
 
 
@@ -107,8 +208,6 @@ def _find_legacy_keys(
     key: str,
 ) -> list[str]:
     """Return legacy alias keys for *key* from the product descriptor, if any."""
-    from .device_registry import get_registry  # pylint: disable=C0415
-
     product = get_registry().get(device.category or "", device.product_id or "")
     if product is None:
         return []
