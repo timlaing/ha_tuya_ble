@@ -8,6 +8,15 @@ GATT_MTU = 20
 
 DEFAULT_ATTEMPTS = 0xFFFF
 
+# A fragmented message is at most 255 fragments of (GATT_MTU - 3) bytes, since
+# each fragment carries a 1-byte packet number. Anything larger than this is a
+# misbehaving peer rather than a legitimate payload.
+MAX_INPUT_LENGTH = (GATT_MTU - 3) * 255
+
+# Drop a partially reassembled message if the remaining fragments never arrive,
+# otherwise the stale buffer desynchronises every subsequent message.
+INPUT_REASSEMBLY_TIMEOUT = 5.0
+
 CHARACTERISTIC_NOTIFY = "00002b10-0000-1000-8000-00805f9b34fb"
 CHARACTERISTIC_WRITE = "00002b11-0000-1000-8000-00805f9b34fb"
 

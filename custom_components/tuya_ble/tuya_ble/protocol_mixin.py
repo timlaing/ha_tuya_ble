@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
+from functools import partial
 import hashlib
 import logging
 import secrets
@@ -23,6 +24,8 @@ from Crypto.Cipher import AES
 from .const import (
     CHARACTERISTIC_WRITE,
     GATT_MTU,
+    INPUT_REASSEMBLY_TIMEOUT,
+    MAX_INPUT_LENGTH,
     RESPONSE_WAIT_TIMEOUT,
     TuyaBLECode,
     TuyaBLEDataPointType,
@@ -38,7 +41,14 @@ from .exceptions import (
 
 _LOGGER = logging.getLogger(__name__)
 
-BLEAK_EXCEPTIONS = (*BLEAK_RETRY_EXCEPTIONS, OSError)
+# BLEAK_RETRY_EXCEPTIONS includes AttributeError, which would otherwise make a
+# programming error (typo'd attribute, missing Protocol member, None access)
+# look like a transient BLE failure and be retried silently. Excluding it keeps
+# real bugs visible instead of presenting them as a flaky device.
+BLEAK_EXCEPTIONS = (
+    *(err for err in BLEAK_RETRY_EXCEPTIONS if err is not AttributeError),
+    OSError,
+)
 
 BLE_CONNECTION_EXCEPTIONS = (TuyaBLEError, *BLEAK_EXCEPTIONS)
 
@@ -62,6 +72,7 @@ class TuyaBLEProtocol(Protocol):
     _input_buffer: bytearray | None
     _input_expected_packet_num: int
     _input_expected_length: int
+    _input_reassembly_deadline: float
     _input_expected_responses: dict[int, asyncio.Future[int]]
     _seq_num_lock: asyncio.Lock
     _current_seq_num: int
@@ -285,9 +296,75 @@ class TuyaBLEProtocol(Protocol):
         if self._client and self._client.is_connected:
             await self._send_packet_while_connected(code, data, response_to, False)
 
+    def _log_unretrieved_exception(
+        self, task: asyncio.Task[None], description: str
+    ) -> None:
+        """Retrieve and log an exception from a finished background task.
+
+        Without this an escaping exception is only reported by asyncio at GC
+        time as "Task exception was never retrieved", with no device context.
+        """
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            _LOGGER.warning(
+                "%s: Unretrieved exception from %s: %s",
+                self.address,
+                description,
+                exc,
+                exc_info=exc,
+            )
+
+    def _spawn_background_task(
+        self, coro: Coroutine[Any, Any, None], description: str
+    ) -> asyncio.Task[None]:
+        """Create a background task that logs its exception when it finishes."""
+        task = asyncio.create_task(coro)
+        task.add_done_callback(
+            partial(self._log_unretrieved_exception, description=description)
+        )
+        return task
+
+    def _schedule_reconnect(self) -> None:
+        """Ensure exactly one reconnect task is pending.
+
+        A failed GATT write reaches both `_disconnected()` and the
+        `_send_packets_locked()` error handler, and each failed `_reconnect`
+        reschedules itself, so without this guard the population doubles on
+        every event. Skipped once an intentional disconnect is expected.
+        """
+        if self._expected_disconnect:
+            return
+        pending = self._reconnect_task
+        if (
+            pending is not None
+            and pending is not asyncio.current_task()
+            and not pending.done()
+        ):
+            return
+        self._reconnect_task = self._spawn_background_task(
+            self._reconnect(), "reconnect task"
+        )
+
+    def _schedule_resend(self, packets: list[bytes]) -> None:
+        """Ensure exactly one resend task is pending for these packets."""
+        pending = self._resend_task
+        if pending is not None and not pending.done():
+            return
+        self._resend_task = self._spawn_background_task(
+            self._resend_packets(packets), "resend task"
+        )
+
     def _track_send_response_task(self, task: asyncio.Task[None]) -> None:
         """Track a send-response task so outstanding tasks can be cancelled."""
         self._send_response_tasks.add(task)
+        task.add_done_callback(
+            partial(
+                self._log_unretrieved_exception,
+                description="send-response task",
+            )
+        )
         task.add_done_callback(self._send_response_tasks.discard)
 
     async def _send_packet_while_connected(
@@ -320,19 +397,23 @@ class TuyaBLEProtocol(Protocol):
                 seq_num,
                 code.name,
             )
-        packets: list[bytes] = self._build_packets(seq_num, code, data, response_to)
-        await self._int_send_packet_while_connected(packets)
-        if future:
-            try:
-                await asyncio.wait_for(future, RESPONSE_WAIT_TIMEOUT)
-            except TimeoutError:
-                _LOGGER.error(
-                    "%s: timeout receiving response, RSSI: %s",
-                    self.address,
-                    self.rssi,
-                )
-                result = False
-            self._input_expected_responses.pop(seq_num, None)
+        packets: list[bytes]
+        try:
+            packets = self._build_packets(seq_num, code, data, response_to)
+            await self._int_send_packet_while_connected(packets)
+            if future is not None:
+                try:
+                    await asyncio.wait_for(future, RESPONSE_WAIT_TIMEOUT)
+                except TimeoutError:
+                    _LOGGER.error(
+                        "%s: timeout receiving response, RSSI: %s",
+                        self.address,
+                        self.rssi,
+                    )
+                    result = False
+        finally:
+            if future is not None:
+                self._input_expected_responses.pop(seq_num, None)
 
         return result
 
@@ -391,9 +472,9 @@ class TuyaBLEProtocol(Protocol):
                 ex,
             )
             if self._is_paired:
-                self._resend_task = asyncio.create_task(self._resend_packets(packets))
+                self._schedule_resend(packets)
             else:
-                self._reconnect_task = asyncio.create_task(self._reconnect())
+                self._schedule_reconnect()
             raise BleakError from ex
         except BleakError as ex:
             # Disconnect so we can reset state and try again
@@ -404,9 +485,9 @@ class TuyaBLEProtocol(Protocol):
                 ex,
             )
             if self._is_paired:
-                self._resend_task = asyncio.create_task(self._resend_packets(packets))
+                self._schedule_resend(packets)
             else:
-                self._reconnect_task = asyncio.create_task(self._reconnect())
+                self._schedule_reconnect()
             raise
 
     async def _int_send_packets_locked(self, packets: list[bytes]) -> None:
@@ -708,6 +789,7 @@ class TuyaBLEProtocol(Protocol):
         self._input_buffer = None
         self._input_expected_packet_num = 0
         self._input_expected_length = 0
+        self._input_reassembly_deadline = 0.0
 
     def _parse_input(self) -> None:
         """Decrypt and process the buffered input packet."""
@@ -750,20 +832,22 @@ class TuyaBLEProtocol(Protocol):
         self, raw: bytes
     ) -> tuple[int, int, TuyaBLECode, bytes] | None:
         """Validate a decrypted packet: check length, CRC, and extract fields."""
+        if len(raw) < 12:
+            raise TuyaBLEDataLengthError()
         seq_num, response_to, _code, length = unpack(">IIHH", raw[:12])
 
         data_end_pos = length + 12
-        raw_length = len(raw)
-        if raw_length < data_end_pos:
+        if len(raw) < data_end_pos + 2:
             raise TuyaBLEDataLengthError()
-        if raw_length > data_end_pos:
-            calc_crc = self._calc_crc16(raw[:data_end_pos])
-            (data_crc,) = unpack(
-                ">H",
-                raw[data_end_pos : data_end_pos + 2],  # fmt: skip
-            )
-            if calc_crc != data_crc:
-                raise TuyaBLEDataCRCError()
+        # The CRC is the only integrity check this protocol has: the security
+        # flag and IV sit outside the payload and are not covered by it.
+        calc_crc = self._calc_crc16(raw[:data_end_pos])
+        (data_crc,) = unpack(
+            ">H",
+            raw[data_end_pos : data_end_pos + 2],  # fmt: skip
+        )
+        if calc_crc != data_crc:
+            raise TuyaBLEDataCRCError()
         data = raw[12:data_end_pos]
 
         try:
@@ -797,16 +881,41 @@ class TuyaBLEProtocol(Protocol):
                 self._input_expected_packet_num,
             )
             self._clean_input()
+            return
 
         if packet_num == self._input_expected_packet_num:
             if packet_num == 0:
                 self._input_buffer = bytearray()
-                self._input_expected_length, pos = self._unpack_int(bytes(data), pos)
+                expected_length, pos = self._unpack_int(bytes(data), pos)
                 pos += 1
-            if self._input_buffer is None:
+                if expected_length > MAX_INPUT_LENGTH:
+                    _LOGGER.error(
+                        "%s: Announced length %s in notifications exceeds"
+                        " the %s byte maximum; discarding",
+                        self.address,
+                        expected_length,
+                        MAX_INPUT_LENGTH,
+                    )
+                    self._clean_input()
+                    raise TuyaBLEDataLengthError()
+                self._input_expected_length = expected_length
+                self._input_reassembly_deadline = (
+                    time.monotonic() + INPUT_REASSEMBLY_TIMEOUT
+                )
+            elif time.monotonic() > self._input_reassembly_deadline:
+                _LOGGER.error(
+                    "%s: Timed out waiting for packet %s of %s bytes",
+                    self.address,
+                    self._input_expected_packet_num,
+                    self._input_expected_length,
+                )
+                self._clean_input()
+                return
+            buffer = self._input_buffer
+            if buffer is None:
                 _LOGGER.error("%s: Buffer not initialized", self.address)
                 return
-            self._input_buffer += data[pos:]
+            self._input_buffer = buffer + data[pos:]
             self._input_expected_packet_num += 1
         else:
             _LOGGER.error(

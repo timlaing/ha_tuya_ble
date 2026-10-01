@@ -40,6 +40,7 @@ class TuyaBLESelectMapping:
     values: list[str] | None = None
 
 
+@dataclass(frozen=True)
 class TemperatureUnitDescription(SelectEntityDescription):
     """Select entity description for temperature unit selection."""
 

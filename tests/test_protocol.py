@@ -6,13 +6,18 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Coroutine
 import logging
+import struct
 from struct import pack
 from typing import Any
+from unittest.mock import patch
 
+from bleak.exc import BleakError
 import pytest
 
 from custom_components.tuya_ble.tuya_ble import TuyaBLEDataPoint
 from custom_components.tuya_ble.tuya_ble.const import (
+    INPUT_REASSEMBLY_TIMEOUT,
+    MAX_INPUT_LENGTH,
     TuyaBLECode,
     TuyaBLEDataPointType,
 )
@@ -22,7 +27,17 @@ from custom_components.tuya_ble.tuya_ble.exceptions import (
     TuyaBLEDataLengthError,
     TuyaBLEDeviceError,
 )
-from custom_components.tuya_ble.tuya_ble.protocol_mixin import TuyaBLEProtocol
+from custom_components.tuya_ble.tuya_ble.protocol_mixin import (
+    BLE_CONNECTION_EXCEPTIONS,
+    BLEAK_EXCEPTIONS,
+    TuyaBLEProtocol,
+)
+from tests.conftest import (
+    FakeBleakClient,
+    FakeBLEManager,
+    make_credentials,
+    make_device,
+)
 from tests.protocol_harness import (
     ProtocolHarness,
     encrypt_payload,
@@ -696,3 +711,204 @@ async def test_stop_cancels_tracked_response_tasks() -> None:
     h.device._send_response_tasks.add(asyncio.create_task(asyncio.sleep(60)))
     await h.device.stop()
     assert all(task.cancelled() for task in h.device._send_response_tasks)
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for the P0/P1 protocol fixes (issue #66)
+# ---------------------------------------------------------------------------
+
+
+async def test_exact_length_frame_crc_is_verified(h: ProtocolHarness) -> None:
+    """A frame of exactly ``length + 12 + 2`` bytes must still have its CRC checked.
+
+    The integrity check used to be guarded by ``raw_length > data_end_pos``, so a
+    frame that needed no padding - and so had exactly 2 bytes of CRC and nothing
+    else - fell through it and was accepted unverified.
+    """
+    # 2-byte payload: header(12) + data(2) + crc(2) = 16, already block-aligned.
+    good = make_raw(1, 0, TuyaBLECode.FUN_SENDER_DEVICE_STATUS.value, b"XX")
+    assert len(good) == 14 + 2
+
+    parsed = h.device._validate_and_parse_packet(good)
+    assert parsed is not None
+    assert parsed[3] == b"XX"
+
+    bad = make_raw(
+        1, 0, TuyaBLECode.FUN_SENDER_DEVICE_STATUS.value, b"XX", crc_override=0
+    )
+    assert len(bad) == 14 + 2
+    with pytest.raises(TuyaBLEDataCRCError):
+        h.device._validate_and_parse_packet(bad)
+
+
+async def test_validate_packet_requires_crc(h: ProtocolHarness) -> None:
+    """A frame too short to hold its CRC is rejected as a length error."""
+    raw = pack(">IIHH", 1, 0, TuyaBLECode.FUN_SENDER_DEVICE_STATUS.value, 2) + b"XX"
+    with pytest.raises(TuyaBLEDataLengthError):
+        h.device._validate_and_parse_packet(raw)
+
+
+async def test_validate_packet_shorter_than_header(h: ProtocolHarness) -> None:
+    """A decrypted buffer shorter than the 12-byte header is rejected."""
+    with pytest.raises(TuyaBLEDataLengthError):
+        h.device._validate_and_parse_packet(b"\x00" * 11)
+
+
+async def test_announced_length_over_maximum_is_rejected(
+    h: ProtocolHarness, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A device announcing an absurd length must not start an unbounded buffer."""
+    with caplog.at_level(logging.WARNING):
+        h.device._safe_notification_handler(
+            None,
+            bytearray(pack_varint(0) + pack_varint(0x0FFFFFFF) + pack(">B", 2 << 4)),
+        )
+
+    assert h.device._input_buffer is None
+    assert "exceeds" in caplog.text
+
+
+async def test_maximum_length_is_accepted(h: ProtocolHarness) -> None:
+    """The upper bound itself is a legal announcement."""
+    encrypted = encrypt_payload(
+        session_key(h), 5, 1, 0, TuyaBLECode.FUN_RECEIVE_DP, b"\x00" * 4
+    )
+    p0 = (
+        pack_varint(0)
+        + pack_varint(MAX_INPUT_LENGTH)
+        + pack(">B", 2 << 4)
+        + encrypted[:5]
+    )
+    h.device._notification_handler(None, bytearray(p0))
+    assert h.device._input_expected_length == MAX_INPUT_LENGTH
+
+
+async def test_stale_partial_reassembly_is_dropped(
+    h: ProtocolHarness, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A fragment that never completes must be discarded, not kept forever."""
+    encrypted = encrypt_payload(
+        session_key(h), 5, 1, 0, TuyaBLECode.FUN_RECEIVE_DP, b"\x00" * 40
+    )
+    h.notify(pack_varint(0) + pack_varint(len(encrypted)) + pack(">B", 2 << 4))
+    assert h.device._input_buffer is not None
+    assert h.device._input_expected_packet_num == 1
+
+    # Simulate the deadline having passed while the device went silent.
+    h.device._input_reassembly_deadline -= INPUT_REASSEMBLY_TIMEOUT + 1
+    with caplog.at_level(logging.WARNING):
+        h.device._notification_handler(None, bytearray(pack_varint(1) + b"\x00" * 4))
+
+    assert h.device._input_buffer is None
+    assert "Timed out waiting for packet" in caplog.text
+
+
+async def test_duplicate_packet_num_resyncs(
+    h: ProtocolHarness, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A duplicate packet 0 must reset rather than fall through and append."""
+    encrypted = encrypt_payload(
+        session_key(h), 5, 1, 0, TuyaBLECode.FUN_RECEIVE_DP, b"\x00" * 40
+    )
+    h.notify(pack_varint(0) + pack_varint(len(encrypted)) + pack(">B", 2 << 4))
+    assert h.device._input_expected_packet_num == 1
+
+    with caplog.at_level(logging.WARNING):
+        h.device._notification_handler(None, bytearray(pack_varint(0) + b"\x00" * 4))
+
+    assert h.device._input_buffer is None
+    assert "Unexpected packet" in caplog.text
+
+
+async def test_failed_send_does_not_leak_response_future(
+    h: ProtocolHarness,
+) -> None:
+    """A failed send must not leave its future in ``_input_expected_responses``."""
+    h.device._input_expected_responses = {}
+
+    async def fail(*_args: object, **_kwargs: object) -> None:
+        raise BleakError("test")
+
+    with (
+        patch.object(h.device, "_int_send_packet_while_connected", side_effect=fail),
+        pytest.raises(BleakError),
+    ):
+        await h.device._send_packet_while_connected(
+            TuyaBLECode.FUN_SENDER_DEVICE_STATUS, b"", 0, True
+        )
+
+    assert h.device._input_expected_responses == {}
+
+
+async def test_failed_packet_build_does_not_leak_response_future(
+    h: ProtocolHarness,
+) -> None:
+    """A ``struct.error`` while framing must not leak the registered future."""
+    h.device._input_expected_responses = {}
+
+    with (
+        patch.object(
+            h.device,
+            "_build_packets",
+            side_effect=struct.error("out of range"),
+        ),
+        pytest.raises(struct.error),
+    ):
+        await h.device._send_packet_while_connected(
+            TuyaBLECode.FUN_SENDER_DEVICE_STATUS, b"", 0, True
+        )
+
+    assert h.device._input_expected_responses == {}
+
+
+async def test_stop_fails_pending_response_futures(h: ProtocolHarness) -> None:
+    """stop() must not leave a sender waiting for its full response timeout."""
+    h.device._client = None
+    h.device._expected_disconnect = False
+    pending: asyncio.Future[int] = asyncio.Future()
+    h.device._input_expected_responses[7] = pending
+
+    await h.device.stop()
+
+    assert h.device._input_expected_responses == {}
+    assert pending.done()
+
+
+async def test_bleak_exceptions_excludes_attribute_error() -> None:
+    """A programming error must not be classified as a transient BLE failure."""
+    assert AttributeError not in BLEAK_EXCEPTIONS
+    assert AttributeError not in BLE_CONNECTION_EXCEPTIONS
+    assert BleakError in BLE_CONNECTION_EXCEPTIONS
+
+
+async def test_attribute_error_is_not_swallowed_by_connect() -> None:
+    """A real bug in a connect step must surface instead of retrying 100 times."""
+    dev = make_device(manager=FakeBLEManager(make_credentials()))
+    dev._client = FakeBleakClient(is_connected=True)  # type: ignore[assignment]
+    dev._is_paired = True
+
+    async def fail(*_args: object, **_kwargs: object) -> None:
+        raise AttributeError("typo")
+
+    with (
+        patch.object(dev, "_try_establish_connection", side_effect=fail),
+        pytest.raises(AttributeError),
+    ):
+        await dev._connect_with_retries()
+
+
+def test_lost_reassembly_buffer_is_reported(
+    h: ProtocolHarness, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A vanished reassembly buffer must be reported, not raised on."""
+    # A packet_num > 0 with no buffer is only reachable if the buffer was dropped
+    # out-of-band; verify the guard reports it instead of appending to None.
+    h.device._input_expected_packet_num = 1
+    h.device._input_buffer = None
+    h.device._input_reassembly_deadline = float("inf")
+
+    with caplog.at_level(logging.WARNING):
+        h.device._notification_handler(None, bytearray(pack_varint(1) + b"\x00" * 4))
+
+    assert "Buffer not initialized" in caplog.text
+    assert h.device._input_buffer is None

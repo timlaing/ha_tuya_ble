@@ -60,6 +60,8 @@ class EntityDescriptor:
     mode: str | None = None
     handlers: dict[str, str] = field(default_factory=dict)
     pattern: str | None = None
+    min_length: int | None = None
+    max_length: int | None = None
     door_dp_id: int | None = None
     legacy_keys: list[str] | None = None
     extra: dict[str, Any] = field(default_factory=dict)
@@ -176,6 +178,8 @@ def _parse_entity(platform: str, raw: dict[str, Any]) -> EntityDescriptor:
         step=raw.get("step"),
         mode=raw.get("mode"),
         pattern=raw.get("pattern"),
+        min_length=raw.get("min_length"),
+        max_length=raw.get("max_length"),
         door_dp_id=raw.get("door_dp_id"),
         legacy_keys=legacy_keys_raw,
         handlers=dict(handlers_raw),
@@ -209,6 +213,8 @@ _BASE_ENTITY_KEYS = {
     "mode",
     "handlers",
     "pattern",
+    "min_length",
+    "max_length",
     "door_dp_id",
     "legacy_keys",
 }

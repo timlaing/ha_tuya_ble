@@ -161,6 +161,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         self._input_buffer: bytearray | None = None
         self._input_expected_packet_num = 0
         self._input_expected_length = 0
+        self._input_reassembly_deadline = 0.0
         self._input_expected_responses: dict[int, asyncio.Future[int]] = {}
         self._uuid: str = ""
 
@@ -461,19 +462,28 @@ class TuyaBLEDevice(TuyaBLEProtocol):
     async def stop(self) -> None:
         """Stop the TuyaBLE and cancel any in-flight background tasks."""
         _LOGGER.debug("%s: Stop", self.address)
-        tasks = (
-            self._reconnect_task,
-            self._resend_task,
-            *self._send_response_tasks,
-        )
-        for task in tasks:
-            if task is not None and not task.done():
+        # Set before touching any lock, otherwise an in-flight connect holds
+        # _connect_lock and stop() blocks behind its whole retry loop.
+        self._expected_disconnect = True
+        for task in self._background_tasks():
+            if not task.done():
                 task.cancel()
         await self._execute_disconnect()
-        for task in tasks:
-            if task is not None:
-                with suppress(asyncio.CancelledError, Exception):
-                    await task
+        for task in self._background_tasks():
+            with suppress(asyncio.CancelledError, Exception):
+                await task
+
+    def _background_tasks(self) -> tuple[asyncio.Task[None], ...]:
+        """Snapshot the currently tracked background tasks."""
+        return tuple(
+            task
+            for task in (
+                self._reconnect_task,
+                self._resend_task,
+                *self._send_response_tasks,
+            )
+            if task is not None
+        )
 
     def _disconnected(self, client: BleakClientWithServiceCache) -> None:
         """Handle BLE disconnection: fire callbacks and reconnect."""
@@ -499,19 +509,31 @@ class TuyaBLEDevice(TuyaBLEProtocol):
                 self.address,
                 self.rssi,
             )
-            self._reconnect_task = asyncio.create_task(self._reconnect())
+            self._schedule_reconnect()
 
     async def _execute_disconnect(self) -> None:
         """Execute disconnection."""
+        self._expected_disconnect = True
+        self._cancel_pending_responses()
         async with self._connect_lock:
             client = self._client
-            self._expected_disconnect = True
             self._client = None
             if client and client.is_connected:
                 await client.stop_notify(CHARACTERISTIC_NOTIFY)
                 await client.disconnect()
         async with self._seq_num_lock:
             self._current_seq_num = 1
+
+    def _cancel_pending_responses(self) -> None:
+        """Fail every awaited response so no sender waits for its full timeout."""
+        pending = list(self._input_expected_responses.items())
+        self._input_expected_responses.clear()
+        for seq_num, future in pending:
+            if not future.done():
+                future.set_exception(TuyaBLEDeviceError(0))
+            _LOGGER.debug(
+                "%s: Cancelled pending response for packet #%s", self.address, seq_num
+            )
 
     async def _ensure_connected(self) -> None:
         """Ensure connection to device is established."""
@@ -552,8 +574,12 @@ class TuyaBLEDevice(TuyaBLEProtocol):
     async def _connect_with_retries(self) -> None:
         """Try connecting up to 100 times, raising on failure."""
         for _ in range(100):
+            if self._expected_disconnect:
+                return
             if await self._try_connect_and_configure():
                 return
+        if self._expected_disconnect:
+            return
         _LOGGER.error(
             "%s: Connecting, all attempts failed; RSSI: %s",
             self.address,
@@ -696,7 +722,10 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             if self._expected_disconnect:
                 return
             _LOGGER.debug("%s: Reconnect, connection ensured", self.address)
-        except BLEAK_EXCEPTIONS:
+        except BLE_CONNECTION_EXCEPTIONS:
+            # Includes TuyaBLEError, e.g. no session key or no device info: the
+            # device stays unreachable until those are resolved, so keep retrying
+            # rather than leaving it permanently disconnected.
             _LOGGER.debug(
                 "%s: Reconnect, failed to ensure connection - backing off",
                 self.address,
@@ -706,4 +735,4 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             if self._expected_disconnect:
                 return
             _LOGGER.debug("%s: Reconnecting again", self.address)
-            self._reconnect_task = asyncio.create_task(self._reconnect())
+            self._schedule_reconnect()

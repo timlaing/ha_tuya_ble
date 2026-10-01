@@ -105,7 +105,9 @@ entities:
     - dp_id: 109
       translation_key: program
       icon: mdi:repeat
-      pattern: ^((\d{1,2}|100)(\/\d{1,2})?)(;((\d{1,2}|100)(\/\d{1,2})?))+$
+      pattern: ^([0-9]{1,3}(/[0-9]{1,4})?(;[0-9]{1,3}(/[0-9]{1,4})?)*)?$
+      min_length: 0
+      max_length: 255
       entity_category: config
       handlers:
         read: fingerbot.program.get_program

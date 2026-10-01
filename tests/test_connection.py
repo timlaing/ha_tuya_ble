@@ -1,9 +1,10 @@
 """Tests for BLE connection lifecycle and protocol error paths."""
 
-# pylint: disable=protected-access
+# pylint: disable=protected-access,too-many-lines
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 import logging
 from struct import pack
 from unittest.mock import AsyncMock, patch
@@ -42,10 +43,17 @@ pytestmark = pytest.mark.filterwarnings(
 )
 
 
-def _close_task(coro: object) -> None:
-    """Close a coroutine so it doesn't trigger unawaited-coroutine warnings."""
+def _close_task(coro: object) -> asyncio.Task[None]:
+    """Close a coroutine and return a real task, without running the coroutine.
+
+    ``asyncio.create_task`` is patched out in these tests so nothing is actually
+    scheduled, but the production code still attaches a done-callback to the
+    return value, so a genuine task object has to come back. Uses the loop's
+    own ``create_task``, which this patch does not intercept.
+    """
     if hasattr(coro, "close"):
         coro.close()
+    return asyncio.get_event_loop().create_task(asyncio.sleep(0))
 
 
 # ---------------------------------------------------------------------------
@@ -869,3 +877,247 @@ async def test_locked_log_message() -> None:
 
     with patch.object(h.device, "_send_packets_locked"):
         await h.device._int_send_packet_while_connected([b"\x00"])
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for the P0/P1 reconnect-lifecycle fixes (issue #66)
+# ---------------------------------------------------------------------------
+
+
+async def test_one_failed_write_spawns_one_reconnect() -> None:
+    """A failed GATT write must not schedule two reconnect tasks."""
+    h = ProtocolHarness()
+    client = FakeBleakClient(is_connected=True)
+    h.device._client = client  # type: ignore[assignment]
+    h.device._is_paired = True
+    scheduled: list[asyncio.Task[None]] = []
+    created: list[object] = []
+
+    real_create_task = asyncio.create_task
+
+    def record(coro: object) -> asyncio.Task[None]:
+        created.append(coro)
+        # Close any coroutines that won't run so we don't leave unawaited ones
+        if hasattr(coro, "close"):
+            coro.close()
+        task = real_create_task(asyncio.sleep(0))
+        scheduled.append(task)
+        return task
+
+    async def fail_write(char: str, data: bytes, resp: bool) -> None:
+        raise OSError("write failed")
+
+    client.write_gatt_char = fail_write  # type: ignore[assignment]
+
+    with (
+        patch("asyncio.create_task", side_effect=record),
+        pytest.raises(BleakError),
+    ):
+        await h.device._send_packets_locked([b"\x00"])
+
+    await asyncio.gather(*scheduled, return_exceptions=True)
+    assert len(created) == 1
+    assert len(scheduled) == 1
+
+
+async def test_repeated_failures_do_not_multiply_reconnect_tasks() -> None:
+    """Successive failures must never leave more than one reconnect in flight."""
+    dev = make_device(manager=FakeBLEManager(make_credentials()))
+    dev._is_paired = False
+
+    for _ in range(5):
+        assert dev._reconnect_task is None or not dev._reconnect_task.done()
+        dev._schedule_reconnect()
+
+    assert dev._reconnect_task is not None
+    assert not dev._reconnect_task.done()
+
+    dev._expected_disconnect = True
+    await dev.stop()
+    assert dev._reconnect_task.cancelled()
+
+
+async def test_schedule_reconnect_skipped_when_stopping() -> None:
+    """No reconnect may be scheduled once an intentional stop is under way."""
+    dev = make_device(manager=FakeBLEManager(make_credentials()))
+    dev._expected_disconnect = True
+    dev._schedule_reconnect()
+    assert dev._reconnect_task is None
+
+
+async def test_schedule_resend_does_not_multiply() -> None:
+    """Only one resend task may be outstanding at a time."""
+    dev = make_device(manager=FakeBLEManager(make_credentials()))
+    dev._schedule_resend([b"\x00"])
+    first = dev._resend_task
+    assert first is not None
+    dev._schedule_resend([b"\x00"])
+    assert dev._resend_task is first
+
+    dev._expected_disconnect = True
+    await dev.stop()
+    assert first.cancelled()
+
+
+async def test_stop_does_not_wait_for_connect_loop() -> None:
+    """stop() must not block behind an in-flight connect attempt."""
+    dev = make_device(manager=FakeBLEManager(make_credentials()))
+    attempts = 0
+
+    async def slow_attempt() -> bool:
+        nonlocal attempts
+        attempts += 1
+        await asyncio.sleep(0.05)
+        return False
+
+    async def run() -> None:
+        await dev.stop()
+
+    with patch.object(dev, "_try_connect_and_configure", side_effect=slow_attempt):
+        task = asyncio.ensure_future(dev._connect_with_retries())
+        await asyncio.sleep(0.01)
+        stopper = asyncio.ensure_future(run())
+        await asyncio.sleep(0.15)
+
+    assert dev._expected_disconnect is True
+    assert stopper.done()
+    assert attempts <= 2
+    task.cancel()
+    with suppress(asyncio.CancelledError):
+        await task
+    stopper.cancel()
+    with suppress(asyncio.CancelledError):
+        await stopper
+
+
+async def test_connect_with_retries_aborts_on_expected_disconnect() -> None:
+    """The 100-attempt loop must bail out as soon as a stop is requested."""
+    dev = make_device(manager=FakeBLEManager(make_credentials()))
+    attempts = 0
+
+    async def attempt() -> bool:
+        nonlocal attempts
+        attempts += 1
+        dev._expected_disconnect = True
+        return False
+
+    with patch.object(dev, "_try_connect_and_configure", side_effect=attempt):
+        await dev._connect_with_retries()
+
+    assert attempts == 1
+
+
+async def test_reconnect_retries_after_tuya_error() -> None:
+    """A TuyaBLEError during reconnect must be retried, not terminate the loop."""
+    dev = make_device(manager=FakeBLEManager(make_credentials()))
+    with (
+        patch.object(dev, "_ensure_connected", side_effect=TuyaBLEDeviceError(0)),
+        patch("asyncio.sleep"),
+        patch("asyncio.create_task", side_effect=_close_task) as mock_task,
+    ):
+        await dev._reconnect()
+    mock_task.assert_called()
+
+
+async def test_reconnect_retries_after_attribute_error_is_not_swallowed() -> None:
+    """AttributeError must escape _reconnect instead of being silently retried."""
+    dev = make_device(manager=FakeBLEManager(make_credentials()))
+
+    async def boom(*_args: object, **_kwargs: object) -> None:
+        raise AttributeError("typo")
+
+    with (
+        patch.object(dev, "_ensure_connected", side_effect=boom),
+        pytest.raises(AttributeError),
+    ):
+        await dev._reconnect()
+
+
+async def test_background_task_exception_is_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A tracked task that fails must log, not vanish into "never retrieved"."""
+
+    async def boom() -> None:
+        raise TuyaBLEDeviceError(0)
+
+    dev = make_device(manager=FakeBLEManager(make_credentials()))
+    with caplog.at_level(logging.WARNING):
+        task = dev._spawn_background_task(boom(), "test task")
+        with pytest.raises(TuyaBLEDeviceError):
+            await task
+        await asyncio.sleep(0)
+
+    assert "Unretrieved exception from test task" in caplog.text
+
+
+async def test_connect_with_retries_aborts_after_last_attempt() -> None:
+    """A stop requested during the final attempt must not raise."""
+    dev = make_device(manager=FakeBLEManager(make_credentials()))
+    attempts = 0
+
+    async def attempt() -> bool:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 100:
+            dev._expected_disconnect = True
+        return False
+
+    with patch.object(dev, "_try_connect_and_configure", side_effect=attempt):
+        await dev._connect_with_retries()
+
+    assert attempts == 100
+
+
+async def test_cancel_pending_responses_skips_settled_future() -> None:
+    """An already-settled future must not be failed twice."""
+    dev = make_device(manager=FakeBLEManager(make_credentials()))
+    settled: asyncio.Future[int] = asyncio.Future()
+    settled.set_result(1)
+    pending: asyncio.Future[int] = asyncio.Future()
+    dev._input_expected_responses[1] = settled
+    dev._input_expected_responses[2] = pending
+
+    dev._cancel_pending_responses()
+
+    assert not dev._input_expected_responses
+    assert settled.result() == 1
+    assert pending.done()
+
+
+async def test_ensure_connected_logs_status_after_connecting() -> None:
+    """A successful connect must report the resulting connection status."""
+    dev = make_device(manager=FakeBLEManager(make_credentials()))
+    client = FakeBleakClient(is_connected=True)
+
+    async def connect_once() -> bool:
+        dev._client = client  # type: ignore[assignment]
+        dev._is_paired = True
+        return True
+
+    with patch.object(dev, "_try_connect_and_configure", side_effect=connect_once):
+        await dev._ensure_connected()
+
+    assert dev._is_ready()
+
+
+async def test_ensure_connected_returns_when_connected_while_waiting() -> None:
+    """Becoming ready inside the connect lock must short-circuit the retries."""
+    dev = make_device(manager=FakeBLEManager(make_credentials()))
+    client = FakeBleakClient(is_connected=True)
+
+    real_sleep = asyncio.sleep
+
+    async def become_ready(delay: float) -> None:
+        await real_sleep(0)
+        dev._client = client  # type: ignore[assignment]
+        dev._is_paired = True
+
+    with (
+        patch("asyncio.sleep", side_effect=become_ready),
+        patch.object(dev, "_try_connect_and_configure") as attempt,
+    ):
+        await dev._ensure_connected()
+
+    assert dev._is_ready()
+    attempt.assert_not_called()

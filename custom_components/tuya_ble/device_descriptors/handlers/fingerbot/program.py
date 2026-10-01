@@ -128,7 +128,7 @@ def set_program(entity: TuyaBLEEntity, product: TuyaBLEProductInfo, value: str) 
         return
     datapoint, payload = program
     new_value = bytearray(payload[0:3])
-    steps = value.split(";")
+    steps = [step for step in value.split(";") if step]
     new_value += int.to_bytes(len(steps), 1, "big")
     for step in steps:
         step_values = step.split("/")

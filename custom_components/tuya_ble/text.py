@@ -10,6 +10,7 @@ from homeassistant.components.text import (
     TextEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import MAX_LENGTH_STATE_STATE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -58,6 +59,8 @@ def _text_description(desc: EntityDescriptor) -> TextEntityDescription:
         name=desc.name,
         icon=desc.icon,
         pattern=desc.pattern,
+        native_min=desc.min_length or 0,
+        native_max=desc.max_length or MAX_LENGTH_STATE_STATE,
         entity_category=desc.resolved_entity_category(),
     )
 

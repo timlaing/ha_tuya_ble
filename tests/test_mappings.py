@@ -199,6 +199,16 @@ def test_temperature_unit_description() -> None:
     """Verify the temperature unit entity description is built with a key."""
     desc = select.TemperatureUnitDescription(key="temperature_unit")
     assert desc.key == "temperature_unit"
+    assert desc.icon == "mdi:thermometer"
+    assert desc.entity_category is EntityCategory.CONFIG
+
+
+def test_temperature_unit_description_defaults() -> None:
+    """The class-level icon and entity category survive as frozen dataclass defaults."""
+    desc = select.TemperatureUnitDescription()
+    assert desc.key == "temperature_unit"
+    assert desc.icon == "mdi:thermometer"
+    assert desc.entity_category is EntityCategory.CONFIG
 
 
 def test_build_select_mapping_temperature_unit() -> None:
