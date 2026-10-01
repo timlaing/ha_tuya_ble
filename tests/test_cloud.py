@@ -373,11 +373,17 @@ async def test_get_cloud_device_by_uuid_returns_raw_device() -> None:
 async def test_get_cloud_device_by_uuid_force_update_refreshes_cache() -> None:
     """force_update asks the SDK to refresh its device cache first."""
     mgr = _manager()
-    calls = mgr._manager.update_device_cache  # pylint: disable=protected-access
+    refreshes: list[int] = []
+    mgr._manager.update_device_cache = (  # pylint: disable=protected-access
+        lambda: refreshes.append(1)
+    )
 
     assert await mgr.get_cloud_device_by_uuid("uuid", force_update=True) is None
 
-    assert calls
+    assert refreshes == [1]
+    # Without force_update the cached device map is left alone.
+    assert await mgr.get_cloud_device_by_uuid("uuid") is None
+    assert refreshes == [1]
 
 
 async def test_get_cloud_device_by_uuid_initializes_manager() -> None:
