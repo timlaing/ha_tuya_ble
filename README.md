@@ -91,11 +91,17 @@ warning naming the category and product:
 ... : no descriptor for category ms / product unknownproduct; loading with no entities
 ```
 
-Both are warnings, not debug output, so they are visible without any configuration. If a
-device you own shows up with no entities at all, that second line is the place to start: it
-means the integration has no descriptor for it yet, and the category/product pair above is
-what a new descriptor needs to be written against. Repeat reports of an unchanged data point are suppressed; a data
-point is traced again as soon as its type or its bytes change.
+Both are logged at `warning` level, but they are not equally visible: the
+`no descriptor …` line is emitted once at setup, so it appears at the default log level,
+whereas `unknown product …` comes from the unmapped-data-point reporting, which only runs
+when `custom_components.tuya_ble.coordinator` is set to `debug` and the device actually
+reports a data point no entity uses.
+
+If a device you own shows up with no entities at all, the setup warning is the place to
+start — it means the integration has no descriptor for it, and the category/product pair in
+it is what a new descriptor has to be written against. You do not need debug logging to see
+that one. Repeat reports of an unchanged data point are suppressed; a data point is traced
+again as soon as its type or its bytes change.
 
 **Credentials and tokens are never logged.** Local keys, access/refresh tokens, user codes,
 QR tokens, terminal IDs and cloud endpoints are excluded from every log statement, so a

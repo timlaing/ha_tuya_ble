@@ -172,7 +172,8 @@ When you open an issue for a device that is missing entities, include:
 
 1. **The product identity** — the `category` and `product_id`, both of which appear in the
    `no descriptor for category <category> / product <product_id>` warning if the device is not in
-   the registry yet, or the `unknown product <category>/<product_id>` line once it sends data
+   the registry yet, or — with the coordinator logger at `debug` — the
+   `unknown product <category>/<product_id>` line once it sends an unmapped data point
 2. **What you did** — the app action or physical interaction that produced the change
 3. **The relevant `Received DP` and `Unmapped DP` lines** from the log, copied as text
 4. **The integration version** — from the config entry or `manifest.json`
