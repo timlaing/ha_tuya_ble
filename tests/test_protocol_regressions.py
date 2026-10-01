@@ -1,4 +1,9 @@
-"""Regression tests for the P2 correctness fixes (issue #67)."""
+"""Edge-case tests for the BLE protocol: bounds, rollback and malformed frames.
+
+Split from `test_protocol.py`, which covers the packet-level happy paths, to keep
+each module within pylint's line limit. Everything here asserts a failure mode
+rather than a round trip.
+"""
 
 # pylint: disable=protected-access, redefined-outer-name
 from __future__ import annotations
