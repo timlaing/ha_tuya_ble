@@ -733,3 +733,48 @@ async def test_bitmap_length_mismatch_warns(hass: HomeAssistant, caplog: Any) ->
         assert entity.is_on is True
 
     assert "Bitmap length mismatch" in caplog.text
+
+
+async def test_turn_on_bitmap_preserves_untouched_bytes(hass: HomeAssistant) -> None:
+    """A payload wider than the mask keeps the bytes outside the mask intact."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(
+        hass,
+        device,
+        coordinator,
+        product,
+        dp_id=7,
+        bitmap_mask=b"\x01",
+        description=SwitchEntityDescription(key="s"),
+    )
+    # Second byte belongs to a sibling switch sharing this datapoint.
+    add_dp(device, 7, TuyaBLEDataPointType.DT_BITMAP, b"\x00\x01")
+
+    entity.turn_on()
+    await hass.async_block_till_done()
+
+    dp = device.datapoints[7]
+    assert dp is not None
+    assert dp.value == b"\x01\x01"
+
+
+async def test_turn_off_bitmap_preserves_untouched_bytes(hass: HomeAssistant) -> None:
+    """Turning off clears only the masked bits, leaving sibling bytes alone."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(
+        hass,
+        device,
+        coordinator,
+        product,
+        dp_id=7,
+        bitmap_mask=b"\x01",
+        description=SwitchEntityDescription(key="s"),
+    )
+    add_dp(device, 7, TuyaBLEDataPointType.DT_BITMAP, b"\x01\x01")
+
+    entity.turn_off()
+    await hass.async_block_till_done()
+
+    dp = device.datapoints[7]
+    assert dp is not None
+    assert dp.value == b"\x00\x01"

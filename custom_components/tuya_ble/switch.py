@@ -196,7 +196,12 @@ class TuyaBLESwitch(TuyaBLEEntity, SwitchEntity):
         )
 
     def _write_bitmap(self, transform: Callable[[int, int], int]) -> None:
-        """Write the bitmap datapoint after applying a transform to each byte."""
+        """Write the bitmap datapoint after applying a transform to each byte.
+
+        Bytes past the mask width are carried over untouched: a datapoint wider than
+        this entity's mask also carries the bits of any sibling sharing it, and
+        writing only the masked prefix would reset them on the device.
+        """
         bitmap_mask = self._mapping.bitmap_mask
         if bitmap_mask is None:
             return
@@ -205,8 +210,12 @@ class TuyaBLESwitch(TuyaBLEEntity, SwitchEntity):
             TuyaBLEDataPointType.DT_BITMAP,
             bitmap_mask,
         )
-        bitmap_value = self._zip_bitmap(self._read_bitmap(datapoint), bitmap_mask)
-        new_value = bytes(transform(v, m) for (v, m) in bitmap_value)
+        current = self._read_bitmap(datapoint)
+        bitmap_value = self._zip_bitmap(current, bitmap_mask)
+        new_value = (
+            bytes(transform(v, m) for (v, m) in bitmap_value)
+            + current[len(bitmap_mask) :]
+        )
         self.hass.create_task(datapoint.set_value(new_value))
 
     def turn_on(self, **kwargs: Any) -> None:
