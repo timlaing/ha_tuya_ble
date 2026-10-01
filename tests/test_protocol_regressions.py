@@ -231,9 +231,10 @@ def test_select_encryption_key_without_session_key(h: ProtocolHarness) -> None:
 def test_device_info_without_local_key_raises(h: ProtocolHarness) -> None:
     """A device_info response before the local key is known must fail."""
     h.device._local_key = None
+    data = device_info_data()
 
     with pytest.raises(TuyaBLEDeviceError):
-        h.device._handle_device_info_response(device_info_data())
+        h.device._handle_device_info_response(data)
 
 
 async def test_set_multiple_values_reverts_on_ble_write_failure(
