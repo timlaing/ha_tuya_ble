@@ -35,6 +35,21 @@ class TuyaBLEDataLengthError(TuyaBLEError):
         super().__init__("Incoming packet has invalid length")
 
 
+class TuyaBLEOutgoingDataLengthError(TuyaBLEError):
+    """Raised when an outgoing datapoint does not fit the v3 DP envelope.
+
+    The v3 envelope encodes each datapoint as ``(dp_id, dp_type, length)`` in
+    three single-byte fields, so both the id and the serialized value are capped
+    at 255. Validating up front keeps ``struct.error`` out of the entity layer.
+    """
+
+    def __init__(self, dp_id: int) -> None:
+        super().__init__(
+            f"Outgoing datapoint {dp_id} exceeds the maximum id or value length "
+            "of 255 bytes for the v3 protocol envelope"
+        )
+
+
 class TuyaBLEDeviceError(TuyaBLEError):
     """Raised when Tuya BLE device returned error in response to command."""
 

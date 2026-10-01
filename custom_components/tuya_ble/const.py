@@ -19,7 +19,7 @@ from homeassistant.components.tuya.const import (
     TUYA_SCHEMA,
 )
 
-from .tuya_ble.const import DPType
+from .tuya_ble import DPType
 
 __all__ = [
     "CONF_ENDPOINT",

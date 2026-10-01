@@ -576,3 +576,29 @@ def test_get_program_step_with_zero_delay() -> None:
     program = b"\x00\x00\x00\x02" + b"\x05\x00\x00" + b"\x06\x00\x64"
     owner = make_fake_owner({_program_dp(product): make_datapoint(program)})
     assert fingerbot_program.get_program(owner, product) == "5;6/100"
+
+
+def test_program_handlers_short_payload() -> None:
+    """A payload too short for the header yields no program and no writes."""
+    product = make_fingerbot_product()
+    owner = make_fake_owner({_program_dp(product): make_datapoint(b"\x00\x00")})
+    assert fingerbot_program.get_program(owner, product) is None
+    assert fingerbot_program.get_repeat_count(owner, product) is None
+    assert fingerbot_program.get_position(owner, product) is None
+    assert owner.hass.task_calls == []
+
+
+def test_get_program_truncated_step_is_skipped() -> None:
+    """A step count larger than the payload must not raise, only skip the step."""
+    product = make_fingerbot_product()
+    # Four header bytes declare two steps but only one step's worth follows.
+    program = b"\x00\x00\x00\x02" + b"\x05\x00\x0a"
+    owner = make_fake_owner({_program_dp(product): make_datapoint(program)})
+    assert fingerbot_program.get_program(owner, product) == "5/10"
+
+
+def test_get_program_single_byte_payload() -> None:
+    """A one-byte payload is below even the fields length, so nothing is read."""
+    product = make_fingerbot_product()
+    owner = make_fake_owner({_program_dp(product): make_datapoint(b"\x05")})
+    assert fingerbot_program.get_program(owner, product) is None

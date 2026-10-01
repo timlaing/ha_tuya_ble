@@ -26,6 +26,9 @@ entities:
       device_class: temperature
       unit: °C
       state_class: measurement
+      # The device reports in whichever unit the temperature_unit select holds,
+      # so the sensor follows that select rather than always declaring °C.
+      unit_dp_id: 101
     - dp_id: 19
       translation_key: humidity
       device_class: humidity

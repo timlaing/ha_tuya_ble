@@ -599,3 +599,44 @@ def test_set_value_no_notify_handles_string_bool_and_value(
     dp_raw = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_RAW, value=b"")
     dp_raw.set_value_no_notify("abc")
     assert dp_raw.value == b"abc"
+
+
+@pytest.mark.parametrize(
+    ("dp_type", "falsy"),
+    [
+        (TuyaBLEDataPointType.DT_BOOL, False),
+        (TuyaBLEDataPointType.DT_VALUE, 0),
+        (TuyaBLEDataPointType.DT_STRING, ""),
+        (TuyaBLEDataPointType.DT_RAW, b""),
+    ],
+)
+def test_get_or_create_keeps_falsy_defaults(
+    datapoints: TuyaBLEDataPoints,
+    dp_type: TuyaBLEDataPointType,
+    falsy: bytes | bool | int | str,
+) -> None:
+    """A falsy default other than None must be stored, not replaced by b''."""
+    assert datapoints.get_or_create(7, dp_type, falsy).value == falsy
+
+
+def test_get_or_create_none_default_is_empty_bytes(
+    datapoints: TuyaBLEDataPoints,
+) -> None:
+    """Only None falls back to the empty bytes default."""
+    assert datapoints.get_or_create(8, TuyaBLEDataPointType.DT_RAW).value == b""
+
+
+def test_update_from_device_returns_datapoint(
+    datapoints: TuyaBLEDataPoints,
+) -> None:
+    """The updated data point is returned so the caller need not look it up."""
+    created = datapoints.update_from_device(
+        5, 9.0, 2, TuyaBLEDataPointType.DT_VALUE, 33
+    )
+    assert created is datapoints[5]
+
+    updated = datapoints.update_from_device(
+        5, 10.0, 3, TuyaBLEDataPointType.DT_VALUE, 44
+    )
+    assert updated is created
+    assert updated.value == 44

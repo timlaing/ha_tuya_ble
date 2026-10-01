@@ -6,8 +6,12 @@ from __future__ import annotations
 from decimal import Decimal
 import logging
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntityDescription
-from homeassistant.const import UnitOfTime
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntityDescription,
+    SensorStateClass,
+)
+from homeassistant.const import UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant, State
 import pytest
 from pytest_homeassistant_custom_component.common import (
@@ -16,6 +20,7 @@ from pytest_homeassistant_custom_component.common import (
 
 from custom_components.tuya_ble import sensor
 from custom_components.tuya_ble.device_descriptors.handlers import battery, rssi
+from custom_components.tuya_ble.device_registry import get_registry
 from custom_components.tuya_ble.devices import (
     TuyaBLECoordinator,
     TuyaBLEProductInfo,
@@ -691,3 +696,96 @@ async def test_ggq_schedule_sensor_reports_raw_payload(
     await hass.async_block_till_done()
 
     assert entity.native_value == "07003c"
+
+
+def _make_temperature_entity(
+    hass: HomeAssistant, unit_dp_id: int | None
+) -> tuple[TuyaBLESensor, TuyaBLEDevice, TuyaBLECoordinator]:
+    """Build a °C temperature sensor, optionally following a unit select."""
+    device, coordinator, product = build_context(hass)
+    mapping = sensor.TuyaBLESensorMapping(
+        dp_id=18,
+        description=SensorEntityDescription(
+            key="temperature",
+            device_class=SensorDeviceClass.TEMPERATURE,
+            native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+            state_class=SensorStateClass.MEASUREMENT,
+        ),
+        unit_dp_id=unit_dp_id,
+    )
+    return (
+        _make_entity(hass, device, coordinator, product, mapping),
+        device,
+        coordinator,
+    )
+
+
+def test_sensor_without_unit_select_declares_celsius(
+    hass: HomeAssistant,
+) -> None:
+    """A sensor with no unit select keeps its declared unit."""
+    entity, device, _ = _make_temperature_entity(hass, None)
+
+    assert entity.native_unit_of_measurement == UnitOfTemperature.CELSIUS
+    assert device.datapoints[18] is None
+
+
+def test_sensor_follows_celsius_select(hass: HomeAssistant) -> None:
+    """The unit select reporting °C keeps the sensor on °C."""
+    entity, device, _ = _make_temperature_entity(hass, 101)
+    add_dp(device, 101, TuyaBLEDataPointType.DT_ENUM, 0)
+
+    assert entity.native_unit_of_measurement == UnitOfTemperature.CELSIUS
+
+
+def test_sensor_follows_fahrenheit_select(hass: HomeAssistant) -> None:
+    """The unit select reporting °F makes the sensor report °F."""
+    entity, device, _ = _make_temperature_entity(hass, 101)
+    add_dp(device, 101, TuyaBLEDataPointType.DT_ENUM, 1)
+
+    assert entity.native_unit_of_measurement == UnitOfTemperature.FAHRENHEIT
+
+
+def test_sensor_falls_back_to_declared_unit_when_select_unknown(
+    hass: HomeAssistant,
+) -> None:
+    """An unreported unit select leaves the declared unit in place."""
+    entity, _, _ = _make_temperature_entity(hass, 101)
+
+    assert entity.native_unit_of_measurement == UnitOfTemperature.CELSIUS
+
+
+def test_sensor_falls_back_to_declared_unit_for_non_int_select(
+    hass: HomeAssistant,
+) -> None:
+    """A non-integer unit value cannot be an option index, so °C is used."""
+    entity, device, _ = _make_temperature_entity(hass, 101)
+    add_dp(device, 101, TuyaBLEDataPointType.DT_STRING, "F")
+
+    assert entity.native_unit_of_measurement == UnitOfTemperature.CELSIUS
+
+
+def test_descriptors_with_unit_select_wire_the_sensor() -> None:
+    """Every descriptor exposing temperature_unit must wire the sensor to it."""
+    registry = get_registry()
+
+    for (category, product_id), entities in registry.products.items():
+        unit_dp_id = entities.dp_id_for("select", "temperature_unit")
+        if unit_dp_id is None:
+            continue
+        temperature = next(
+            (
+                descriptor
+                for descriptor in entities.get("sensor")
+                if descriptor.device_class == "temperature"
+            ),
+            None,
+        )
+        assert temperature is not None, (
+            f"{category}/{product_id} exposes a temperature unit select but no "
+            "temperature sensor"
+        )
+        assert temperature.extra.get("unit_dp_id") == unit_dp_id, (
+            f"{category}/{product_id} temperature sensor does not follow its "
+            "temperature_unit select"
+        )

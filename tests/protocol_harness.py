@@ -109,6 +109,22 @@ def frame_packet0(encrypted: bytes, protocol_version: int = 2) -> bytes:
     )
 
 
+def device_info_data() -> bytes:
+    """Build a well-formed FUN_SENDER_DEVICE_INFO payload."""
+    data = bytearray(46)
+    data[0] = 1  # device version
+    data[1] = 2  # protocol version
+    data[2] = 3  # bound protocol version
+    data[3] = 0
+    data[4] = 5  # flags
+    data[5] = 1  # bound
+    data[6:12] = b"abcdef"  # random srand
+    data[12] = 9  # hardware version
+    data[13] = 8
+    data[14:46] = b"B" * 32  # auth key
+    return bytes(data)
+
+
 class ProtocolHarness:
     """Wires a TuyaBLEDevice to a fake BLE client and drives it via public calls."""
 

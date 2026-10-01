@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from custom_components.tuya_ble.tuya_ble.manager import (
@@ -96,3 +98,49 @@ def test_missing_required_field_returns_none(missing: dict[str, str | None]) -> 
     kwargs.update(missing)
     result = AbstractTuyaBLEDeviceManager.check_and_create_device_credentials(**kwargs)
     assert result is None
+
+
+@pytest.mark.parametrize(
+    ("uuid", "device_id"),
+    [
+        ("u" * 17, "device123"),
+        ("1234567890abcdef", "d" * 21),
+        ("u" * 17, "d" * 21),
+    ],
+)
+def test_oversized_credentials_are_rejected(
+    uuid: str, device_id: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Assert credentials that cannot fit the pairing frame are refused."""
+    with caplog.at_level(logging.WARNING):
+        result = AbstractTuyaBLEDeviceManager.check_and_create_device_credentials(
+            uuid=uuid,
+            local_key="abcdef",
+            device_id=device_id,
+            category="wk",
+            product_id="drlajpqc",
+            device_name="Device",
+            product_model="Model",
+            product_name="Product",
+        )
+
+    assert result is None
+    assert "out-of-range uuid" in caplog.text
+
+
+def test_maximum_length_credentials_are_accepted() -> None:
+    """Assert credentials exactly at the protocol limits are accepted."""
+    result = AbstractTuyaBLEDeviceManager.check_and_create_device_credentials(
+        uuid="u" * 16,
+        local_key="abcdef",
+        device_id="d" * 20,
+        category="wk",
+        product_id="drlajpqc",
+        device_name="Device",
+        product_model="Model",
+        product_name="Product",
+    )
+
+    assert result is not None
+    assert result.uuid == "u" * 16
+    assert result.device_id == "d" * 20

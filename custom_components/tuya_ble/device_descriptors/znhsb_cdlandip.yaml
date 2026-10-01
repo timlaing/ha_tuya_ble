@@ -7,11 +7,17 @@ entities:
       device_class: temperature
       unit: °C
       state_class: measurement
+      # The device reports in whichever unit the temperature_unit select holds,
+      # so the sensor follows that select rather than always declaring °C.
+      unit_dp_id: 106
     - dp_id: 102
       translation_key: water_intake
-      device_class: water
+      icon: mdi:cup-water
+      # mL is not a valid unit for device_class water (HA accepts gal, L, ft³,
+      # CCF, m³, MCF only), and a cumulative intake needs total_increasing, so
+      # the class is dropped and the icon carries the meaning instead.
       unit: mL
-      state_class: measurement
+      state_class: total_increasing
     - dp_id: 104
       translation_key: battery
       device_class: battery
@@ -27,7 +33,9 @@ entities:
   number:
     - dp_id: 103
       translation_key: recommended_water_intake
-      device_class: water
+      # See the water_intake sensor above: mL is not a valid unit for
+      # device_class water, so the icon carries the meaning instead.
+      icon: mdi:cup-water
       unit: mL
       entity_category: config
       mode: box

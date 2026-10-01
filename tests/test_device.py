@@ -660,3 +660,37 @@ def test_on_disconnected_not_paired() -> None:
     dev._client = client  # type: ignore[assignment]
     dev._disconnected(client)  # type: ignore[arg-type]
     assert dev._client is None
+
+
+def test_append_functions_unwraps_json_container_values() -> None:
+    """A JSON object or array in the cloud metadata is decoded into the mapping."""
+    dev = make_device()
+    dev.append_functions(
+        [{"code": "switch_1", "type": "Boolean", "dp_id": 1, "values": '{"a": 1}'}],
+        [],
+    )
+
+    assert dev.function["switch_1"].values == {"a": 1}
+
+
+@pytest.mark.parametrize("scalar", ["1", "true", "1.5", '"text"'])
+def test_append_functions_keeps_scalar_json_as_string(scalar: str) -> None:
+    """A scalar JSON document stays a string instead of losing its type."""
+    dev = make_device()
+    dev.append_functions(
+        [{"code": "switch_1", "type": "Boolean", "dp_id": 1, "values": scalar}],
+        [],
+    )
+
+    assert dev.function["switch_1"].values == scalar
+
+
+def test_append_functions_keeps_unparsable_values() -> None:
+    """A values string that is not JSON at all is stored verbatim."""
+    dev = make_device()
+    dev.append_functions(
+        [{"code": "switch_1", "type": "Boolean", "dp_id": 1, "values": "not json"}],
+        [],
+    )
+
+    assert dev.function["switch_1"].values == "not json"

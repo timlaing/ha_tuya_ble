@@ -101,6 +101,7 @@ class TuyaBLESensorMapping:
     getter: Callable[[TuyaBLESensor], None] | None = None
     coefficient: float = 1.0
     icons: list[str] | None = None
+    unit_dp_id: int | None = None
     is_available: TuyaBLESensorIsAvailable = None
 
 
@@ -155,6 +156,7 @@ def _build_sensor_mapping(desc: EntityDescriptor) -> TuyaBLESensorMapping:
         getter=desc.resolved_handler("read"),
         coefficient=desc.coefficient,
         icons=desc.extra.get("icons"),
+        unit_dp_id=desc.extra.get("unit_dp_id"),
         is_available=desc.resolved_handler("when"),
     )
 
@@ -230,6 +232,24 @@ class TuyaBLESensor(TuyaBLERestoreEntity, SensorEntity):
     def _restore_dp_id(self) -> int:
         """Return the data point id whose presence supersedes a restored value."""
         return self._mapping.dp_id
+
+    @property
+    def native_unit_of_measurement(self) -> str | None:
+        """Return the unit the device is currently reporting in.
+
+        Devices that expose a °C/°F select send their temperature in whichever
+        unit the user chose there, so the declared unit only holds while the
+        device is set to °C. Reporting the selected unit is enough: the value
+        itself needs no conversion.
+        """
+        if self._mapping.unit_dp_id is None:
+            return super().native_unit_of_measurement
+        datapoint = self.device.datapoints[self._mapping.unit_dp_id]
+        if datapoint is None or not isinstance(datapoint.value, int):
+            return super().native_unit_of_measurement
+        if datapoint.value == 0:
+            return UnitOfTemperature.CELSIUS
+        return UnitOfTemperature.FAHRENHEIT
 
     @property
     def extra_restore_state_data(self) -> ExtraStoredData | None:

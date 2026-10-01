@@ -8,6 +8,9 @@ entities:
       unit: °C
       state_class: measurement
       coefficient: 10.0
+      # The device reports in whichever unit the temperature_unit select holds,
+      # so the sensor follows that select rather than always declaring °C.
+      unit_dp_id: 9
     - dp_id: 2
       translation_key: moisture
       device_class: moisture

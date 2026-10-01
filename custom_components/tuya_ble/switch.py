@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+import logging
 from typing import Any
 
 from homeassistant.components.switch import (
@@ -19,6 +20,8 @@ from .const import DOMAIN
 from .device_registry import EntityDescriptor, get_registry
 from .devices import TuyaBLECoordinator, TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
 from .tuya_ble import TuyaBLEDataPoint, TuyaBLEDataPointType, TuyaBLEDevice
+
+_LOGGER = logging.getLogger(__name__)
 
 TuyaBLESwitchGetter = (
     Callable[["TuyaBLESwitch", TuyaBLEProductInfo], bool | None] | None
@@ -159,8 +162,30 @@ class TuyaBLESwitch(TuyaBLEEntity, SwitchEntity):
         bitmap_mask = self._mapping.bitmap_mask
         if not isinstance(datapoint.value, (bytes, bytearray)) or bitmap_mask is None:
             return False
-        bitmap_value = bytes(datapoint.value)
-        return any((v & m) != 0 for v, m in zip(bitmap_value, bitmap_mask, strict=True))
+        bitmap_value = self._zip_bitmap(bytes(datapoint.value), bitmap_mask)
+        return any((v & m) != 0 for v, m in bitmap_value)
+
+    def _zip_bitmap(
+        self, bitmap_value: bytes, bitmap_mask: bytes
+    ) -> list[tuple[int, int]]:
+        """Pair the payload bytes with the mask bytes, warning on a length mismatch.
+
+        A device can report a different bitmap width than the descriptor mask,
+        notably when two switches share one datapoint with one-byte masks. Pairing
+        the shorter of the two keeps the entity readable and writable instead of
+        raising from an is_on property or a turn_on/turn_off call.
+        """
+        if len(bitmap_value) != len(bitmap_mask):
+            _LOGGER.warning(
+                "%s: Bitmap length mismatch for %s, payload %d byte(s) vs mask "
+                "%d byte(s); pairing %d byte(s)",
+                self.device.address,
+                self.entity_description.key,
+                len(bitmap_value),
+                len(bitmap_mask),
+                min(len(bitmap_value), len(bitmap_mask)),
+            )
+        return list(zip(bitmap_value, bitmap_mask, strict=False))
 
     def _read_bitmap(self, datapoint: TuyaBLEDataPoint) -> bytes:
         """Return the current bitmap value from a datapoint."""
@@ -180,10 +205,8 @@ class TuyaBLESwitch(TuyaBLEEntity, SwitchEntity):
             TuyaBLEDataPointType.DT_BITMAP,
             bitmap_mask,
         )
-        bitmap_value = self._read_bitmap(datapoint)
-        new_value = bytes(
-            transform(v, m) for (v, m) in zip(bitmap_value, bitmap_mask, strict=True)
-        )
+        bitmap_value = self._zip_bitmap(self._read_bitmap(datapoint), bitmap_mask)
+        new_value = bytes(transform(v, m) for (v, m) in bitmap_value)
         self.hass.create_task(datapoint.set_value(new_value))
 
     def turn_on(self, **kwargs: Any) -> None:

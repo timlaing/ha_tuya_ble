@@ -241,7 +241,9 @@ class TuyaBLEDataPoints:
         if datapoint:
             return datapoint
         _LOGGER.debug("Creating new data point %s (%s)", dp_id, dp_type)
-        datapoint = TuyaBLEDataPoint(self, dp_id, time.time(), 0, dp_type, value or b"")
+        datapoint = TuyaBLEDataPoint(
+            self, dp_id, time.time(), 0, dp_type, b"" if value is None else value
+        )
         self._datapoints[dp_id] = datapoint
         return datapoint
 
@@ -274,16 +276,18 @@ class TuyaBLEDataPoints:
         dp_type: TuyaBLEDataPointType,
         value: bytes | bool | int | str,
         raw_value: bytes | None = None,
-    ) -> None:
-        """Update or create a data point from a device update."""
+    ) -> TuyaBLEDataPoint:
+        """Update or create a data point from a device update, returning it."""
         dp = self._datapoints.get(dp_id)
         if dp:
             dp.update_from_device(timestamp, flags, dp_type, value, raw_value)
-        else:
-            _LOGGER.debug("Data point %s created from device update", dp_id)
-            self._datapoints[dp_id] = TuyaBLEDataPoint(
-                self, dp_id, timestamp, flags, dp_type, value, raw_value
-            )
+            return dp
+        _LOGGER.debug("Data point %s created from device update", dp_id)
+        new_dp = TuyaBLEDataPoint(
+            self, dp_id, timestamp, flags, dp_type, value, raw_value
+        )
+        self._datapoints[dp_id] = new_dp
+        return new_dp
 
     async def update_from_user(self, dp_id: int) -> None:
         """Handle a user-initiated data point update."""

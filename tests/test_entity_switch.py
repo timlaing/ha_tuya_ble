@@ -713,3 +713,23 @@ async def test_set_16wgjvck_water_valve_off(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
     assert device.datapoints[1] is not None
     assert device.datapoints[1].value is False
+
+
+async def test_bitmap_length_mismatch_warns(hass: HomeAssistant, caplog: Any) -> None:
+    """A payload wider than the mask pairs the shared prefix and warns."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(
+        hass,
+        device,
+        coordinator,
+        product,
+        dp_id=7,
+        bitmap_mask=b"\x01",
+        description=SwitchEntityDescription(key="s"),
+    )
+    add_dp(device, 7, TuyaBLEDataPointType.DT_BITMAP, b"\x01\x01")
+
+    with caplog.at_level("WARNING"):
+        assert entity.is_on is True
+
+    assert "Bitmap length mismatch" in caplog.text

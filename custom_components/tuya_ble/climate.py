@@ -320,7 +320,7 @@ class TuyaBLEClimate(TuyaBLEEntity, ClimateEntity):
         ):
             int_value = self._mapping.hvac_modes.index(hvac_mode)
             datapoint = self.device.datapoints.get_or_create(
-                self._mapping.target_humidity_dp_id,
+                self._mapping.hvac_mode_dp_id,
                 TuyaBLEDataPointType.DT_VALUE,
                 int_value,
             )

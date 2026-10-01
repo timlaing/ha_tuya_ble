@@ -162,14 +162,20 @@ async def test_async_set_hvac_mode_switch(hass: HomeAssistant) -> None:
 
 
 async def test_async_set_hvac_mode_modebased(hass: HomeAssistant) -> None:
-    """Verify async_set_hvac_mode writes the mode index."""
+    """Verify async_set_hvac_mode writes the mode index to the mode datapoint.
+
+    target_humidity_dp_id is deliberately 2 here, the same id the mapping uses for
+    target temperature, so writing it would be indistinguishable from a correct
+    write unless the mode datapoint is checked.
+    """
     device, coordinator, product = build_context(hass)
     entity = _make_mode_entity(hass, device, coordinator, product)
     await entity.async_set_hvac_mode(HVACMode.COOL)
     await hass.async_block_till_done()
-    dp = device.datapoints[2]
+    dp = device.datapoints[1]
     assert dp is not None
     assert dp.value == 1
+    assert device.datapoints[2] is None
 
 
 async def test_async_set_preset_mode_away(hass: HomeAssistant) -> None:

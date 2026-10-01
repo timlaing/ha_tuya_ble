@@ -24,6 +24,7 @@ from Crypto.Cipher import AES
 from .const import (
     CHARACTERISTIC_NOTIFY,
     MANUFACTURER_DATA_ID,
+    PAIRING_REQUEST_LENGTH,
     SERVICE_UUID,
     DPType,
     TuyaBLECode,
@@ -110,12 +111,16 @@ class TuyaBLEDeviceFunction:
         self, name: str, value: str | dict[str, Any] | list[Any] | None
     ) -> None:
         if name == "values" and isinstance(value, str):
+            # Only containers are unwrapped: a scalar JSON document stays a str,
+            # so an int or bool from the cloud can't reach DPType(...) lookups
+            # that expect str | dict | list | None.
             try:
                 parsed = json.loads(value)
-                if parsed:
-                    value = parsed
-            except json.JSONDecodeError, TypeError:
+            except json.JSONDecodeError:
                 pass
+            else:
+                if isinstance(parsed, (dict, list)):
+                    value = parsed
         super().__setattr__(name, value)
 
 
@@ -210,10 +215,16 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         result += self._device_info.uuid.encode()
         result += self._local_key
         result += self._device_info.device_id.encode()
-        for _ in range(44 - len(result)):
-            result += b"\x00"
+        if len(result) > PAIRING_REQUEST_LENGTH:
+            _LOGGER.error(
+                "%s: Pairing request of %d bytes exceeds the %d byte frame",
+                self.address,
+                len(result),
+                PAIRING_REQUEST_LENGTH,
+            )
+            raise TuyaBLEDeviceError(0)
 
-        return bytes(result)
+        return bytes(result).ljust(PAIRING_REQUEST_LENGTH, b"\x00")
 
     async def pair(self) -> None:
         """Send pairing request."""

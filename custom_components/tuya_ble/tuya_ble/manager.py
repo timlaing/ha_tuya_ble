@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+import logging
 from typing import Any
+
+from .const import MAX_DEVICE_ID_LENGTH, MAX_UUID_LENGTH
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -57,16 +62,31 @@ class AbstractTuyaBLEDeviceManager(ABC):
         product_model: str | None,
         product_name: str | None,
     ) -> TuyaBLEDeviceCredentials | None:
-        """Checks and creates credentials of the Tuya BLE device."""
-        if uuid and local_key and device_id and category and product_id:
-            return TuyaBLEDeviceCredentials(
-                uuid,
-                local_key,
-                device_id,
-                category,
-                product_id,
-                device_name,
-                product_model,
-                product_name,
+        """Checks and creates credentials of the Tuya BLE device.
+
+        The pairing request packs uuid + local_key + device_id into a fixed
+        44-byte frame, so over-long values are rejected here rather than
+        producing a frame the device silently drops.
+        """
+        if not (uuid and local_key and device_id and category and product_id):
+            return None
+        if len(uuid) > MAX_UUID_LENGTH or len(device_id) > MAX_DEVICE_ID_LENGTH:
+            _LOGGER.warning(
+                "Rejecting device credentials with out-of-range uuid (%d > %d) or "
+                "device_id (%d > %d) length",
+                len(uuid),
+                MAX_UUID_LENGTH,
+                len(device_id),
+                MAX_DEVICE_ID_LENGTH,
             )
-        return None
+            return None
+        return TuyaBLEDeviceCredentials(
+            uuid,
+            local_key,
+            device_id,
+            category,
+            product_id,
+            device_name,
+            product_model,
+            product_name,
+        )

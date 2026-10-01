@@ -216,6 +216,9 @@ class EntityDevice(StatusRecordingDevice):
         """Start with empty send and request logs."""
         super().__init__(manager, ble_device, advertisement_data)
         self.sent: list[list[int]] = []
+        # set_multiple_values checks the protocol version before writing, and the
+        # send path is stubbed below, so present as a v3 device.
+        self._protocol_version = 3
 
     async def send_datapoints(self, datapoint_ids: list[int]) -> None:
         """Record the data point ids an entity asked the device to send."""

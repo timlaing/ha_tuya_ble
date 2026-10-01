@@ -48,8 +48,11 @@ from .const import (
     TUYA_RESPONSE_SUCCESS,
     TUYA_SCHEMA,
 )
-from .tuya_ble import SERVICE_UUID, decode_tuya_ble_advertisement
-from .tuya_ble.const import MANUFACTURER_DATA_ID
+from .tuya_ble import (
+    MANUFACTURER_DATA_ID,
+    SERVICE_UUID,
+    decode_tuya_ble_advertisement,
+)
 
 UNKNOWN_ERROR = "Unknown error"
 ACTIVE_SCAN_TIMEOUT = 60

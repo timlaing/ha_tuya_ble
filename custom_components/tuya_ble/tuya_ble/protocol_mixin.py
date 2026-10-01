@@ -37,9 +37,14 @@ from .exceptions import (
     TuyaBLEDataLengthError,
     TuyaBLEDeviceError,
     TuyaBLEError,
+    TuyaBLEOutgoingDataLengthError,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# The v3 datapoint envelope encodes each datapoint as three single-byte fields
+# (dp_id, dp_type, value length), which bounds both to this value.
+MAX_BYTE = 255
 
 # BLEAK_RETRY_EXCEPTIONS includes AttributeError, which would otherwise make a
 # programming error (typo'd attribute, missing Protocol member, None access)
@@ -117,21 +122,58 @@ class TuyaBLEProtocol(Protocol):
     async def set_multiple_values(
         self, dp_updates: dict[int, bytes | bool | int | str]
     ) -> None:
-        """Set multiple datapoint values in a single atomic BLE payload."""
+        """Set multiple datapoint values in a single atomic BLE payload.
+
+        The BLE payload is atomic, the state transition is not: the device may
+        reject it. Local values are therefore snapshotted first and restored if
+        the send fails, so an entity never keeps reporting a value the device
+        did not accept.
+        """
+        if self._protocol_version != 3:
+            raise TuyaBLEDeviceError(0)
+
         sent_ids: list[int] = []
+        previous_values: list[tuple[TuyaBLEDataPoint, bytes | bool | int | str]] = []
         for dp_id, value in dp_updates.items():
             dp = self._datapoints[dp_id]
             if dp is None:
+                _LOGGER.warning(
+                    "%s: Skipping unknown datapoint id %s in bulk update",
+                    self.address,
+                    dp_id,
+                )
                 continue
 
+            previous_values.append((dp, dp.value))
             dp.set_value_no_notify(value)
             sent_ids.append(dp_id)
 
-        if sent_ids:
+        if not sent_ids:
+            return
+
+        try:
             await self.send_datapoints(sent_ids)
+        except BLE_CONNECTION_EXCEPTIONS:
+            # Any failure the caller would see as a send failure must also revert
+            # the local values, otherwise HA keeps reporting what the device
+            # never accepted.
+            for dp, previous in previous_values:
+                dp.set_value_no_notify(previous)
+            _LOGGER.warning(
+                "%s: Bulk update of datapoints %s failed, local values reverted",
+                self.address,
+                sent_ids,
+            )
+            raise
 
     async def _send_datapoints_v3(self, datapoint_ids: list[int]) -> None:
-        """Serialize and send datapoint updates using the v3 protocol envelope."""
+        """Serialize and send datapoint updates using the v3 protocol envelope.
+
+        The envelope's per-datapoint fields are single bytes, so the id and the
+        serialized value are capped at ``MAX_BYTE`` and validated here, raising a
+        ``TuyaBLEError`` subclass rather than a bare ``struct.error``. The total
+        payload needs no bound: ``_send_packet`` already fragments it.
+        """
         data = bytearray()
         for dp_id in datapoint_ids:
             dp = self._datapoints[dp_id]
@@ -145,6 +187,8 @@ class TuyaBLEProtocol(Protocol):
                 dp.dp_type.name,
                 dp.value,
             )
+            if not 0 <= dp.dp_id <= MAX_BYTE or len(value) > MAX_BYTE:
+                raise TuyaBLEOutgoingDataLengthError(dp_id)
             data += pack(">BBB", dp.dp_id, int(dp.dp_type.value), len(value))
             data += value
 
@@ -605,13 +649,11 @@ class TuyaBLEProtocol(Protocol):
                     raw_value.hex(),
                     value,
                 )
-            self._datapoints.update_from_device(
-                dp_id, timestamp, flags, dp_type, value, raw_value
+            datapoints.append(
+                self._datapoints.update_from_device(
+                    dp_id, timestamp, flags, dp_type, value, raw_value
+                )
             )
-            dp = self._datapoints[dp_id]
-            if dp is None:
-                raise TuyaBLEDeviceError(0)
-            datapoints.append(dp)
             pos = next_pos
 
         self._fire_callbacks(datapoints)
@@ -729,6 +771,8 @@ class TuyaBLEProtocol(Protocol):
 
     def _handle_receive_sign_dp(self, seq_num: int, data: bytes) -> None:
         """Handle FUN_RECEIVE_SIGN_DP: parse signed datapoints and send ack."""
+        if len(data) < 3:
+            raise TuyaBLEDataLengthError()
         dp_seq_num = int.from_bytes(data[:2], "big")
         flags = data[2]
         self._parse_datapoints_v3(time.time(), flags, data, 3)
@@ -753,6 +797,8 @@ class TuyaBLEProtocol(Protocol):
 
     def _handle_receive_sign_time_dp(self, seq_num: int, data: bytes) -> None:
         """Handle FUN_RECEIVE_SIGN_TIME_DP: parse signed timestamped datapoints."""
+        if len(data) < 3:
+            raise TuyaBLEDataLengthError()
         dp_seq_num = int.from_bytes(data[:2], "big")
         flags = data[2]
         _ts, dp_pos = self._parse_timestamp(data, 3)
@@ -817,7 +863,7 @@ class TuyaBLEProtocol(Protocol):
 
     def _decrypt_input(self) -> bytes:
         """Decrypt the input buffer and return raw bytes."""
-        if self._input_buffer is None:
+        if not self._input_buffer:
             raise TuyaBLEDataFormatError()
         security_flag = self._input_buffer[0]
         key = self._get_key(security_flag)

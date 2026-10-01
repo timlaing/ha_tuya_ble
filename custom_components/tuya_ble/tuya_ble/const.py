@@ -26,6 +26,16 @@ MANUFACTURER_DATA_ID = 0x07D0
 
 RESPONSE_WAIT_TIMEOUT = 60
 
+# The pairing request is a fixed-size frame holding uuid + local_key + device_id,
+# zero-padded to the end. The field widths below are the protocol's own limits and
+# are enforced when the credentials are created, so a corrupt cloud response cannot
+# produce an over-long frame the device silently drops.
+MAX_UUID_LENGTH = 16
+MAX_DEVICE_ID_LENGTH = 20
+# Observed wire length: uuid (16) + local_key (6) + device_id (20) = 42, plus the
+# two trailing pad bytes the device expects.
+PAIRING_REQUEST_LENGTH = 44
+
 
 class DPType(StrEnum):
     """Data point types (cloud spec)."""
