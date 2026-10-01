@@ -51,12 +51,16 @@ def test_found() -> None:
 
 
 def test_category_unknown() -> None:
-    """Return None for an unknown category."""
+    """An unknown category resolves to an empty product view."""
     assert not get_product_info_by_ids("nonexistent", "x").entities
 
 
-def test_product_unknown_falls_back_to_category_info() -> None:
-    """Return None when both the category and product are unknown."""
+def test_product_unknown() -> None:
+    """A known category with an unknown product resolves to an empty view.
+
+    There is no category-level fallback: entities come from the product
+    descriptor only, so an unrecognised product declares no entity.
+    """
     assert not get_product_info_by_ids("ms", "unknown").entities
 
 
