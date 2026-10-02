@@ -1,5 +1,6 @@
 # Home Assistant support for Tuya BLE devices
 
+[![Build Status](https://github.com/timlaing/ha_tuya_ble/actions/workflows/test.yml/badge.svg)](https://github.com/timlaing/ha_tuya_ble/actions/workflows/test.yml)
 [![GitHub stars](https://img.shields.io/github/stars/timlaing/ha_tuya_ble.svg)](https://github.com/timlaing/ha_tuya_ble/stargazers)
 [![GitHub issues](https://img.shields.io/github/issues/timlaing/ha_tuya_ble.svg)](https://github.com/timlaing/ha_tuya_ble/issues)
 [![GitHub license](https://img.shields.io/github/license/timlaing/ha_tuya_ble.svg)](LICENSE)
