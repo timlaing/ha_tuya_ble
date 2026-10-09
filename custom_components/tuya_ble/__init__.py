@@ -29,6 +29,7 @@ from .const import (
     CONF_UUID,
     DOMAIN,
 )
+from .device_registry import async_setup_registry
 from .devices import TuyaBLECoordinator, TuyaBLEData, get_device_product_info
 from .tuya_ble import (
     BLE_CONNECTION_EXCEPTIONS,
@@ -124,6 +125,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     manager = OfflineTuyaBLEDeviceManager(credentials)
     device = TuyaBLEDevice(manager, ble_device)
     await device.initialize_with_credentials(credentials)
+
+    # Load the YAML descriptor registry in the executor before the first
+    # synchronous lookup below, and before forwarding to the platforms, whose
+    # modules build their mappings from the registry at import time.
+    await async_setup_registry(hass)
 
     # An unknown product is not an error: it still loads, it just gets no
     # entities, since there is no descriptor to build them from. It is still

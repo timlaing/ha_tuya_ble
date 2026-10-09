@@ -63,6 +63,7 @@ If a file falls below the threshold, add tests until it passes before committing
 | `tests/test_devices.py`                                                    | product lookup, coordinator and device-info helpers; descriptor-vs-cloud-metadata precedence tests |
 | `tests/test_mappings.py`                                                   | per-platform `get_mapping_by_device` + pure Fingerbot/sensor helpers                               |
 | `tests/test_device_registry.py`                                            | `device_registry.py` (load/validate/resolve, `EntityDescriptor`)                                   |
+| `tests/test_registry_init.py`                                              | off-event-loop registry initialisation, caching, concurrency, failure/retry                        |
 | `tests/test_handlers.py`                                                   | YAML descriptor handler callables (`battery`, `raw`, `rssi`, `water_valve`, Fingerbot)             |
 | `tests/test_entity_binary_sensor.py`                                       | binary_sensor entity methods                                                                       |
 | `tests/test_entity_button.py`                                              | button entity methods                                                                              |

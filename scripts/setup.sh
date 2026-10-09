@@ -28,7 +28,9 @@ if ! [ -x "$(command -v opencode)" ]; then
 fi
 
 if ! [ -e /opt/sonarqube-mcp/sonarqube-mcp-server.jar ]; then
-  JAR=$(curl -vfsSL 'https://binaries.sonarsource.com/s3api?delimiter=/&prefix=Distribution/sonarqube-mcp-server/' -o - | grep -oP '<Key>.*?</Key>' | awk -F '[<>]' '/>.*\.jar</ { print $3 }')
+  MCP_LISTING="https://binaries.sonarsource.com/s3api?delimiter=/&prefix=Distribution/sonarqube-mcp-server/"
+  JAR=$(curl -fsSL --proto "=https" "${MCP_LISTING}" | grep -oP '<Key>.*?</Key>' | awk -F '[<>]' '/>.*\.jar</ { print $3 }' | tail -n 1)
   sudo mkdir -p /opt/sonarqube-mcp
-  sudo curl -L -o /opt/sonarqube-mcp/sonarqube-mcp-server.jar "https://binaries.sonarsource.com/${JAR}"
+  set -x
+  sudo curl --proto "=https" -L -o /opt/sonarqube-mcp/sonarqube-mcp-server.jar "https://binaries.sonarsource.com/${JAR}"
 fi
