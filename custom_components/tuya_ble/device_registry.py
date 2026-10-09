@@ -10,6 +10,7 @@ replaces the hardcoded per-platform ``mapping`` dicts.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -17,9 +18,11 @@ from pathlib import Path
 from typing import Any
 
 from homeassistant.const import EntityCategory
+from homeassistant.core import HomeAssistant
 import yaml
 
 from . import device_descriptors
+from .const import DOMAIN
 from .device_descriptors.handlers import resolve_handler
 
 _DEVICES_DIR = Path(device_descriptors.__file__).parent
@@ -27,6 +30,7 @@ _SKIPPED_FILES = {"_schema.yaml"}
 _CATEGORY_PREFIX = "_category_"
 _HANDLER_ROLES = {"read", "write", "when"}
 _SINGLE_ENTITY_PLATFORMS = {"climate", "cover", "light"}
+_INIT_LOCK_KEY = f"{DOMAIN}_registry_init_lock"
 
 
 class DeviceRegistryError(Exception):
@@ -342,6 +346,24 @@ def _parse_yaml(path: Path) -> dict[str, Any]:
 def get_registry() -> DeviceRegistry:
     """Return the lazily-loaded, cached device registry."""
     return DeviceRegistry.load()
+
+
+async def async_setup_registry(hass: HomeAssistant) -> DeviceRegistry:
+    """Load the descriptor registry off the event loop, once per HA instance.
+
+    Discovery, file reads, YAML parsing and validation all happen in an
+    executor job, so a cold startup never blocks the event loop. The executor
+    target is the cached accessor ``get_registry`` rather than
+    ``DeviceRegistry.load``, so the ``lru_cache`` is populated and every later
+    lookup is strictly in-memory. The per-instance lock serialises concurrent
+    config-entry setups onto a single load, and a failed load caches nothing so
+    a retry is possible.
+    """
+    lock = hass.data.get(_INIT_LOCK_KEY)
+    if lock is None:
+        lock = hass.data[_INIT_LOCK_KEY] = asyncio.Lock()
+    async with lock:
+        return await hass.async_add_executor_job(get_registry)
 
 
 def get_entity_descriptors(

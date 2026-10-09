@@ -166,6 +166,46 @@ async def test_async_setup_entry_success(hass: HomeAssistant) -> None:
     await hass.async_stop()
 
 
+async def test_async_setup_entry_loads_registry_before_product_lookup(
+    hass: HomeAssistant,
+) -> None:
+    """Setup warms the descriptor registry before the first synchronous lookup."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Device",
+        data=_make_entry_data(),
+        entry_id="entry-registry-order",
+    )
+    entry.add_to_hass(hass)
+
+    registry_mock = AsyncMock(return_value=MagicMock())
+
+    def _product_info(_device: Any) -> Any:
+        # The registry must already be loaded when the lookup runs.
+        assert registry_mock.await_count == 1
+        return MagicMock()
+
+    deps = _patch_deps(hass)
+    deps["patches"].append(
+        patch("custom_components.tuya_ble.async_setup_registry", registry_mock)
+    )
+    deps["patches"].append(
+        patch(
+            "custom_components.tuya_ble.get_device_product_info",
+            side_effect=_product_info,
+        )
+    )
+
+    with ExitStack() as stack:
+        for p in deps["patches"]:
+            stack.enter_context(p)
+        assert await async_setup_entry(hass, entry) is True
+
+    registry_mock.assert_awaited_once()
+    _close_background_tasks(deps)
+    await hass.async_stop()
+
+
 def test_remove_legacy_sensor_entities(hass: HomeAssistant) -> None:
     """Remove only sensor entries duplicated by a correctly typed entity."""
     entry = MockConfigEntry(domain=DOMAIN, data=_make_entry_data())
