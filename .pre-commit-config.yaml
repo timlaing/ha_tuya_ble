@@ -95,7 +95,7 @@ repos:
           - tuya-device-sharing-sdk
           - aiousbwatcher
           - homeassistant==2026.9.3
-          - homeassistant-stubs==2026.9.3
+          - homeassistant-stubs==2026.10.0
           - mypy
           - prek
           - pycryptodome
@@ -122,7 +122,7 @@ repos:
           - tuya-device-sharing-sdk
           - aiousbwatcher
           - homeassistant==2026.9.3
-          - homeassistant-stubs==2026.9.3
+          - homeassistant-stubs==2026.10.0
           - mypy
           - prek
           - pycryptodome
@@ -151,7 +151,7 @@ repos:
           - tuya-device-sharing-sdk
           - aiousbwatcher
           - homeassistant==2026.9.3
-          - homeassistant-stubs==2026.9.3
+          - homeassistant-stubs==2026.10.0
           - mypy
           - prek
           - pycryptodome
