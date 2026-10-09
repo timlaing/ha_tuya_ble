@@ -103,7 +103,7 @@ repos:
           - pytest
           - pytest-asyncio
           - pytest-cov
-          - pytest-homeassistant-custom-component==0.13.366
+          - pytest-homeassistant-custom-component==0.13.369
           - ruff
           - serialx
           - tuya-device-handlers
@@ -130,7 +130,7 @@ repos:
           - pytest
           - pytest-asyncio
           - pytest-cov
-          - pytest-homeassistant-custom-component==0.13.366
+          - pytest-homeassistant-custom-component==0.13.369
           - ruff
           - serialx
           - tuya-device-handlers
@@ -159,7 +159,7 @@ repos:
           - pytest
           - pytest-asyncio
           - pytest-cov
-          - pytest-homeassistant-custom-component==0.13.366
+          - pytest-homeassistant-custom-component==0.13.369
           - ruff
           - serialx
           - tuya-device-handlers
