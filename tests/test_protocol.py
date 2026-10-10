@@ -817,10 +817,39 @@ async def test_duplicate_packet_num_resyncs(
         h.device._notification_handler(None, bytearray(pack_varint(0) + b"\x00" * 4))
 
     assert h.device._input_buffer is None
-    assert (
-        "Restarting notification reassembly" in caplog.text
-        or "Received fresh packet 0" in caplog.text
+    assert "Received fresh packet 0, restarting notification reassembly" in caplog.text
+
+
+async def test_fresh_packet_zero_restarts_and_dispatches(
+    h: ProtocolHarness,
+) -> None:
+    """A fresh packet 0 mid-reassembly restarts and the new message completes."""
+    seen: list[TuyaBLEDataPoint] = []
+    h.device.register_callback(seen.extend)
+
+    stale = encrypt_payload(
+        session_key(h), 5, 1, 0, TuyaBLECode.FUN_RECEIVE_DP, b"\x00" * 40
     )
+    h.notify(pack_varint(0) + pack_varint(len(stale)) + pack(">B", 2 << 4))
+    assert h.device._input_buffer is not None
+    assert h.device._input_expected_packet_num == 1
+
+    encrypted = encrypt_payload(
+        session_key(h),
+        5,
+        2,
+        0,
+        TuyaBLECode.FUN_RECEIVE_DP,
+        pack(">BBB", 1, TuyaBLEDataPointType.DT_BOOL.value, 1) + b"\x01",
+    )
+    chunks = _split_encrypted(encrypted)
+    h.notify(
+        pack_varint(0) + pack_varint(len(encrypted)) + pack(">B", 2 << 4) + chunks[0]
+    )
+    for num, chunk in enumerate(chunks[1:], start=1):
+        h.notify(pack_varint(num) + chunk)
+
+    assert len(seen) == 1
 
 
 async def test_failed_send_does_not_leak_response_future(
