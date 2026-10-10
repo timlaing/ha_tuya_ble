@@ -396,6 +396,17 @@ def test_capture_cloud_info_drops_secrets_and_blobs() -> None:
     assert "local_strategy" not in info
 
 
+def test_capture_cloud_info_drops_credential_shaped_keys() -> None:
+    """Any credential-looking key is dropped, not just the known local key."""
+    device = make_device(auth_token="tok", device_secret="sec", product_key="pk")
+
+    info = capture_cloud_info(device)
+
+    assert "auth_token" not in info
+    assert "device_secret" not in info
+    assert "product_key" not in info
+
+
 def test_capture_cloud_info_keeps_scalar_lists_only() -> None:
     """Simple scalar lists survive, while nested or complex values are dropped."""
     device = make_device(tags=["a", "b"], nested={"k": "v"}, objects=[object()])

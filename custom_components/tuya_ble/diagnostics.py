@@ -115,6 +115,37 @@ async def _async_refresh_cloud_device(
     return device
 
 
+def _schema_has_content(schema: Any) -> bool:
+    """Return True when a captured schema carries any DP metadata."""
+    if not isinstance(schema, dict):
+        return False
+    return bool(schema.get("local_strategy") or schema.get("status_range"))
+
+
+def _select_schema(
+    refreshed: CustomerDevice | None,
+    entry: ConfigEntry,
+) -> tuple[dict[str, Any] | None, str]:
+    """Choose the schema to export and label where it came from.
+
+    A refreshed schema wins only when it actually carries DP metadata, so an
+    empty refresh falls back to the schema captured at setup. ``legacy`` marks
+    runtime function/status-range sections that have no captured schema or
+    provenance, and ``missing`` is reserved for entries with no usable schema
+    at all, so a populated section is never mistaken for absent data.
+    """
+    if refreshed is not None:
+        captured = capture_local_schema(refreshed)
+        if _schema_has_content(captured):
+            return captured, "cloud_refresh"
+    stored = entry.data.get(CONF_LOCAL_SCHEMA)
+    if _schema_has_content(stored):
+        return stored, "stored"
+    if entry.data.get(CONF_FUNCTIONS) or entry.data.get(CONF_STATUS_RANGE):
+        return None, "legacy"
+    return None, "missing"
+
+
 def _device_section(device: TuyaBLEDevice | None) -> dict[str, Any]:
     """Describe the BLE device as the integration currently sees it."""
     if device is None:
@@ -206,21 +237,12 @@ async def _async_diagnostics(
     uuid = entry.data[CONF_UUID]
 
     cloud_device = await _async_refresh_cloud_device(hass, entry, uuid)
-    if cloud_device is not None:
-        schema: dict[str, Any] | None = capture_local_schema(cloud_device)
-        cloud_info: dict[str, Any] = capture_cloud_info(cloud_device)
-        schema_source = "cloud_refresh"
-    else:
-        schema = entry.data.get(CONF_LOCAL_SCHEMA)
-        cloud_info = entry.data.get(CONF_CLOUD_INFO) or {}
-        if schema:
-            schema_source = "stored"
-        elif entry.data.get(CONF_FUNCTIONS) or entry.data.get(CONF_STATUS_RANGE):
-            # Schema sections were captured before provenance metadata existed;
-            # the schema is usable, only its capture time/source is unknown.
-            schema_source = "legacy"
-        else:
-            schema_source = "missing"
+    schema, schema_source = _select_schema(cloud_device, entry)
+    cloud_info: dict[str, Any] = (
+        capture_cloud_info(cloud_device)
+        if cloud_device is not None
+        else entry.data.get(CONF_CLOUD_INFO) or {}
+    )
 
     registry = dr.async_get(hass)
     home_assistant: dict[str, Any] = {
