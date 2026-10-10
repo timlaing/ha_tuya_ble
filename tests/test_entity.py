@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityDescription
 import pytest
 
-from custom_components.tuya_ble.const import DOMAIN, DPCode, DPType
+from custom_components.tuya_ble.const import DOMAIN
 from custom_components.tuya_ble.entity import (
     TuyaBLEEntity,
     TuyaBLERestoreEntity,
@@ -154,73 +154,6 @@ async def test_send_multiple_dp_values_is_logged(
         await hass.async_block_till_done()
 
     assert f"{ADDRESS}: sending 2 data point(s)" in caplog.text
-
-
-# --------------------------------------------------------------------------
-# find_dpcode
-# --------------------------------------------------------------------------
-
-
-def test_find_dpcode_without_match_is_logged(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
-) -> None:
-    """A DP-code miss is the main "entity never appeared" diagnostic."""
-    entity = _make_entity(hass)
-
-    with caplog.at_level(logging.DEBUG):
-        assert (
-            entity.find_dpcode(
-                (DPCode.COUNTDOWN, DPCode.COUNTDOWN_SET), dptype=DPType.BOOLEAN
-            )
-            is None
-        )
-
-    assert (
-        f"{ADDRESS}: no matching DP code found for countdown, countdown_set"
-        in caplog.text
-    )
-    assert "entity test_key will be unavailable" in caplog.text
-
-
-# --------------------------------------------------------------------------
-# _send_command
-# --------------------------------------------------------------------------
-
-
-async def test_send_command_logs_incomplete_commands(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Commands missing dp_id/dp_type/value are traced and skipped."""
-    entity = _make_entity(hass)
-
-    with caplog.at_level(logging.DEBUG):
-        entity._send_command([
-            {"dp_id": None, "dp_type": TuyaBLEDataPointType.DT_BOOL, "value": True},
-            {"dp_id": 3, "dp_type": None, "value": True},
-            {"dp_id": 3, "dp_type": TuyaBLEDataPointType.DT_BOOL, "value": None},
-        ])
-        await hass.async_block_till_done()
-
-    assert f"{ADDRESS}: sending 3 command(s)" in caplog.text
-    assert "skipping command, dp_id: None" in caplog.text
-    assert "skipping command, dp_id: 3, dp_type: None" in caplog.text
-    assert "skipping command, dp_id: 3" in caplog.text
-
-
-async def test_send_command_sends_complete_commands(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
-) -> None:
-    """A complete command reaches the data point send path."""
-    entity = _make_entity(hass)
-
-    with caplog.at_level(logging.DEBUG):
-        entity._send_command([
-            {"dp_id": 4, "dp_type": TuyaBLEDataPointType.DT_BOOL, "value": False}
-        ])
-        await hass.async_block_till_done()
-
-    assert "skipping command" not in caplog.text
-    assert f"{ADDRESS}: sending data point 4 = False" in caplog.text
 
 
 # --------------------------------------------------------------------------

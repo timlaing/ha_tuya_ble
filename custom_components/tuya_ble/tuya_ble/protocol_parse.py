@@ -110,6 +110,11 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
                     value = int.from_bytes(raw_value, "big", signed=True)
                 case TuyaBLEDataPointType.DT_STRING:
                     value = raw_value.decode()
+                case _:
+                    # Defensive: the raw_type bound above rejects any value
+                    # larger than DT_BITMAP, so this only triggers if a new
+                    # enum member is added without a matching branch here.
+                    raise TuyaBLEDataFormatError()
 
             if _LOGGER.isEnabledFor(logging.DEBUG):
                 _LOGGER.debug(
@@ -177,7 +182,9 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
         srand = data[6:12]
         if self._local_key is None:
             raise TuyaBLEDeviceError(0)
-        self._session_key = hashlib.md5(self._local_key + srand).digest()  # noqa: S4790
+        self._session_key = hashlib.md5(
+            self._local_key + srand, usedforsecurity=False
+        ).digest()
         self._auth_key = data[14:46]
 
     def _handle_pair_response(self, data: bytes) -> int:
@@ -289,7 +296,7 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
         if response_to == 0:
             return
         future = self._input_expected_responses.pop(response_to, None)
-        if not future:
+        if future is None:
             return
         _LOGGER.debug(
             "%s: Received expected response to #%s, result: %s",

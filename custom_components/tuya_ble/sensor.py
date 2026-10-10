@@ -1,7 +1,5 @@
 """Sensor platform for Tuya BLE devices (temperature, humidity, battery, RSSI)."""
 
-# pylint: disable=too-many-lines
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -17,11 +15,9 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
-    PERCENTAGE,
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     EntityCategory,
     UnitOfTemperature,
-    UnitOfTime,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -42,6 +38,7 @@ from .devices import (
     TuyaBLERestoreEntity,
 )
 from .tuya_ble import TuyaBLEDataPoint, TuyaBLEDataPointType, TuyaBLEDevice
+from .util import resolve_unit
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,15 +49,6 @@ ICON_BATTERY = "mdi:battery"
 ICON_BATTERY_CHECK = "mdi:battery-check"
 ICON_COUNTER = "mdi:counter"
 ICON_FINGERPRINT = "mdi:fingerprint"
-
-UNIT_CONVERSIONS: dict[str, str] = {
-    "%": PERCENTAGE,
-    "s": UnitOfTime.SECONDS,
-    "min": UnitOfTime.MINUTES,
-    "h": UnitOfTime.HOURS,
-    "°C": UnitOfTemperature.CELSIUS,
-    "℃": UnitOfTemperature.CELSIUS,
-}
 
 
 TuyaBLESensorIsAvailable = Callable[["TuyaBLESensor", TuyaBLEProductInfo], bool] | None
@@ -125,9 +113,7 @@ def _sensor_description(desc: EntityDescriptor) -> SensorEntityDescription:
             else None
         ),
         native_unit_of_measurement=(
-            UNIT_CONVERSIONS.get(desc.unit, desc.unit)
-            if desc.unit is not None
-            else None
+            resolve_unit(desc.unit) if desc.unit is not None else None
         ),
         state_class=(
             SensorStateClass(desc.state_class) if desc.state_class is not None else None

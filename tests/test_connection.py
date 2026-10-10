@@ -1102,22 +1102,17 @@ async def test_ensure_connected_logs_status_after_connecting() -> None:
 
 
 async def test_ensure_connected_returns_when_connected_while_waiting() -> None:
-    """Becoming ready inside the connect lock must short-circuit the retries."""
+    """Becoming ready while waiting for the connect lock must short-circuit."""
     dev = make_device(manager=FakeBLEManager(make_credentials()))
     client = FakeBleakClient(is_connected=True)
 
-    real_sleep = asyncio.sleep
-
-    async def become_ready(delay: float) -> None:
-        await real_sleep(0)
-        dev._client = client  # type: ignore[assignment]
-        dev._is_paired = True
-
-    with (
-        patch("asyncio.sleep", side_effect=become_ready),
-        patch.object(dev, "_try_connect_and_configure") as attempt,
-    ):
-        await dev._ensure_connected()
+    with patch.object(dev, "_try_connect_and_configure") as attempt:
+        async with dev._connect_lock:
+            task = asyncio.create_task(dev._ensure_connected())
+            await asyncio.sleep(0.01)
+            dev._client = client  # type: ignore[assignment]
+            dev._is_paired = True
+        await task
 
     assert dev._is_ready()
     attempt.assert_not_called()

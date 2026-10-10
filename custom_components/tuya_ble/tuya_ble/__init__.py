@@ -25,16 +25,16 @@ from .manager import (
 from .protocol_mixin import BLE_CONNECTION_EXCEPTIONS, BLEAK_EXCEPTIONS
 
 __all__ = [
+    "AbstractTuyaBLEDeviceManager",
     "BLEAK_EXCEPTIONS",
+    "BLE_CONNECTION_EXCEPTIONS",
     "DPType",
     "MANUFACTURER_DATA_ID",
     "SERVICE_UUID",
-    "AbstractTuyaBLEDeviceManager",
-    "BLE_CONNECTION_EXCEPTIONS",
     "TuyaBLEAdvertisementInfo",
     "TuyaBLEDataPoint",
-    "TuyaBLEDataPointType",
     "TuyaBLEDataPoints",
+    "TuyaBLEDataPointType",
     "TuyaBLEDevice",
     "TuyaBLEDeviceCredentials",
     "TuyaBLEDeviceFunction",

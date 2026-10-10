@@ -2,6 +2,24 @@
 
 from __future__ import annotations
 
+from homeassistant.const import PERCENTAGE, UnitOfTemperature, UnitOfTime
+
+UNIT_CONVERSIONS: dict[str, str] = {
+    "%": PERCENTAGE,
+    "s": UnitOfTime.SECONDS,
+    "min": UnitOfTime.MINUTES,
+    "h": UnitOfTime.HOURS,
+    "°C": UnitOfTemperature.CELSIUS,
+    "℃": UnitOfTemperature.CELSIUS,
+}
+
+
+def resolve_unit(unit: str | None) -> str | None:
+    """Normalise a descriptor unit string to an HA unit when one is known."""
+    if unit is None:
+        return None
+    return UNIT_CONVERSIONS.get(unit, unit)
+
 
 def to_bool(value: bytes | bool | float | int | str) -> bool:
     """Interpret a data point value as a boolean.

@@ -170,10 +170,24 @@ class TuyaBLEClimate(TuyaBLEEntity, ClimateEntity):
         if climate_mapping.preset_mode_dp_ids:
             self._attr_supported_features |= ClimateEntityFeature.PRESET_MODE
             self._attr_preset_modes = list(climate_mapping.preset_mode_dp_ids)
+            # Explicit DP -> preset map, so a grouped bool DP means the same
+            # thing regardless of YAML key order; PRESET_NONE is the fallback.
+            self._preset_by_dp_id = {
+                dp_id: preset_mode
+                for preset_mode, dp_id in climate_mapping.preset_mode_dp_ids.items()
+                if preset_mode != PRESET_NONE
+            }
+        else:
+            self._preset_by_dp_id = {}
+
+        if (
+            climate_mapping.target_temperature_dp_id != 0
+            or climate_mapping.current_temperature_dp_id != 0
+        ):
+            self._attr_temperature_unit = climate_mapping.temperature_unit
 
         if climate_mapping.target_temperature_dp_id != 0:
             self._attr_supported_features |= ClimateEntityFeature.TARGET_TEMPERATURE
-            self._attr_temperature_unit = climate_mapping.temperature_unit
             self._attr_max_temp = climate_mapping.target_temperature_max
             self._attr_min_temp = climate_mapping.target_temperature_min
             self._attr_target_temperature_step = climate_mapping.target_temperature_step
@@ -277,10 +291,10 @@ class TuyaBLEClimate(TuyaBLEEntity, ClimateEntity):
     @callback
     def _read_preset_mode(self) -> None:
         """Update the current preset mode from the device datapoints."""
-        if not self._mapping.preset_mode_dp_ids:
+        if not self._preset_by_dp_id:
             return
         current_preset_mode = PRESET_NONE
-        for preset_mode, dp_id in self._mapping.preset_mode_dp_ids.items():
+        for dp_id, preset_mode in self._preset_by_dp_id.items():
             datapoint = self.device.datapoints[dp_id]
             if datapoint and datapoint.value:
                 current_preset_mode = preset_mode

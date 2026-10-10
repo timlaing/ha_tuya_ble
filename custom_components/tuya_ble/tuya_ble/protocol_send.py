@@ -101,9 +101,16 @@ class TuyaBLEProtocolSendMixin:
         """Handle disconnection."""
 
     def _fire_callbacks(self, datapoints: list[TuyaBLEDataPoint]) -> None:
-        """Notify registered callbacks of data point updates."""
+        """Notify registered callbacks of data point updates, isolating each."""
         for callback in self._callbacks:
-            callback(datapoints)
+            try:
+                callback(datapoints)
+            except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+                _LOGGER.warning(
+                    "%s: Callback failed while dispatching datapoints",
+                    self.address,
+                    exc_info=True,
+                )
 
     async def send_datapoints(self, datapoint_ids: list[int]) -> None:
         """Send new values of datapoints to the device."""
@@ -217,7 +224,13 @@ class TuyaBLEProtocolSendMixin:
 
     @staticmethod
     def _unpack_int(data: bytes, start_pos: int) -> tuple[int, int]:
-        """Decode a variable-length big-endian integer starting at start_pos."""
+        """Decode a variable-length big-endian integer starting at start_pos.
+
+        A value of up to 35 bits is encoded in five bytes: each byte carries
+        seven bits and a continuation flag, and the fifth byte's flag is clear
+        for a well-formed value. This mirrors ``_pack_int``, which emits the
+        same encoding, so anything it produces is decodable here.
+        """
         result: int = 0
         offset: int = 0
         while offset < 5:
@@ -228,10 +241,8 @@ class TuyaBLEProtocolSendMixin:
             result |= (curr_byte & 0x7F) << (offset * 7)
             offset += 1
             if (curr_byte & 0x80) == 0:
-                break
-        if offset > 4:
-            raise TuyaBLEDataFormatError()
-        return (result, start_pos + offset)
+                return (result, start_pos + offset)
+        raise TuyaBLEDataFormatError()
 
     def _build_packets(
         self,
@@ -462,11 +473,9 @@ class TuyaBLEProtocolSendMixin:
     ) -> None:
         """Send packets over GATT, retrying on transient BLE errors."""
         if self._operation_lock.locked():
-            _LOGGER.debug(
-                "%s: Operation already in progress, "
-                "waiting for it to complete; RSSI: %s",
+            _LOGGER.warning(
+                "%s: Operation already in progress, waiting for it to complete",
                 self.address,
-                self.rssi,
             )
         async with self._operation_lock:
             try:

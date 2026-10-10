@@ -16,6 +16,8 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+TuyaBLEDataPointValue = bytes | bytearray | memoryview | bool | int | str
+
 
 class TuyaBLEDataPoint:
     """Represents a single data point from a Tuya BLE device."""
@@ -149,14 +151,16 @@ class TuyaBLEDataPoint:
         """Return whether the value was changed by the device."""
         return self._changed_by_device
 
-    def set_value_no_notify(self, value: bytes | bool | int | str) -> None:
+    def set_value_no_notify(self, value: TuyaBLEDataPointValue) -> None:
         """Set the value without sending an update to the device."""
         match self._type:
             case TuyaBLEDataPointType.DT_RAW | TuyaBLEDataPointType.DT_BITMAP:
-                self._value = (
-                    value if isinstance(value, bytes) else bytes(str(value), "utf-8")
-                )
+                if not isinstance(value, bytes | bytearray | memoryview):
+                    raise TuyaBLEDataFormatError()
+                self._value = bytes(value)
             case TuyaBLEDataPointType.DT_BOOL:
+                if not isinstance(value, int):
+                    raise TuyaBLEDataFormatError()
                 self._value = bool(value)
             case TuyaBLEDataPointType.DT_VALUE:
                 self._value = int(value)
@@ -171,12 +175,12 @@ class TuyaBLEDataPoint:
             self._value,
         )
 
-    async def set_value(self, value: bytes | bool | int | str) -> None:
+    async def set_value(self, value: TuyaBLEDataPointValue) -> None:
         """Set the data point value and send the update to the device."""
         self.set_value_no_notify(value)
         await self._owner.update_from_user(self._id)
 
-    def _set_enum_value(self, value: bytes | bool | int | str) -> None:
+    def _set_enum_value(self, value: TuyaBLEDataPointValue) -> None:
         """Set an enum value, accepting both integer indices and string values."""
         if isinstance(value, int):
             if value >= 0:
@@ -211,8 +215,6 @@ class TuyaBLEDataPoints:
     def __init__(self, owner: TuyaBLEDevice) -> None:
         self._owner = owner
         self._datapoints: dict[int, TuyaBLEDataPoint] = {}
-        self._update_started: int = 0
-        self._updated_datapoints: list[int] = []
 
     def __len__(self) -> int:
         return len(self._datapoints)
@@ -247,27 +249,6 @@ class TuyaBLEDataPoints:
         self._datapoints[dp_id] = datapoint
         return datapoint
 
-    def begin_update(self) -> None:
-        """Begin a batch update, deferring outgoing data point writes."""
-        self._update_started += 1
-        _LOGGER.debug("Batch update opened, nesting depth %d", self._update_started)
-
-    async def end_update(self) -> None:
-        """End a batch update, sending any deferred data point writes."""
-        if self._update_started > 0:
-            self._update_started -= 1
-            if self._update_started == 0 and len(self._updated_datapoints) > 0:
-                _LOGGER.debug(
-                    "Batch update closed, flushing data points: %s",
-                    self._updated_datapoints,
-                )
-                await self._owner.send_datapoints(self._updated_datapoints)
-                self._updated_datapoints = []
-            else:
-                _LOGGER.debug(
-                    "Batch update closed, nesting depth %d", self._update_started
-                )
-
     def update_from_device(
         self,
         dp_id: int,
@@ -291,15 +272,5 @@ class TuyaBLEDataPoints:
 
     async def update_from_user(self, dp_id: int) -> None:
         """Handle a user-initiated data point update."""
-        if self._update_started > 0:
-            if dp_id in self._updated_datapoints:
-                self._updated_datapoints.remove(dp_id)
-            self._updated_datapoints.append(dp_id)
-            _LOGGER.debug(
-                "Data point %s queued in batch update (nesting depth %d)",
-                dp_id,
-                self._update_started,
-            )
-        else:
-            _LOGGER.debug("Data point %s sent immediately", dp_id)
-            await self._owner.send_datapoints([dp_id])
+        _LOGGER.debug("Data point %s sent immediately", dp_id)
+        await self._owner.send_datapoints([dp_id])

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from home_assistant_bluetooth import BluetoothServiceInfoBleak
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -15,12 +15,9 @@ from homeassistant.helpers.entity_registry import (
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .base import EnumTypeData, IntegerTypeData
 from .const import (
     DEVICE_DEF_MANUFACTURER,
     DOMAIN,
-    DPCode,
-    DPType,
 )
 from .device_registry import DeviceEntities, get_registry
 from .tuya_ble import (
@@ -238,6 +235,13 @@ def _legacy_suffixes(hass: HomeAssistant, device_id: str) -> set[str]:
     return cache[device_id]
 
 
+def evict_legacy_suffix_cache(hass: HomeAssistant, device_id: str) -> None:
+    """Drop the cached legacy unique-id suffixes for a device on unload."""
+    cache = hass.data.get(DOMAIN, {}).get(_HASS_DATA_LEGACY_KEYS)
+    if isinstance(cache, dict):
+        cache.pop(device_id, None)
+
+
 def _resolve_unique_id(
     hass: HomeAssistant,
     device: TuyaBLEDevice,
@@ -292,8 +296,8 @@ class TuyaBLEEntity(CoordinatorEntity["TuyaBLECoordinator"]):
 
     @property
     def available(self) -> bool:
-        """True when coordinator is connected and the availability predicate passes."""
-        return self._coordinator.connected
+        """True when the coordinator is connected and its last update succeeded."""
+        return self._coordinator.connected and self._coordinator.last_update_success
 
     def send_dp_value(
         self,
@@ -335,118 +339,6 @@ class TuyaBLEEntity(CoordinatorEntity["TuyaBLECoordinator"]):
             dp_updates,
         )
         self.hass.create_task(self.device.set_multiple_values(dp_updates))
-
-    def find_dpid(
-        self, dpcode: DPCode | None, prefer_function: bool = False
-    ) -> int | None:
-        """Return the dp id for the given code."""
-        if dpcode is None:
-            return None
-
-        order = ["status_range", "function"]
-        if prefer_function:
-            order = ["function", "status_range"]
-        for key in order:
-            if dpcode in getattr(self.device, key):
-                return int(getattr(self.device, key)[dpcode].dp_id)
-
-        return None
-
-    def find_dpcode(
-        self,
-        dpcodes: str | DPCode | tuple[DPCode, ...] | None,
-        *,
-        prefer_function: bool = False,
-        dptype: DPType | None = None,
-    ) -> DPCode | EnumTypeData | IntegerTypeData | None:
-        """Find a matching DP code available on this device."""
-        if dpcodes is None:
-            return None
-
-        if isinstance(dpcodes, str):
-            dpcodes = (DPCode(dpcodes),)
-        elif not isinstance(dpcodes, tuple):
-            dpcodes = (dpcodes,)
-
-        order = ["status_range", "function"]
-        if prefer_function:
-            order = ["function", "status_range"]
-
-        if not dptype:
-            order.append("status")
-
-        for dpcode in dpcodes:
-            result = self._match_dpcode(dpcode, order, dptype)
-            if result is not None:
-                return result
-
-        _LOGGER.debug(
-            "%s: no matching DP code found for %s in %s, entity %s will be unavailable",
-            self.device.address,
-            ", ".join(str(code) for code in dpcodes),
-            "/".join(order),
-            self.entity_description.key,
-        )
-        return None
-
-    def _match_dpcode(
-        self,
-        dpcode: DPCode,
-        order: list[str],
-        dptype: DPType | None,
-    ) -> DPCode | EnumTypeData | IntegerTypeData | None:
-        """Check a single dpcode against ordered device attribute dicts."""
-        parsed: DPCode | EnumTypeData | IntegerTypeData | None = None
-        for key in order:
-            attrs = getattr(self.device, key)
-            if dpcode not in attrs:
-                continue
-            entry = attrs[dpcode]
-            if dptype == DPType.ENUM and entry.type == DPType.ENUM:
-                parsed = EnumTypeData.from_json(dpcode, entry.values)
-                if parsed is not None:
-                    break
-            elif dptype == DPType.INTEGER and entry.type == DPType.INTEGER:
-                parsed = IntegerTypeData.from_json(dpcode, entry.values)
-                if parsed is not None:
-                    break
-            elif dptype not in (DPType.ENUM, DPType.INTEGER):
-                parsed = dpcode
-        return parsed
-
-    def get_dptype(
-        self, dpcode: DPCode | None, prefer_function: bool = False
-    ) -> DPType | None:
-        """Return the cloud spec data type for the given code."""
-        if dpcode is None:
-            return None
-
-        order = ["status_range", "function"]
-        if prefer_function:
-            order = ["function", "status_range"]
-        for key in order:
-            if dpcode in getattr(self.device, key):
-                return DPType(getattr(self.device, key)[dpcode].type)
-
-        return None
-
-    def _send_command(self, commands: list[dict[str, Any]]) -> None:
-        """Send commands to the device."""
-        _LOGGER.debug("%s: sending %d command(s)", self.device.address, len(commands))
-        for command in commands:
-            dp_id = command.get("dp_id")
-            dp_type = command.get("dp_type")
-            value = command.get("value")
-            if dp_id is not None and dp_type is not None and value is not None:
-                self.send_dp_value(dp_id, dp_type, value)
-            else:
-                _LOGGER.debug(
-                    "%s: skipping command, dp_id: %s, dp_type: %s, value: %s",
-                    self.device.address,
-                    dp_id,
-                    dp_type,
-                    value,
-                )
 
 
 class TuyaBLERestoreEntity(TuyaBLEEntity, RestoreEntity):

@@ -1,6 +1,28 @@
 """Tests for tuya_ble.util module."""
 
-from custom_components.tuya_ble.util import remap_value, to_bool
+from homeassistant.const import PERCENTAGE, UnitOfTemperature, UnitOfTime
+
+from custom_components.tuya_ble.util import remap_value, resolve_unit, to_bool
+
+
+def test_resolve_unit_none() -> None:
+    """A missing unit stays missing."""
+    assert resolve_unit(None) is None
+
+
+def test_resolve_unit_known_aliases() -> None:
+    """Known descriptor aliases map to the canonical HA unit."""
+    assert resolve_unit("%") == PERCENTAGE
+    assert resolve_unit("s") == UnitOfTime.SECONDS
+    assert resolve_unit("min") == UnitOfTime.MINUTES
+    assert resolve_unit("h") == UnitOfTime.HOURS
+    assert resolve_unit("°C") == UnitOfTemperature.CELSIUS
+    assert resolve_unit("℃") == UnitOfTemperature.CELSIUS
+
+
+def test_resolve_unit_unknown_passthrough() -> None:
+    """An unrecognised unit is returned unchanged."""
+    assert resolve_unit("kPa") == "kPa"
 
 
 def test_remap_value_basic() -> None:

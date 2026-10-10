@@ -265,7 +265,7 @@ async def test_async_step_qr_submit(hass: HomeAssistant) -> None:
 async def test_async_step_scan_login_error(hass: HomeAssistant) -> None:
     """Test the scan step handling a login error."""
     flow = build_flow(hass, login_success=False)
-    result = await flow.async_step_scan(user_input={})
+    result = await flow.async_step_scan({})
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "qr"
     assert result["errors"]["base"] == "login_error"  # type: ignore[index]
@@ -298,7 +298,7 @@ async def test_async_step_scan_success(hass: HomeAssistant) -> None:
             return_value=[],
         ),
     ):
-        result = await flow.async_step_scan(user_input={})
+        result = await flow.async_step_scan({})
     assert result["type"] == FlowResultType.ABORT
     assert result["reason"] == "no_unconfigured_devices"
     assert manager.initialized is True
@@ -343,7 +343,7 @@ async def test_bluetooth_flow_sets_up_discovery_directly_after_login(
         ),
         patch.object(flow, "_async_scan_device", return_value=discovery),
     ):
-        result = await flow.async_step_scan(user_input={})
+        result = await flow.async_step_scan({})
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["title"] == "Irrigation (Irrigation - Main)"
     assert manager.calls == [("0237f144b99142e6", False)]
@@ -780,7 +780,7 @@ async def test_options_scan_success(hass: HomeAssistant) -> None:
     """Test the options scan step submitting credentials."""
     flow, _ = build_options_flow(hass)
     flow._qr_user_code = "user1"
-    result = await flow.async_step_scan(user_input={})
+    result = await flow.async_step_scan({})
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_USER_CODE] == "user1"
 
@@ -789,6 +789,6 @@ async def test_options_scan_error(hass: HomeAssistant) -> None:
     """Test the options scan step handling a login error."""
     flow, _ = build_options_flow(hass, login_success=False)
     flow._qr_user_code = "user1"
-    result = await flow.async_step_scan(user_input={})
+    result = await flow.async_step_scan({})
     assert result["step_id"] == "qr"
     assert result["errors"]["base"] == "login_error"  # type: ignore[index]

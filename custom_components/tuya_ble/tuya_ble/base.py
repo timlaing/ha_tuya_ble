@@ -79,7 +79,7 @@ def decode_tuya_ble_advertisement(
         return None
 
     try:
-        key = hashlib.md5(product_id).digest()  # noqa: S4790
+        key = hashlib.md5(product_id, usedforsecurity=False).digest()
         cipher = AES.new(key, AES.MODE_CBC, key)  # noqa: S5542
         uuid = cipher.decrypt(encrypted_uuid).rstrip(b"\x00").decode("utf-8")
     except ValueError:
@@ -197,10 +197,11 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         """Initialize the device with pre-built credentials (no cloud needed)."""
         _LOGGER.debug("%s: Initializing with stored credentials", self.address)
         self._device_info = credentials
-        if len(credentials.local_key) < 6:
+        local_key = credentials.local_key.encode()
+        if len(local_key) < 6:
             raise TuyaBLEDeviceError(0)
-        self._local_key = credentials.local_key[:6].encode()
-        self._login_key = hashlib.md5(self._local_key).digest()  # noqa: S4790
+        self._local_key = local_key[:6]
+        self._login_key = hashlib.md5(self._local_key, usedforsecurity=False).digest()
         self.append_functions(
             credentials.functions if credentials.functions else [],
             credentials.status_range if credentials.status_range else [],
@@ -244,10 +245,13 @@ class TuyaBLEDevice(TuyaBLEProtocol):
                     self._ble_device.address
                 )
             if self._device_info:
-                if len(self._device_info.local_key) < 6:
+                local_key = self._device_info.local_key.encode()
+                if len(local_key) < 6:
                     raise TuyaBLEDeviceError(0)
-                self._local_key = self._device_info.local_key[:6].encode()
-                self._login_key = hashlib.md5(self._local_key).digest()  # noqa: S4790
+                self._local_key = local_key[:6]
+                self._login_key = hashlib.md5(
+                    self._local_key, usedforsecurity=False
+                ).digest()
                 self.append_functions(
                     self._device_info.functions if self._device_info.functions else [],
                     self._device_info.status_range
@@ -423,9 +427,14 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         return self._datapoints.get_or_create(dp_id, dp_type, value)
 
     def _fire_connected_callbacks(self) -> None:
-        """Invoke all registered connected callbacks."""
+        """Invoke all registered connected callbacks, isolating each."""
         for callback in self._connected_callbacks:
-            callback()
+            try:
+                callback()
+            except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+                _LOGGER.warning(
+                    "%s: Connected callback failed", self.address, exc_info=True
+                )
 
     def register_connected_callback(
         self, callback: Callable[[], None]
@@ -433,7 +442,8 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         """Register a callback to be called when the device connects."""
 
         def unregister_callback() -> None:
-            self._connected_callbacks.remove(callback)
+            with suppress(ValueError):
+                self._connected_callbacks.remove(callback)
 
         self._connected_callbacks.append(callback)
         return unregister_callback
@@ -445,15 +455,21 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         """Register a callback to be called when the state changes."""
 
         def unregister_callback() -> None:
-            self._callbacks.remove(callback)
+            with suppress(ValueError):
+                self._callbacks.remove(callback)
 
         self._callbacks.append(callback)
         return unregister_callback
 
     def _fire_disconnected_callbacks(self) -> None:
-        """Invoke all registered disconnected callbacks."""
+        """Invoke all registered disconnected callbacks, isolating each."""
         for callback in self._disconnected_callbacks:
-            callback()
+            try:
+                callback()
+            except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+                _LOGGER.warning(
+                    "%s: Disconnected callback failed", self.address, exc_info=True
+                )
 
     def register_disconnected_callback(
         self, callback: Callable[[], None]
@@ -461,7 +477,8 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         """Register a callback to be called when device disconnected."""
 
         def unregister_callback() -> None:
-            self._disconnected_callbacks.remove(callback)
+            with suppress(ValueError):
+                self._disconnected_callbacks.remove(callback)
 
         self._disconnected_callbacks.append(callback)
         return unregister_callback
@@ -547,7 +564,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         if self._expected_disconnect:
             return
         if self._connect_lock.locked():
-            _LOGGER.debug(
+            _LOGGER.warning(
                 "%s: Connection already in progress,"
                 " waiting for it to complete; RSSI: %s",
                 self.address,
@@ -556,7 +573,6 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         if self._is_ready():
             return
         async with self._connect_lock:
-            await asyncio.sleep(0.01)
             if self._is_ready():
                 return
             await self._connect_with_retries()
@@ -610,7 +626,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
                     ble_device_callback=lambda: self._ble_device,
                 )
         except BleakNotFoundError:
-            _LOGGER.exception(
+            _LOGGER.warning(
                 "%s: device not found, not in range, or poor RSSI: %s",
                 self.address,
                 self.rssi,
@@ -618,10 +634,10 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             )
             return None
         except BLEAK_EXCEPTIONS:
-            _LOGGER.debug("%s: communication failed", self.address, exc_info=True)
+            _LOGGER.warning("%s: communication failed", self.address, exc_info=True)
             return None
         except BLE_CONNECTION_EXCEPTIONS:
-            _LOGGER.debug("%s: unexpected error", self.address, exc_info=True)
+            _LOGGER.warning("%s: unexpected error", self.address, exc_info=True)
             return None
 
         if client and client.is_connected:
@@ -668,7 +684,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             return True
         except BLE_CONNECTION_EXCEPTIONS:
             self._client = None
-            _LOGGER.exception(
+            _LOGGER.warning(
                 "%s: Sending device info request failed",
                 self.address,
                 exc_info=True,
@@ -696,7 +712,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             return True
         except BLE_CONNECTION_EXCEPTIONS:
             self._client = None
-            _LOGGER.exception(
+            _LOGGER.warning(
                 "%s: Sending pairing request failed",
                 self.address,
                 exc_info=True,
@@ -733,8 +749,8 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             # Includes TuyaBLEError, e.g. no session key or no device info: the
             # device stays unreachable until those are resolved, so keep retrying
             # rather than leaving it permanently disconnected.
-            _LOGGER.debug(
-                "%s: Reconnect, failed to ensure connection - backing off",
+            _LOGGER.warning(
+                "%s: Reconnect failed, retrying",
                 self.address,
                 exc_info=True,
             )
