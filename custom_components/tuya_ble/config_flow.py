@@ -20,8 +20,8 @@ from homeassistant.config_entries import (
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
+import probatio
 from tuya_sharing import LoginControl
-import voluptuous as vol
 
 from .cloud import HASSTuyaBLEDeviceManager
 from .const import (
@@ -86,7 +86,7 @@ class _QRCodeLoginMixin:
         self,
         *,
         step_id: str | None = None,
-        data_schema: vol.Schema | None = None,
+        data_schema: probatio.Schema | None = None,
         errors: dict[str, str] | None = None,
         description_placeholders: Mapping[str, str] | None = None,
         last_step: bool | None = None,
@@ -110,8 +110,8 @@ class _QRCodeLoginMixin:
         """Show the QR code form."""
         return self.async_show_form(
             step_id=step_id,
-            data_schema=vol.Schema({
-                vol.Optional("QR"): selector.QrCodeSelector(
+            data_schema=probatio.Schema({
+                probatio.Optional("QR"): selector.QrCodeSelector(
                     config=selector.QrCodeSelectorConfig(
                         data=f"tuyaSmart--qrLogin?token={self._qr_code}",
                         scale=5,
@@ -254,8 +254,8 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema({
-                vol.Required(
+            data_schema=probatio.Schema({
+                probatio.Required(
                     CONF_USER_CODE, default=user_input.get(CONF_USER_CODE, "")
                 ): str,
             }),
@@ -384,7 +384,7 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="discovered_device",
-            data_schema=vol.Schema({}),
+            data_schema=probatio.Schema({}),
             errors=errors,
             description_placeholders={
                 CONF_ADDRESS: self.discovery_info.address,
@@ -420,12 +420,12 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="device",
-            data_schema=vol.Schema(
+            data_schema=probatio.Schema(
                 {
-                    vol.Required(
+                    probatio.Required(
                         CONF_ADDRESS,
                         default=def_address,
-                    ): vol.In({
+                    ): probatio.In({
                         service_info.address: service_info.name or service_info.address
                         for service_info in self._discovered_devices.values()
                     }),
@@ -535,8 +535,8 @@ class TuyaBLEOptionsFlow(OptionsFlowWithConfigEntry, _QRCodeLoginMixin):
 
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema({
-                vol.Required(
+            data_schema=probatio.Schema({
+                probatio.Required(
                     CONF_USER_CODE, default=user_input.get(CONF_USER_CODE, "")
                 ): str,
             }),

@@ -12,6 +12,7 @@
   "config_flow": true,
   "dependencies": ["bluetooth_adapters"],
   "documentation": "https://github.com/timlaing/ha_tuya_ble",
+  "homeassistant": "2026.10.0",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/timlaing/ha_tuya_ble/issues",
   "requirements": ["tuya-device-sharing-sdk>=0.2.15"],
