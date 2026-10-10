@@ -22,9 +22,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.util import dt as dt_util
 
-from .cloud import HASSTuyaBLEDeviceManager, capture_local_schema
+from .cloud import (
+    HASSTuyaBLEDeviceManager,
+    capture_cloud_info,
+    capture_local_schema,
+)
 from .const import (
     CONF_CATEGORY,
+    CONF_CLOUD_INFO,
     CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
     CONF_ENDPOINT,
@@ -44,6 +49,8 @@ from .const import (
 from .device_registry import get_registry
 
 if TYPE_CHECKING:
+    from tuya_sharing import CustomerDevice
+
     from .tuya_ble import TuyaBLEDevice
 
 _LOGGER = logging.getLogger(__name__)
@@ -75,16 +82,17 @@ def _serialize_value(value: Any) -> Any:
     return value
 
 
-async def _async_refresh_schema(
+async def _async_refresh_cloud_device(
     hass: HomeAssistant,
     entry: ConfigEntry,
     uuid: str,
-) -> dict[str, Any] | None:
-    """Re-fetch the cloud schema, but only if re-auth tokens are on hand.
+) -> CustomerDevice | None:
+    """Re-fetch the cloud device, but only if re-auth tokens are on hand.
 
     Diagnostics must never be the thing that fails, and must never persist new
     credentials, so this returns None — letting the caller fall back to the
-    schema captured at setup — whenever the entry carries no usable token.
+    data captured at setup — whenever the entry carries no usable token or the
+    fetch fails.
     """
     token_info = entry.options.get(CONF_TOKEN_INFO) or {}
     if not token_info.get(_ACCESS_TOKEN):
@@ -104,7 +112,38 @@ async def _async_refresh_schema(
         _LOGGER.debug("Diagnostics schema refresh found no matching cloud device")
         return None
 
-    return capture_local_schema(device)
+    return device
+
+
+def _schema_has_content(schema: Any) -> bool:
+    """Return True when a captured schema carries any DP metadata."""
+    if not isinstance(schema, dict):
+        return False
+    return bool(schema.get("local_strategy") or schema.get("status_range"))
+
+
+def _select_schema(
+    refreshed: CustomerDevice | None,
+    entry: ConfigEntry,
+) -> tuple[dict[str, Any] | None, str]:
+    """Choose the schema to export and label where it came from.
+
+    A refreshed schema wins only when it actually carries DP metadata, so an
+    empty refresh falls back to the schema captured at setup. ``legacy`` marks
+    runtime function/status-range sections that have no captured schema or
+    provenance, and ``missing`` is reserved for entries with no usable schema
+    at all, so a populated section is never mistaken for absent data.
+    """
+    if refreshed is not None:
+        captured = capture_local_schema(refreshed)
+        if _schema_has_content(captured):
+            return captured, "cloud_refresh"
+    stored = entry.data.get(CONF_LOCAL_SCHEMA)
+    if _schema_has_content(stored):
+        return stored, "stored"
+    if entry.data.get(CONF_FUNCTIONS) or entry.data.get(CONF_STATUS_RANGE):
+        return None, "legacy"
+    return None, "missing"
 
 
 def _device_section(device: TuyaBLEDevice | None) -> dict[str, Any]:
@@ -197,12 +236,13 @@ async def _async_diagnostics(
     product_id = entry.data[CONF_PRODUCT_ID]
     uuid = entry.data[CONF_UUID]
 
-    schema = await _async_refresh_schema(hass, entry, uuid)
-    if schema is not None:
-        schema_source = "cloud_refresh"
-    else:
-        schema = entry.data.get(CONF_LOCAL_SCHEMA)
-        schema_source = "stored" if schema else "missing"
+    cloud_device = await _async_refresh_cloud_device(hass, entry, uuid)
+    schema, schema_source = _select_schema(cloud_device, entry)
+    cloud_info: dict[str, Any] = (
+        capture_cloud_info(cloud_device)
+        if cloud_device is not None
+        else entry.data.get(CONF_CLOUD_INFO) or {}
+    )
 
     registry = dr.async_get(hass)
     home_assistant: dict[str, Any] = {
@@ -227,6 +267,7 @@ async def _async_diagnostics(
         "schema_source": schema_source,
         "device": _device_section(tuya_device),
         "live": _live_section(tuya_device),
+        "cloud_info": cloud_info,
         "cloud_schema": {
             # The runtime list is filtered to the codes the device exposes and
             # carries only four fields; the status range is repeated from the

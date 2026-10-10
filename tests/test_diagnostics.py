@@ -14,6 +14,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.tuya_ble.const import (
     CONF_CATEGORY,
+    CONF_CLOUD_INFO,
     CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
     CONF_ENDPOINT,
@@ -171,12 +172,14 @@ async def test_config_entry_diagnostics_shape(hass: HomeAssistant) -> None:
         "schema_source",
         "device",
         "live",
+        "cloud_info",
         "cloud_schema",
         "descriptor",
         "identity",
         "home_assistant",
     }
     assert payload["schema_source"] == "stored"
+    assert payload["cloud_info"] == {}
     assert payload["schema_captured_at"] == "2026-09-30T00:00:00+00:00"
     assert payload["identity"]["uuid"] == "1234567890abcdef"
     assert payload["descriptor"]["resolved"] is True
@@ -437,10 +440,14 @@ async def test_diagnostics_without_tokens_never_call_the_cloud(
 
 
 @pytest.mark.parametrize("schema", ["absent", "empty"])
-async def test_diagnostics_for_entries_without_schema(
+async def test_diagnostics_legacy_entry_without_local_schema(
     hass: HomeAssistant, schema: str
 ) -> None:
-    """A pre-upgrade entry has no captured schema and must not break."""
+    """A legacy entry with cloud schema but no provenance is reported as such.
+
+    Regression test for #85: the runtime function/status-range sections are a
+    usable schema, so their presence must not be reported as "missing".
+    """
     entry_data = _entry_data()
     if schema == "absent":
         del entry_data[CONF_LOCAL_SCHEMA]
@@ -450,7 +457,7 @@ async def test_diagnostics_for_entries_without_schema(
 
     payload = await async_get_config_entry_diagnostics(hass, entry)
 
-    assert payload["schema_source"] == "missing"
+    assert payload["schema_source"] == "legacy"
     assert payload["schema_captured_at"] is None
     assert payload["cloud_schema"]["local_strategy"] == []
     # The runtime status range is used when the schema carries none.
@@ -460,7 +467,7 @@ async def test_diagnostics_for_entries_without_schema(
 async def test_diagnostics_entry_without_functions_and_status_range(
     hass: HomeAssistant,
 ) -> None:
-    """Empty runtime lists are reported as empty, not as None."""
+    """Empty runtime lists are empty; a truly absent schema is missing."""
     entry = _add_entry(
         hass,
         data={
@@ -473,7 +480,144 @@ async def test_diagnostics_entry_without_functions_and_status_range(
 
     payload = await async_get_config_entry_diagnostics(hass, entry)
 
+    assert payload["schema_source"] == "missing"
     assert payload["cloud_schema"]["function"] == []
     assert payload["cloud_schema"]["status_range"] == []
     assert payload["identity"]["device_name"] is None
     assert payload["identity"]["address"] == "AA:BB:CC:DD:EE:FF"
+
+
+async def test_diagnostics_empty_refresh_falls_back_to_legacy(
+    hass: HomeAssistant,
+) -> None:
+    """An empty cloud refresh must not be labelled as a usable schema."""
+    entry = _add_entry(
+        hass,
+        data={
+            "address": "AA:BB:CC:DD:EE:FF",
+            CONF_UUID: "1234567890abcdef",
+            CONF_CATEGORY: "wk",
+            CONF_PRODUCT_ID: "drlajpqc",
+            CONF_FUNCTIONS: [{"code": "switch_1", "dp_id": 1}],
+            CONF_STATUS_RANGE: [{"code": "switch_1", "dp_id": 1}],
+        },
+        options={
+            CONF_TOKEN_INFO: {"access_token": "access-abc"},
+            CONF_ENDPOINT: "https://endpoint.example.com",
+        },
+    )
+
+    with (
+        patch(
+            "custom_components.tuya_ble.diagnostics.capture_local_schema",
+            return_value={
+                "captured_at": "2026-09-30T12:00:00+00:00",
+                "local_strategy": [],
+                "status_range": [],
+            },
+        ),
+        patch(
+            "custom_components.tuya_ble.diagnostics.HASSTuyaBLEDeviceManager"
+        ) as manager_cls,
+    ):
+        manager_cls.return_value.get_cloud_device_by_uuid = AsyncMock(
+            return_value=_CLOUD_DEVICE
+        )
+        payload = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert payload["schema_source"] == "legacy"
+    assert payload["schema_captured_at"] is None
+    assert payload["cloud_schema"]["local_strategy"] == []
+    assert payload["cloud_schema"]["status_range"] == [{"code": "switch_1", "dp_id": 1}]
+
+
+async def test_diagnostics_empty_refresh_without_runtime_lists_is_missing(
+    hass: HomeAssistant,
+) -> None:
+    """An empty refresh with no runtime fallback is reported as missing."""
+    entry = _add_entry(
+        hass,
+        data={
+            "address": "AA:BB:CC:DD:EE:FF",
+            CONF_UUID: "1234567890abcdef",
+            CONF_CATEGORY: "wk",
+            CONF_PRODUCT_ID: "drlajpqc",
+        },
+        options={
+            CONF_TOKEN_INFO: {"access_token": "access-abc"},
+            CONF_ENDPOINT: "https://endpoint.example.com",
+        },
+    )
+
+    with (
+        patch(
+            "custom_components.tuya_ble.diagnostics.capture_local_schema",
+            return_value={"captured_at": "2026-09-30T12:00:00+00:00"},
+        ),
+        patch(
+            "custom_components.tuya_ble.diagnostics.HASSTuyaBLEDeviceManager"
+        ) as manager_cls,
+    ):
+        manager_cls.return_value.get_cloud_device_by_uuid = AsyncMock(
+            return_value=_CLOUD_DEVICE
+        )
+        payload = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert payload["schema_source"] == "missing"
+    assert payload["schema_captured_at"] is None
+    assert payload["cloud_schema"]["local_strategy"] == []
+    assert payload["cloud_schema"]["status_range"] == []
+
+
+async def test_diagnostics_expose_stored_cloud_info(hass: HomeAssistant) -> None:
+    """The cloud snapshot captured at setup is surfaced for diagnostics."""
+    entry_data = _entry_data() | {
+        CONF_CLOUD_INFO: {
+            "captured_at": "2026-09-30T00:00:00+00:00",
+            "online": True,
+            "pv": "1.0.5",
+            "ip": "10.0.0.5",
+        }
+    }
+    entry = _add_entry(hass, data=entry_data)
+
+    payload = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert payload["cloud_info"]["pv"] == "1.0.5"
+    assert payload["cloud_info"]["online"] is True
+    assert payload["cloud_info"]["captured_at"] == "2026-09-30T00:00:00+00:00"
+
+
+async def test_diagnostics_refresh_captures_fresh_cloud_info(
+    hass: HomeAssistant,
+) -> None:
+    """A cloud refresh replaces the stored snapshot with the freshly fetched one."""
+    entry = _add_entry(
+        hass,
+        data=_entry_data() | {CONF_CLOUD_INFO: {"captured_at": "old", "online": False}},
+        options={
+            CONF_TOKEN_INFO: {"access_token": "access-abc"},
+            CONF_ENDPOINT: "https://endpoint.example.com",
+        },
+    )
+
+    with (
+        patch(
+            "custom_components.tuya_ble.diagnostics.capture_local_schema",
+            return_value=_schema(),
+        ),
+        patch(
+            "custom_components.tuya_ble.diagnostics.capture_cloud_info",
+            return_value={"captured_at": "fresh", "online": True},
+        ) as capture,
+        patch(
+            "custom_components.tuya_ble.diagnostics.HASSTuyaBLEDeviceManager"
+        ) as manager_cls,
+    ):
+        manager_cls.return_value.get_cloud_device_by_uuid = AsyncMock(
+            return_value=_CLOUD_DEVICE
+        )
+        payload = await async_get_config_entry_diagnostics(hass, entry)
+
+    capture.assert_called_once_with(_CLOUD_DEVICE)
+    assert payload["cloud_info"] == {"captured_at": "fresh", "online": True}

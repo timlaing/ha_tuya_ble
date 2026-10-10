@@ -27,6 +27,7 @@ class TuyaBLEDeviceCredentials:
     functions: list[Any] | None = None
     status_range: list[Any] | None = None
     local_schema: dict[str, Any] | None = None
+    cloud_info: dict[str, Any] | None = None
 
     def __str__(self) -> str:
         return (

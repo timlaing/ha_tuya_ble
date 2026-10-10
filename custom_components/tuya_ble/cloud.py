@@ -179,6 +179,69 @@ def capture_local_schema(device: CustomerDevice) -> dict[str, Any]:
     }
 
 
+# Keys dropped from the cloud snapshot: the BLE local key is a credential, the
+# function/status-range/strategy blobs are persisted separately in the captured
+# schema, and ``status`` is live device state reported by the diagnostics ``live``
+# section. Everything else the cloud returned is kept, so version/firmware fields
+# surface without the integration having to know their names.
+_CLOUD_INFO_SKIP: frozenset[str] = frozenset({
+    "local_key",
+    "function",
+    "status_range",
+    "local_strategy",
+    "status",
+})
+
+# On top of the explicit skips, anything that looks like a credential is dropped
+# so an unexpected secret field in the raw payload never reaches the config
+# entry or a diagnostics download.
+_SECRET_KEY_MARKERS: frozenset[str] = frozenset({
+    "key",
+    "secret",
+    "token",
+    "password",
+    "passwd",
+    "credential",
+    "private",
+})
+
+
+_JSON_SCALARS = str | int | float | bool
+
+
+def _is_json_scalar(value: Any) -> bool:
+    """Return True for values JSON can represent directly."""
+    return value is None or isinstance(value, _JSON_SCALARS)
+
+
+def _is_secret_key(key: str) -> bool:
+    """Return True for keys that look like they hold a credential."""
+    lowered = key.lower()
+    return any(marker in lowered for marker in _SECRET_KEY_MARKERS)
+
+
+def capture_cloud_info(device: CustomerDevice) -> dict[str, Any]:
+    """Capture the scalar attributes the cloud reports for the device.
+
+    The sharing SDK builds the device from the raw API payload, so this keeps
+    every JSON-safe field (including firmware/version metadata when present)
+    for diagnostics. Secrets, credential-shaped keys, and the blobs captured
+    elsewhere are dropped, and only scalars/simple scalar lists are kept so the
+    entry stays JSON-safe.
+    """
+    info: dict[str, Any] = {"captured_at": dt_util.utcnow().isoformat()}
+    for key, value in vars(device).items():
+        if key in _CLOUD_INFO_SKIP or _is_secret_key(key):
+            continue
+        if _is_json_scalar(value):
+            info[key] = value
+        elif isinstance(value, (list, tuple)) and all(
+            _is_json_scalar(item) for item in value
+        ):
+            info[key] = list(value)
+    return info
+
+
 def _build_credentials(device: CustomerDevice) -> TuyaBLEDeviceCredentials:
     """Build Tuya BLE credentials from a cloud device."""
     return TuyaBLEDeviceCredentials(
@@ -193,4 +256,5 @@ def _build_credentials(device: CustomerDevice) -> TuyaBLEDeviceCredentials:
         functions=_extract_functions(device),
         status_range=_extract_status_range(device),
         local_schema=capture_local_schema(device),
+        cloud_info=capture_cloud_info(device),
     )

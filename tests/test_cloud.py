@@ -17,6 +17,7 @@ from custom_components.tuya_ble.cloud import (
     _build_credentials,
     _extract_functions,
     _extract_status_range,
+    capture_cloud_info,
     capture_local_schema,
 )
 
@@ -170,6 +171,9 @@ def test_build_credentials() -> None:
             "values": '{"min":0,"max":100}',
         }
     ]
+    assert creds.cloud_info is not None
+    assert creds.cloud_info["captured_at"].endswith("+00:00")
+    assert creds.cloud_info["category"] == "wk"
 
 
 def test_update_token() -> None:
@@ -359,6 +363,59 @@ def test_capture_local_schema_tolerates_missing_attributes() -> None:
 
     assert schema["local_strategy"] == []
     assert schema["status_range"] == []
+
+
+def test_capture_cloud_info_keeps_scalars_and_version_fields() -> None:
+    """Scalar cloud fields, including version metadata, are snapshotted."""
+    device = make_device(
+        online=True,
+        ip="10.0.0.5",
+        time_zone="Europe/London",
+        pv="1.0.5",
+        active_time=123,
+    )
+
+    info = capture_cloud_info(device)
+
+    assert info["captured_at"].endswith("+00:00")
+    assert info["online"] is True
+    assert info["ip"] == "10.0.0.5"
+    assert info["pv"] == "1.0.5"
+    assert info["active_time"] == 123
+
+
+def test_capture_cloud_info_drops_secrets_and_blobs() -> None:
+    """The local key and the schema blobs captured elsewhere are excluded."""
+    device = make_device()
+
+    info = capture_cloud_info(device)
+
+    assert "local_key" not in info
+    assert "function" not in info
+    assert "status_range" not in info
+    assert "local_strategy" not in info
+
+
+def test_capture_cloud_info_drops_credential_shaped_keys() -> None:
+    """Any credential-looking key is dropped, not just the known local key."""
+    device = make_device(auth_token="tok", device_secret="sec", product_key="pk")
+
+    info = capture_cloud_info(device)
+
+    assert "auth_token" not in info
+    assert "device_secret" not in info
+    assert "product_key" not in info
+
+
+def test_capture_cloud_info_keeps_scalar_lists_only() -> None:
+    """Simple scalar lists survive, while nested or complex values are dropped."""
+    device = make_device(tags=["a", "b"], nested={"k": "v"}, objects=[object()])
+
+    info = capture_cloud_info(device)
+
+    assert info["tags"] == ["a", "b"]
+    assert "nested" not in info
+    assert "objects" not in info
 
 
 async def test_get_cloud_device_by_uuid_returns_raw_device() -> None:
