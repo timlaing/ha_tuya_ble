@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog],
 and this project adheres to [Semantic Versioning].
 
+## [2.4.0] - 2026-10-10
+
+### Changed
+
+- **Protocol library split**: the monolithic `protocol_mixin.py` is split into `protocol_send.py` (packet build/encrypt/send), `protocol_parse.py` (decrypt/parse/dispatch) and `protocol_notify.py` (fragment reassembly), composed by a thin `protocol_mixin.py` as a linear `Send → Parse → Notify` chain. Every public import path is preserved — `TuyaBLEProtocol`, `BLEAK_EXCEPTIONS` and `BLE_CONNECTION_EXCEPTIONS` are still re-exported from `tuya_ble/__init__.py`. No behaviour change.
+- **Descriptor registry loaded off the event loop**: the YAML descriptor registry is warmed in an executor before the first synchronous lookup, so cold-start product lookups, platform imports, the coordinator and diagnostics all read an in-memory cache and no longer trip Home Assistant's blocking-call warnings during setup.
+- **Two `async` methods that performed no I/O**: `TuyaBLEDevice.start()` was a no-op and `initialize_with_credentials()` only derived keys synchronously, yet both were coroutines. `start()` is removed and `initialize_with_credentials()` is now synchronous, clearing the last two SonarQube code smells and the technical debt they carried.
+- **Development dependencies**: bumped to Home Assistant 2026.10.0, matching the `homeassistant` requirement in `hacs.json`.
+
+### Added
+
+- **Cloud device snapshot captured at setup**: setup snapshots the scalar, JSON-safe attributes of the Tuya cloud device — including firmware/version fields when the sharing payload carries them — under `CONF_CLOUD_INFO`, stamped with a `captured_at` time. Credentials and blobs captured elsewhere (`local_key`, `function`, `status_range`, `local_strategy`, `status`) are excluded, as is any key that looks credential-shaped, so the snapshot stays JSON-safe. It is exposed as a read-only `cloud_info` diagnostics section and replaced by a fresh (never persisted) snapshot when a refresh is possible. The `tuya-device-sharing-sdk` exposes no firmware/OTA endpoint, so firmware is captured only when the device payload happens to carry it.
+- **Status and quality badges**: the README badge block now mirrors the sibling `modbus_local_gateway` repository — build status, stars, issues and licence, then Lines of Code, Ruff, Duplicated Lines and Coverage, then the SonarCloud quality metrics (vulnerabilities, security/maintainability/reliability ratings, quality gate, code smells, bugs and technical debt).
+
+### Fixed
+
+- **Diagnostics schema provenance**: `schema_source` collapsed to `missing` for any entry without a captured `local_schema` blob, even when the cloud schema was fully populated. Provenance now reports the actual source — `cloud_refresh` (re-fetched from the cloud), `stored` (a captured `local_schema` blob), `legacy` (no blob but `CONF_FUNCTIONS`/`CONF_STATUS_RANGE` present) or `missing` — and `schema_captured_at` stays `null` rather than inventing a timestamp when the capture time is unknown.
+- **Notification reassembly resynchronisation**: a fresh `packet 0` arriving below the expected packet number now restarts reassembly instead of being logged as an unexpected packet and discarding the buffer, so a device that restarts a fragmented message mid-stream is decoded again rather than going quiet for the rest of the session. Genuinely stale packet numbers are still discarded.
+- **Send-response timeout diagnostics**: the timeout log now includes the sequence number and response code alongside the address and RSSI, so repeated timeouts at weak signal can be diagnosed.
+
 ## [2.3.0] - 2026-10-01
 
 ### Changed

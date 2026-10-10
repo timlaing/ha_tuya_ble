@@ -124,7 +124,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     manager = OfflineTuyaBLEDeviceManager(credentials)
     device = TuyaBLEDevice(manager, ble_device)
-    await device.initialize_with_credentials(credentials)
+    device.initialize_with_credentials(credentials)
 
     # Load the YAML descriptor registry in the executor before the first
     # synchronous lookup below, and before forwarding to the platforms, whose

@@ -394,12 +394,6 @@ async def test_stop_with_done_tasks() -> None:
     assert dev._client is None
 
 
-async def test_start_noop() -> None:
-    """Verify start is a no-op."""
-    dev = make_device()
-    await dev.start()
-
-
 async def test_full_connect_flow() -> None:
     """Verify the full connect flow exchanges keys and reports status."""
     dev = make_device(manager=FakeBLEManager(make_credentials()))
@@ -566,7 +560,7 @@ async def test_initialize_with_credentials_direct_derives_keys() -> None:
     """Verify initialize_with_credentials loads credentials and derives keys."""
     creds = make_credentials()
     dev = make_device(manager=FakeBLEManager(None))
-    await dev.initialize_with_credentials(creds)
+    dev.initialize_with_credentials(creds)
     assert dev._device_info is creds
     assert dev._local_key == creds.local_key[:6].encode()
     assert dev._login_key is not None
@@ -577,7 +571,7 @@ async def test_initialize_with_credentials_short_key_raises() -> None:
     creds = make_credentials(local_key="abc")
     dev = make_device(manager=FakeBLEManager(None))
     with pytest.raises(TuyaBLEDeviceError):
-        await dev.initialize_with_credentials(creds)
+        dev.initialize_with_credentials(creds)
 
 
 async def test_initialize_with_credentials_with_functions() -> None:
@@ -586,7 +580,7 @@ async def test_initialize_with_credentials_with_functions() -> None:
     creds.functions = [{"code": "switch", "dp_id": 1, "type": "bool"}]
     creds.status_range = [{"code": "switch", "dp_id": 1, "type": "bool", "values": {}}]
     dev = make_device(manager=FakeBLEManager(None))
-    await dev.initialize_with_credentials(creds)
+    dev.initialize_with_credentials(creds)
     assert dev._device_info is creds
     assert dev.function["switch"].code == "switch"
     assert dev.function["switch"].dp_id == 1
