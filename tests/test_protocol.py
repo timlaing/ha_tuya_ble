@@ -813,11 +813,14 @@ async def test_duplicate_packet_num_resyncs(
     h.notify(pack_varint(0) + pack_varint(len(encrypted)) + pack(">B", 2 << 4))
     assert h.device._input_expected_packet_num == 1
 
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.DEBUG):
         h.device._notification_handler(None, bytearray(pack_varint(0) + b"\x00" * 4))
 
     assert h.device._input_buffer is None
-    assert "Unexpected packet" in caplog.text
+    assert (
+        "Restarting notification reassembly" in caplog.text
+        or "Received fresh packet 0" in caplog.text
+    )
 
 
 async def test_failed_send_does_not_leak_response_future(
