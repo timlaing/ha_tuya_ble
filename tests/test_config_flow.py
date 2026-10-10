@@ -21,6 +21,7 @@ from custom_components.tuya_ble.config_flow import (
 )
 from custom_components.tuya_ble.const import (
     CONF_CATEGORY,
+    CONF_CLOUD_INFO,
     CONF_DEVICE_NAME,
     CONF_LOCAL_SCHEMA,
     CONF_PRODUCT_ID,
@@ -328,6 +329,11 @@ async def test_bluetooth_flow_sets_up_discovery_directly_after_login(
                     {"code": "battery_percentage", "report_type": "minux"},
                 ],
             },
+            cloud_info={
+                "captured_at": "2026-09-30T00:00:00+00:00",
+                "online": True,
+                "pv": "1.0.5",
+            },
         )
     )
     with (
@@ -353,6 +359,12 @@ async def test_bluetooth_flow_sets_up_discovery_directly_after_login(
         "captured_at": "2026-09-30T00:00:00+00:00",
         "local_strategy": [{"dp_id": 117, "status_code": "weather_delay_1"}],
         "status_range": [{"code": "battery_percentage", "report_type": "minux"}],
+    }
+    # The cloud snapshot is persisted alongside it.
+    assert entry_data[CONF_CLOUD_INFO] == {
+        "captured_at": "2026-09-30T00:00:00+00:00",
+        "online": True,
+        "pv": "1.0.5",
     }
 
 
