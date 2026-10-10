@@ -78,7 +78,6 @@ def _patch_deps(
 ) -> dict[str, Any]:
     """Return context managers mocking the heavy dependencies of async_setup_entry."""
     device = MagicMock()
-    device.initialize_with_credentials = AsyncMock()
     device.update = AsyncMock()
     device.stop = AsyncMock()
     device.address = "AA:BB:CC:DD:EE:FF"
@@ -147,7 +146,7 @@ async def test_async_setup_entry_success(hass: HomeAssistant) -> None:
         result = await async_setup_entry(hass, entry)
 
     assert result is True
-    deps["device"].initialize_with_credentials.assert_awaited_once()
+    deps["device"].initialize_with_credentials.assert_called_once()
     assert len(deps["background_tasks"]) == 1
     assert deps["background_tasks"][0]["name"] == (
         f"{DOMAIN} AA:BB:CC:DD:EE:FF initial update"
@@ -553,7 +552,7 @@ async def test_async_setup_entry_unknown_product(
     warnings = [r for r in caplog.records if "no descriptor for category" in r.message]
     assert len(warnings) == 1
     assert warnings[0].levelno == logging.WARNING
-    deps["device"].initialize_with_credentials.assert_awaited_once()
+    deps["device"].initialize_with_credentials.assert_called_once()
     assert hass.data[DOMAIN][entry.entry_id].product.name == ""
     await deps["background_tasks"][0]["target"]
     deps["device"].update.assert_awaited_once()

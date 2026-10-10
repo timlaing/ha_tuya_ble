@@ -191,7 +191,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         if await self._update_device_info():
             self._decode_advertisement_data()
 
-    async def initialize_with_credentials(
+    def initialize_with_credentials(
         self, credentials: TuyaBLEDeviceCredentials
     ) -> None:
         """Initialize the device with pre-built credentials (no cloud needed)."""
@@ -465,10 +465,6 @@ class TuyaBLEDevice(TuyaBLEProtocol):
 
         self._disconnected_callbacks.append(callback)
         return unregister_callback
-
-    async def start(self) -> None:
-        """Start the TuyaBLE."""
-        _LOGGER.debug("%s: Starting...", self.address)
 
     async def stop(self) -> None:
         """Stop the TuyaBLE and cancel any in-flight background tasks."""
