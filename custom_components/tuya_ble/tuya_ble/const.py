@@ -6,8 +6,6 @@ from enum import Enum, StrEnum
 
 GATT_MTU = 20
 
-DEFAULT_ATTEMPTS = 0xFFFF
-
 # A fragmented message is at most 255 fragments of (GATT_MTU - 3) bytes, since
 # each fragment carries a 1-byte packet number. Anything larger than this is a
 # misbehaving peer rather than a legitimate payload.

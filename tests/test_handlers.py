@@ -38,6 +38,7 @@ def make_fake_owner(datapoints: dict[int, Any], signal: int = -55) -> Any:
     owner = SimpleNamespace(
         hass=hass,
         rssi=signal,
+        dp_id=104,
         set_native_value_calls=[],
         task_calls=called,
     )
@@ -104,7 +105,7 @@ def test_resolve_handler_bad_path_raises() -> None:
 def test_resolve_handler_non_callable_raises() -> None:
     """resolve_handler rejects resolved attributes that are not callable."""
     with pytest.raises(TypeError):
-        handlers.resolve_handler("battery._BATTERY_ENUM_DP_ID")
+        handlers.resolve_handler("battery.__name__")
 
 
 def test_resolve_handler_module_attribute_exists() -> None:

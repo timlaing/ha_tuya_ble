@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 
 def is_water_valve_in_switch_mode(
-    entity: TuyaBLEEntity,  # noqa: S1172
+    _entity: TuyaBLEEntity,
     product: TuyaBLEProductInfo,
 ) -> bool:
     """Return True if the product is a water valve."""
@@ -21,7 +21,7 @@ def is_water_valve_in_switch_mode(
 
 def set_16wgjvck_water_valve(
     switch: TuyaBLESwitch,
-    product: TuyaBLEProductInfo,  # noqa: S1172
+    _product: TuyaBLEProductInfo,
     value: bool,
 ) -> None:
     """Set the Aldi/Ferrex Smart Water Valve state."""

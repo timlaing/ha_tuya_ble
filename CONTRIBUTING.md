@@ -189,11 +189,12 @@ the full list of what is safe to share.
 ## Development setup
 
 1. Clone the repo
-2. Create and activate a virtual environment: `python3 -m venv .venv && . .venv/bin/activate`
-3. Install dev dependencies: `pip install -r requirements-dev.txt`
-4. Place `custom_components/tuya_ble` inside your Home Assistant `config/` directory
-5. Restart Home Assistant
-6. Enable debug logging:
+2. Ensure Python 3.14.2 or newer (`python3 --version`) — the integration targets Python 3.14, as declared by `requires-python` in `pyproject.toml`, and linting/tests assume it
+3. Create and activate a virtual environment: `python3 -m venv .venv && . .venv/bin/activate`
+4. Install dev dependencies: `pip install -r requirements-dev.txt`
+5. Place `custom_components/tuya_ble` inside your Home Assistant `config/` directory
+6. Restart Home Assistant
+7. Enable debug logging:
    ```yaml
    logger:
      logs:

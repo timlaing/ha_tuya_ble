@@ -491,8 +491,6 @@ def test_build_cover_mapping() -> None:
             "position_set_dp_id": 2,
             "position_dp_id": 3,
             "tilt_dp_id": 101,
-            "battery_dp_id": 13,
-            "speed_dp_id": 105,
         },
     )
     built = cover._build_cover_mapping(desc)
@@ -502,8 +500,6 @@ def test_build_cover_mapping() -> None:
     assert built.position_set_dp_id == 2
     assert built.position_dp_id == 3
     assert built.tilt_dp_id == 101
-    assert built.battery_dp_id == 13
-    assert built.speed_dp_id == 105
 
 
 def test_build_light_mapping() -> None:

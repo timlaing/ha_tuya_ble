@@ -37,9 +37,6 @@ class TuyaBLECoverMapping:
     position_set_dp_id: int = 0
     position_dp_id: int = 0
     tilt_dp_id: int = 0
-    battery_dp_id: int = 0
-    work_state_dp_id: int = 0
-    speed_dp_id: int = 0
 
 
 @dataclass
@@ -68,9 +65,6 @@ def _build_cover_mapping(desc: EntityDescriptor) -> TuyaBLECoverMapping:
         "position_set_dp_id",
         "position_dp_id",
         "tilt_dp_id",
-        "battery_dp_id",
-        "work_state_dp_id",
-        "speed_dp_id",
     ):
         if field_name in extra:
             kwargs[field_name] = extra[field_name]
@@ -143,13 +137,16 @@ class TuyaBLECover(TuyaBLEEntity, CoverEntity):
 
     @property
     def supported_features(self) -> CoverEntityFeature:
-        """Return the supported features of the device."""
-        result = (
-            CoverEntityFeature.CLOSE
-            | CoverEntityFeature.OPEN
-            | CoverEntityFeature.SET_POSITION
-            | CoverEntityFeature.STOP
-        )
+        """Return the features backed by this device's mapped datapoints."""
+        result = CoverEntityFeature(0)
+        if self._mapping.state_dp_id != 0:
+            result |= (
+                CoverEntityFeature.CLOSE
+                | CoverEntityFeature.OPEN
+                | CoverEntityFeature.STOP
+            )
+        if self._mapping.position_set_dp_id != 0:
+            result |= CoverEntityFeature.SET_POSITION
         if self._mapping.tilt_dp_id != 0:
             result |= CoverEntityFeature.SET_TILT_POSITION
         return result

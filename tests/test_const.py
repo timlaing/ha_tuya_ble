@@ -7,7 +7,6 @@ import pytest
 from custom_components.tuya_ble.tuya_ble.const import (
     CHARACTERISTIC_NOTIFY,
     CHARACTERISTIC_WRITE,
-    DEFAULT_ATTEMPTS,
     GATT_MTU,
     MANUFACTURER_DATA_ID,
     RESPONSE_WAIT_TIMEOUT,
@@ -20,7 +19,6 @@ from custom_components.tuya_ble.tuya_ble.const import (
 def test_protocol_constants() -> None:
     """Assert the fixed protocol constants keep their documented values."""
     assert GATT_MTU == 20
-    assert DEFAULT_ATTEMPTS == 0xFFFF
     assert SERVICE_UUID == "0000a201-0000-1000-8000-00805f9b34fb"
     assert MANUFACTURER_DATA_ID == 0x07D0
     assert RESPONSE_WAIT_TIMEOUT == 60

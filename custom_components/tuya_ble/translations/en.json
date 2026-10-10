@@ -37,6 +37,9 @@
   },
   "entity": {
     "binary_sensor": {
+      "battery": {
+        "name": "Battery"
+      },
       "fault_code": {
         "name": "Fault"
       },

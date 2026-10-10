@@ -17,6 +17,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from homeassistant.components.climate.const import HVACMode
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 import yaml
@@ -159,6 +160,8 @@ def _parse_entity(platform: str, raw: dict[str, Any]) -> EntityDescriptor:
             raise DeviceRegistryError(
                 f"Entity {raw.get('dp_id', '?')} legacy_keys items must be strings"
             )
+    if platform == "climate":
+        _validate_climate_modes(raw)
     return EntityDescriptor(
         platform=platform,
         dp_id=int(raw.get("dp_id", 0)),
@@ -191,6 +194,34 @@ def _parse_entity(platform: str, raw: dict[str, Any]) -> EntityDescriptor:
             k: v for k, v in raw.items() if k not in _BASE_ENTITY_KEYS and k != "dp_id"
         },
     )
+
+
+def _validate_climate_modes(raw: dict[str, Any]) -> None:
+    """Validate climate HVAC mode strings against the HVACMode enum."""
+    dp_id = raw.get("dp_id", "?")
+    modes = raw.get("hvac_modes", [])
+    if not isinstance(modes, list):
+        raise DeviceRegistryError(
+            f"Climate entity {raw.get('translation_key', dp_id)!r} hvac_modes must be "
+            f"a list, got {type(modes).__name__}"
+        )
+    for mode in modes:
+        try:
+            HVACMode(mode)
+        except ValueError as exc:
+            raise DeviceRegistryError(
+                f"Climate entity {raw.get('translation_key', dp_id)!r} has unknown "
+                f"hvac_mode: {mode!r}"
+            ) from exc
+    switch_mode = raw.get("hvac_switch_mode")
+    if switch_mode is not None:
+        try:
+            HVACMode(switch_mode)
+        except ValueError as exc:
+            raise DeviceRegistryError(
+                f"Climate entity {raw.get('translation_key', dp_id)!r} has unknown "
+                f"hvac_switch_mode: {switch_mode!r}"
+            ) from exc
 
 
 _BASE_ENTITY_KEYS = {

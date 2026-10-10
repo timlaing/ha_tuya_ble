@@ -514,3 +514,73 @@ async def test_color_mode_hs_with_no_color_mode_dp(hass: HomeAssistant) -> None:
     entity = light.TuyaBLELight(hass, coordinator, device, product, mapping)
     entity.hass = hass
     assert entity.color_mode == ColorMode.COLOR_TEMP
+
+
+async def test_turn_on_without_any_dp_is_noop(hass: HomeAssistant) -> None:
+    """Verify turn_on sends nothing when the mapping has no applicable DP."""
+    device, coordinator, product = build_context(hass)
+    mapping = light.TuyaBLELightMapping(
+        description=LightEntityDescription(key="switch_led", name=None),
+    )
+    entity = light.TuyaBLELight(hass, coordinator, device, product, mapping)
+    entity.hass = hass
+    entity.turn_on()
+    await hass.async_block_till_done()
+    assert len(device.datapoints) == 0
+
+
+async def test_turn_off_without_switch_dp_is_noop(hass: HomeAssistant) -> None:
+    """Verify turn_off sends nothing when switch_dp_id is 0."""
+    device, coordinator, product = build_context(hass)
+    mapping = light.TuyaBLELightMapping(
+        description=LightEntityDescription(key="switch_led", name=None),
+        switch_dp_id=0,
+    )
+    entity = light.TuyaBLELight(hass, coordinator, device, product, mapping)
+    entity.hass = hass
+    entity.turn_off()
+    await hass.async_block_till_done()
+    assert len(device.datapoints) == 0
+
+
+async def test_turn_on_color_temp_without_mode_dp(hass: HomeAssistant) -> None:
+    """Verify color_temp_kelvin is sent even without a color mode DP."""
+    device, coordinator, product = build_context(hass)
+    mapping = light.TuyaBLELightMapping(
+        description=LightEntityDescription(key="switch_led", name=None),
+        switch_dp_id=1,
+        color_temp_dp_id=4,
+        color_mode_dp_id=0,
+        color_temp_min=0,
+        color_temp_max=100,
+    )
+    entity = light.TuyaBLELight(hass, coordinator, device, product, mapping)
+    entity.hass = hass
+    entity.turn_on(color_temp_kelvin=4000)
+    await hass.async_block_till_done()
+    assert device.datapoints[4] is not None
+
+
+async def test_turn_on_hs_color_without_mode_dp(hass: HomeAssistant) -> None:
+    """Verify hs_color is sent even without a color mode DP."""
+    device, coordinator, product = build_context(hass)
+    mapping = light.TuyaBLELightMapping(
+        description=LightEntityDescription(key="switch_led", name=None),
+        switch_dp_id=1,
+        color_data_dp_id=5,
+        color_mode_dp_id=0,
+    )
+    entity = light.TuyaBLELight(hass, coordinator, device, product, mapping)
+    entity.hass = hass
+    entity.turn_on(hs_color=(180.0, 50.0), brightness=128)
+    await hass.async_block_till_done()
+    assert device.datapoints[5] is not None
+
+
+async def test_hs_color_hs_mode_without_color_data(hass: HomeAssistant) -> None:
+    """Verify hs_color is None when in HS mode but color data is missing."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(hass, device, coordinator, product)
+    add_dp(device, 2, TuyaBLEDataPointType.DT_ENUM, "colour")
+    assert entity.color_mode == ColorMode.HS
+    assert entity.hs_color is None

@@ -313,17 +313,17 @@ class TuyaBLELight(TuyaBLEEntity, LightEntity):
                 "value": value,
             })
 
-        self._send_command(commands)
+        if commands:
+            self.send_multiple_dp_values([
+                (command["dp_id"], command["dp_type"], command["value"])
+                for command in commands
+            ])
 
     def turn_off(self, **kwargs: Any) -> None:
         """Turn off the light."""
         if self._mapping.switch_dp_id != 0:
-            self._send_command([
-                {
-                    "dp_id": self._mapping.switch_dp_id,
-                    "dp_type": TuyaBLEDataPointType.DT_BOOL,
-                    "value": False,
-                }
+            self.send_multiple_dp_values([
+                (self._mapping.switch_dp_id, TuyaBLEDataPointType.DT_BOOL, False)
             ])
 
     def _get_color_data(self) -> tuple[int, int, int] | None:

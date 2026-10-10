@@ -10,6 +10,7 @@ from homeassistant.components.climate.const import (
     HVACAction,
     HVACMode,
 )
+from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
 
 from custom_components.tuya_ble import climate
@@ -99,6 +100,53 @@ async def test_handle_update_preset_away(hass: HomeAssistant) -> None:
     coordinator.async_set_updated_data({})
     await hass.async_block_till_done()
     assert entity.preset_mode == PRESET_AWAY
+
+
+async def test_preset_reverse_map_ignores_yaml_order(hass: HomeAssistant) -> None:
+    """A shared preset datapoint resolves to the non-sentinel preset."""
+    device, coordinator, product = build_context(hass)
+    mapping = climate.TuyaBLEClimateMapping(
+        description=ClimateEntityDescription(key="trv"),
+        preset_mode_dp_ids={PRESET_NONE: 106, PRESET_AWAY: 106},
+    )
+    entity = climate.TuyaBLEClimate(hass, coordinator, device, product, mapping)
+    entity.hass = hass
+    await entity.async_added_to_hass()
+    add_dp(device, 106, TuyaBLEDataPointType.DT_BOOL, True)
+    coordinator.async_set_updated_data({})
+    await hass.async_block_till_done()
+    assert entity.preset_mode == PRESET_AWAY
+
+
+async def test_preset_reverse_map_falls_back_to_none(hass: HomeAssistant) -> None:
+    """When no preset datapoint is set, the sentinel preset is reported."""
+    device, coordinator, product = build_context(hass)
+    mapping = climate.TuyaBLEClimateMapping(
+        description=ClimateEntityDescription(key="trv"),
+        preset_mode_dp_ids={PRESET_NONE: 106, PRESET_AWAY: 106},
+    )
+    entity = climate.TuyaBLEClimate(hass, coordinator, device, product, mapping)
+    entity.hass = hass
+    await entity.async_added_to_hass()
+    add_dp(device, 106, TuyaBLEDataPointType.DT_BOOL, False)
+    coordinator.async_set_updated_data({})
+    await hass.async_block_till_done()
+    assert entity.preset_mode == PRESET_NONE
+
+
+async def test_temperature_unit_set_from_current_temperature_only(
+    hass: HomeAssistant,
+) -> None:
+    """The declared temperature unit applies even without a target datapoint."""
+    device, coordinator, product = build_context(hass)
+    mapping = climate.TuyaBLEClimateMapping(
+        description=ClimateEntityDescription(key="trv"),
+        current_temperature_dp_id=102,
+        current_temperature_coefficient=10.0,
+        temperature_unit=UnitOfTemperature.FAHRENHEIT,
+    )
+    entity = climate.TuyaBLEClimate(hass, coordinator, device, product, mapping)
+    assert entity.temperature_unit == UnitOfTemperature.FAHRENHEIT
 
 
 async def test_handle_update_mode_based(hass: HomeAssistant) -> None:

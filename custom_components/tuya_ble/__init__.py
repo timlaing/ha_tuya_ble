@@ -31,6 +31,7 @@ from .const import (
 )
 from .device_registry import async_setup_registry
 from .devices import TuyaBLECoordinator, TuyaBLEData, get_device_product_info
+from .entity import evict_legacy_suffix_cache
 from .tuya_ble import (
     BLE_CONNECTION_EXCEPTIONS,
     AbstractTuyaBLEDeviceManager,
@@ -222,6 +223,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         data: TuyaBLEData = hass.data[DOMAIN].pop(entry.entry_id)
+        evict_legacy_suffix_cache(hass, data.device.device_id)
         await data.device.stop()
 
     return unload_ok

@@ -87,7 +87,7 @@ async def test_scan_reissues_qr_code_on_failure(
     flow = build_flow(hass, login_success=False)
     flow._qr_user_code = "user1"
     with caplog.at_level(logging.DEBUG):
-        result = await flow.async_step_scan(user_input={})
+        result = await flow.async_step_scan({})
     assert result["errors"]["base"] == "login_error"  # type: ignore[index]
     assert "QR code login not completed, re-issuing QR code" in caplog.text
     assert "failed (code 2)" in caplog.text

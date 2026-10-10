@@ -21,6 +21,7 @@ from .const import DOMAIN
 from .device_registry import EntityDescriptor, get_registry
 from .devices import TuyaBLECoordinator, TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
+from .util import resolve_unit
 
 TuyaBLENumberGetter = (
     Callable[["TuyaBLENumber", TuyaBLEProductInfo], float | None] | None
@@ -82,7 +83,7 @@ def _number_description(desc: EntityDescriptor) -> NumberEntityDescription:
     if desc.device_class is not None:
         kwargs["device_class"] = NumberDeviceClass(desc.device_class)
     if desc.unit is not None:
-        kwargs["native_unit_of_measurement"] = desc.unit
+        kwargs["native_unit_of_measurement"] = resolve_unit(desc.unit)
     if desc.entity_category is not None:
         kwargs["entity_category"] = EntityCategory(desc.entity_category)
     if desc.min_value is not None:
@@ -189,11 +190,11 @@ class TuyaBLENumber(TuyaBLEEntity, NumberEntity):  # pylint: disable=abstract-me
         if self._mapping.setter:
             self._mapping.setter(self, self._product, value)
             return
-        int_value = int(value * self._mapping.coefficient)
+        int_value = round(value * self._mapping.coefficient)
         datapoint = self.device.datapoints.get_or_create(
             self._mapping.dp_id,
             TuyaBLEDataPointType.DT_VALUE,
-            int(int_value),
+            int_value,
         )
         self.hass.create_task(datapoint.set_value(int_value))
 

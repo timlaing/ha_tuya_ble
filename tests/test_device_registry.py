@@ -1,5 +1,5 @@
 """Unit tests for the data-driven device registry."""
-# pylint: disable=protected-access
+# pylint: disable=protected-access,too-many-lines
 
 from __future__ import annotations
 
@@ -242,6 +242,55 @@ def test_parse_entity_legacy_keys_non_string_item_raises() -> None:
         _load_product(registry, {"sensor": [{"dp_id": 5, "legacy_keys": [123]}]})
     except DeviceRegistryError as exc:
         assert "legacy_keys" in str(exc)
+    else:
+        raise AssertionError("expected DeviceRegistryError")
+
+
+def test_climate_valid_hvac_modes_are_captured() -> None:
+    """Valid climate HVAC modes and switch mode parse into the descriptor."""
+    registry = DeviceRegistry()
+    _load_product(
+        registry,
+        {"climate": [{"translation_key": "thermostat", "hvac_modes": ["off", "heat"]}]},
+    )
+    desc = registry.get("ms", "foo").get("climate")[0]  # type: ignore[union-attr]
+    assert desc.extra["hvac_modes"] == ["off", "heat"]
+
+    registry = DeviceRegistry()
+    _load_product(registry, {"climate": [{"hvac_switch_mode": "heat"}]})
+    switch_desc = registry.get("ms", "foo").get("climate")[0]  # type: ignore[union-attr]
+    assert switch_desc.extra["hvac_switch_mode"] == "heat"
+
+
+def test_climate_unknown_hvac_mode_raises() -> None:
+    """An HVAC mode that is not a valid HVACMode is rejected."""
+    registry = DeviceRegistry()
+    try:
+        _load_product(registry, {"climate": [{"hvac_modes": ["off", "warp"]}]})
+    except DeviceRegistryError as exc:
+        assert "unknown hvac_mode" in str(exc)
+    else:
+        raise AssertionError("expected DeviceRegistryError")
+
+
+def test_climate_hvac_modes_non_list_raises() -> None:
+    """A non-list hvac_modes value is rejected."""
+    registry = DeviceRegistry()
+    try:
+        _load_product(registry, {"climate": [{"hvac_modes": "off"}]})
+    except DeviceRegistryError as exc:
+        assert "hvac_modes must be a list" in str(exc)
+    else:
+        raise AssertionError("expected DeviceRegistryError")
+
+
+def test_climate_unknown_hvac_switch_mode_raises() -> None:
+    """An invalid hvac_switch_mode is rejected."""
+    registry = DeviceRegistry()
+    try:
+        _load_product(registry, {"climate": [{"hvac_switch_mode": "warp"}]})
+    except DeviceRegistryError as exc:
+        assert "unknown hvac_switch_mode" in str(exc)
     else:
         raise AssertionError("expected DeviceRegistryError")
 

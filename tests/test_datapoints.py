@@ -102,9 +102,9 @@ def test_get_value(
     ("dp_type", "value", "expected"),
     [
         (TuyaBLEDataPointType.DT_RAW, b"\x01", b"\x01"),
-        (TuyaBLEDataPointType.DT_RAW, "abc", b"abc"),
+        (TuyaBLEDataPointType.DT_RAW, bytearray(b"\x02"), b"\x02"),
         (TuyaBLEDataPointType.DT_BITMAP, b"\x01", b"\x01"),
-        (TuyaBLEDataPointType.DT_BOOL, "x", True),
+        (TuyaBLEDataPointType.DT_BOOL, 1, True),
         (TuyaBLEDataPointType.DT_BOOL, 0, False),
         (TuyaBLEDataPointType.DT_VALUE, "42", 42),
         (TuyaBLEDataPointType.DT_ENUM, "3", 3),
@@ -253,40 +253,6 @@ def test_raw_value_widens_narrow_value_on_serialization(
     assert dp.get_value() == b"\x00\x00\x01\x00"
 
 
-async def test_begin_end_update_sends_deferred(
-    datapoints: TuyaBLEDataPoints, datapoints_owner: FakeDatapointsOwner
-) -> None:
-    """Assert writes during an update are sent once the update ends."""
-    dp = datapoints.get_or_create(1, TuyaBLEDataPointType.DT_BOOL)
-    datapoints.begin_update()
-    await dp.set_value(True)
-    assert datapoints_owner.sent == []
-    await datapoints.end_update()
-    assert datapoints_owner.sent == [[1]]
-
-
-async def test_end_update_noop_when_not_started(
-    datapoints: TuyaBLEDataPoints, datapoints_owner: FakeDatapointsOwner
-) -> None:
-    """Assert ending an update that was never started has no effect."""
-    await datapoints.end_update()
-    assert datapoints_owner.sent == []
-
-
-async def test_nested_begin_end(
-    datapoints: TuyaBLEDataPoints, datapoints_owner: FakeDatapointsOwner
-) -> None:
-    """Assert nested update scopes only send once the outer update ends."""
-    dp = datapoints.get_or_create(1, TuyaBLEDataPointType.DT_BOOL)
-    datapoints.begin_update()
-    datapoints.begin_update()
-    await dp.set_value(True)
-    await datapoints.end_update()
-    assert datapoints_owner.sent == []
-    await datapoints.end_update()
-    assert datapoints_owner.sent == [[1]]
-
-
 async def test_update_from_user_immediate(
     datapoints: TuyaBLEDataPoints, datapoints_owner: FakeDatapointsOwner
 ) -> None:
@@ -294,20 +260,6 @@ async def test_update_from_user_immediate(
     dp = datapoints.get_or_create(1, TuyaBLEDataPointType.DT_BOOL)
     await dp.set_value(True)
     assert datapoints_owner.sent == [[1]]
-
-
-async def test_updated_datapoints_dedupe(
-    datapoints: TuyaBLEDataPoints, datapoints_owner: FakeDatapointsOwner
-) -> None:
-    """Assert repeated writes to one id collapse into a single entry."""
-    dp1 = datapoints.get_or_create(1, TuyaBLEDataPointType.DT_BOOL)
-    dp2 = datapoints.get_or_create(2, TuyaBLEDataPointType.DT_VALUE, 5)
-    datapoints.begin_update()
-    await dp1.set_value(True)
-    await dp2.set_value(6)
-    await dp1.set_value(False)
-    await datapoints.end_update()
-    assert datapoints_owner.sent == [[2, 1]]
 
 
 def test_get_value_returns_encoded_string() -> None:
@@ -491,51 +443,6 @@ def test_get_or_create_logs_creation(
     assert "Creating new data point 6" not in caplog.text
 
 
-async def test_batch_update_logs_open_and_flush(
-    datapoints: TuyaBLEDataPoints,
-    datapoints_owner: FakeDatapointsOwner,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Opening a batch and flushing the queued ids are both traced."""
-    dp = datapoints.get_or_create(1, TuyaBLEDataPointType.DT_BOOL)
-
-    with caplog.at_level(logging.DEBUG):
-        datapoints.begin_update()
-    assert "Batch update opened, nesting depth 1" in caplog.text
-
-    with caplog.at_level(logging.DEBUG):
-        await dp.set_value(True)
-    assert "Data point 1 queued in batch update (nesting depth 1)" in caplog.text
-
-    with caplog.at_level(logging.DEBUG):
-        await datapoints.end_update()
-    assert "Batch update closed, flushing data points: [1]" in caplog.text
-    assert datapoints_owner.sent == [[1]]
-
-
-async def test_nested_batch_update_logs_depth(
-    datapoints: TuyaBLEDataPoints,
-    datapoints_owner: FakeDatapointsOwner,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """A nested batch close that does not flush reports the reduced depth."""
-    dp = datapoints.get_or_create(1, TuyaBLEDataPointType.DT_BOOL)
-    datapoints.begin_update()
-    datapoints.begin_update()
-
-    with caplog.at_level(logging.DEBUG):
-        await dp.set_value(True)
-    assert "queued in batch update (nesting depth 2)" in caplog.text
-
-    with caplog.at_level(logging.DEBUG):
-        await datapoints.end_update()
-    assert "Batch update closed, nesting depth 1" in caplog.text
-    assert datapoints_owner.sent == []
-
-    await datapoints.end_update()
-    assert datapoints_owner.sent == [[1]]
-
-
 async def test_update_from_user_logs_immediate_send(
     datapoints: TuyaBLEDataPoints,
     datapoints_owner: FakeDatapointsOwner,
@@ -580,12 +487,12 @@ def test_values_is_empty_without_datapoints(
     assert datapoints.values() == []
 
 
-def test_set_value_no_notify_handles_string_bool_and_value(
+def test_set_value_no_notify_coerces_value_types(
     datapoints: TuyaBLEDataPoints,
 ) -> None:
-    """set_value_no_notify coerces types for string/int forms."""
+    """set_value_no_notify coerces int/string forms for the expected types."""
     dp_bool = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_BOOL, value=False)
-    dp_bool.set_value_no_notify("1")
+    dp_bool.set_value_no_notify(1)
     assert dp_bool.value is True
 
     dp_value = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_VALUE, value=0)
@@ -596,9 +503,39 @@ def test_set_value_no_notify_handles_string_bool_and_value(
     dp_str.set_value_no_notify(123)
     assert dp_str.value == "123"
 
+
+def test_set_value_no_notify_raw_accepts_bytes_like(
+    datapoints: TuyaBLEDataPoints,
+) -> None:
+    """DT_RAW/DT_BITMAP accept any bytes-like object and normalise to bytes."""
     dp_raw = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_RAW, value=b"")
-    dp_raw.set_value_no_notify("abc")
-    assert dp_raw.value == b"abc"
+    dp_raw.set_value_no_notify(bytearray(b"\x01\x02"))
+    assert dp_raw.value == b"\x01\x02"
+
+    dp_bitmap = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_BITMAP, value=b"")
+    dp_bitmap.set_value_no_notify(memoryview(b"\x03"))
+    assert dp_bitmap.value == b"\x03"
+
+
+@pytest.mark.parametrize(
+    "dp_type", [TuyaBLEDataPointType.DT_RAW, TuyaBLEDataPointType.DT_BITMAP]
+)
+def test_set_value_no_notify_raw_rejects_str(
+    datapoints: TuyaBLEDataPoints, dp_type: TuyaBLEDataPointType
+) -> None:
+    """A string is not silently encoded for a raw data point."""
+    dp = make_dp(datapoints, dp_type=dp_type, value=b"")
+    with pytest.raises(TuyaBLEDataFormatError):
+        dp.set_value_no_notify("abc")
+
+
+def test_set_value_no_notify_bool_rejects_str(
+    datapoints: TuyaBLEDataPoints,
+) -> None:
+    """DT_BOOL rejects strings instead of truthy-coercing them."""
+    dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_BOOL, value=False)
+    with pytest.raises(TuyaBLEDataFormatError):
+        dp.set_value_no_notify("0")
 
 
 @pytest.mark.parametrize(

@@ -7,9 +7,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ...sensor import TuyaBLESensor
 
-# Hardcoded datapoint carrying the battery enum value (1..5).
-_BATTERY_ENUM_DP_ID = 104
-
 
 def _clamp(value: int, low: int, high: int) -> int:
     """Clamp *value* into the inclusive [low, high] range."""
@@ -18,7 +15,7 @@ def _clamp(value: int, low: int, high: int) -> int:
 
 def battery_enum(sensor: TuyaBLESensor) -> None:
     """Read the battery enum datapoint and convert it to a percentage."""
-    datapoint = sensor.device.datapoints[_BATTERY_ENUM_DP_ID]
+    datapoint = sensor.device.datapoints[sensor.dp_id]
     if (
         datapoint
         and isinstance(datapoint.value, int)
