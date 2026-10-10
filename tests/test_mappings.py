@@ -10,11 +10,11 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, cast
 
-from homeassistant.components.binary_sensor import BinarySensorDeviceClass
+from homeassistant.components.binary_sensor.const import BinarySensorDeviceClass
 from homeassistant.components.number.const import NumberMode
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
-from homeassistant.const import PERCENTAGE, UnitOfTemperature
-from homeassistant.helpers.entity import UNDEFINED, EntityCategory
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTemperature
+from homeassistant.helpers.typing import UNDEFINED
 import pytest
 
 from custom_components.tuya_ble import (
