@@ -793,6 +793,58 @@ def test_sop10_water_timer_has_one_entity_per_datapoint_role() -> None:
     assert [item.dp_id for item in binary_sensor.get_mapping_by_device(device)] == [4]
 
 
+def test_hct611_water_timer_has_one_entity_per_datapoint_role() -> None:
+    """The HCT-611 timer follows the standard sfkzq dp_id layout."""
+    device = cast(TuyaBLEDevice, FakeDevice("sfkzq", "tqzkwarw"))
+
+    assert [item.dp_id for item in sensor.get_mapping_by_device(device)] == [
+        7,
+        12,
+        9,
+        13,
+        15,
+        16,
+        17,
+    ]
+    assert [item.dp_id for item in number.get_mapping_by_device(device)] == [11]
+    assert [item.dp_id for item in switch.get_mapping_by_device(device)] == [14]
+    assert [item.dp_id for item in valve.get_mapping_by_device(device)] == [1]
+    assert [item.dp_id for item in select.get_mapping_by_device(device)] == [10]
+    assert [item.dp_id for item in binary_sensor.get_mapping_by_device(device)] == [4]
+
+
+def test_ulughw4g_curtain_motor_matches_the_blind_controller() -> None:
+    """The migrated curtain motor shares the ``vlwf3ud6`` blind controller mapping."""
+    device = cast(TuyaBLEDevice, FakeDevice("cl", "ulughw4g"))
+    mapping = cover.get_mapping_by_device(device)
+
+    assert len(mapping) == 1
+    assert mapping[0].description.key == "ble_blind_controller"
+    assert mapping[0].state_dp_id == 1
+    assert mapping[0].position_set_dp_id == 2
+    assert mapping[0].position_dp_id == 3
+    assert [item.dp_id for item in number.get_mapping_by_device(device)] == [105]
+
+
+@pytest.mark.parametrize(
+    ("category", "product_id", "door_dp_id"),
+    [
+        ("jtmspro", "stugc8dl", 40),
+        ("ms", "0binhnjg", None),
+        ("ms", "kdq0tdbz", None),
+    ],
+)
+def test_new_lock_descriptors_use_the_motor_state_dp(
+    category: str, product_id: str, door_dp_id: int | None
+) -> None:
+    """Each migrated lock exposes dp 47 as its lock state."""
+    device = cast(TuyaBLEDevice, FakeDevice(category, product_id))
+    lock_mapping = lock.get_mapping_by_device(device)
+
+    assert [item.dp_id for item in lock_mapping] == [47]
+    assert lock_mapping[0].door_dp_id == door_dp_id
+
+
 def test_all_product_mappings_use_registered_category() -> None:
     """Keep product-specific mappings in their registered Tuya category."""
     mismatches: list[tuple[str, str, str]] = []

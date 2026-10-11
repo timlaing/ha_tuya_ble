@@ -1,0 +1,45 @@
+category: jtmspro
+product_id: stugc8dl
+entities:
+  sensor:
+    - dp_id: 21
+      translation_key: alarm_lock
+      device_class: enum
+      options:
+        - wrong_finger
+        - wrong_password
+        - wrong_card
+        - wrong_face
+        - tongue_bad
+        - too_hot
+        - unclosed_time
+        - tongue_not_out
+        - pry
+        - key_in
+        - low_battery
+        - power_off
+        - shock
+    - dp_id: 43
+      translation_key: unlock_fingerprint
+      name: Fingerprint unlock
+      icon: mdi:fingerprint
+    - dp_id: 13
+      translation_key: unlock_password
+      name: Password unlock
+      icon: mdi:keyboard-outline
+    - dp_id: 19
+      translation_key: unlock_ble
+      name: Bluetooth unlock
+      icon: mdi:bluetooth
+    - dp_id: 8
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+  lock:
+    - dp_id: 47
+      translation_key: lock
+      door_dp_id: 40
+device_name: HU06 Smart Lock
+model_name: stugc8dl

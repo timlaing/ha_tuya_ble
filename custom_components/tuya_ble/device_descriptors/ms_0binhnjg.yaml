@@ -1,0 +1,35 @@
+category: ms
+product_id: 0binhnjg
+entities:
+  sensor:
+    - dp_id: 21
+      translation_key: alarm_lock
+      device_class: enum
+      options:
+        - wrong_finger
+        - wrong_password
+        - wrong_card
+        - wrong_face
+        - tongue_bad
+        - too_hot
+        - unclosed_time
+        - tongue_not_out
+        - pry
+        - key_in
+        - low_battery
+        - power_off
+        - shock
+    - dp_id: 8
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+  switch:
+    - dp_id: 47
+      translation_key: lock_motor_state
+  lock:
+    - dp_id: 47
+      translation_key: lock
+device_name: TenixLox KB150A
+model_name: 0binhnjg

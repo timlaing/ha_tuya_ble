@@ -945,6 +945,11 @@ _NEW_DESCRIPTORS = (
     "dd/6jxcdae1",
     "dd/umzu0c2y",
     "jtmspro/ebd5e0uauqx0vfsp",
+    "sfkzq/tqzkwarw",
+    "cl/ulughw4g",
+    "jtmspro/stugc8dl",
+    "ms/0binhnjg",
+    "ms/kdq0tdbz",
 )
 
 
