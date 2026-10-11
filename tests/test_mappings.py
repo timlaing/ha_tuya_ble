@@ -797,14 +797,16 @@ def test_hct611_water_timer_has_one_entity_per_datapoint_role() -> None:
     """The HCT-611 timer follows the standard sfkzq dp_id layout."""
     device = cast(TuyaBLEDevice, FakeDevice("sfkzq", "tqzkwarw"))
 
-    assert [item.dp_id for item in sensor.get_mapping_by_device(device)] == [
-        7,
-        12,
-        9,
-        13,
-        15,
-        16,
-        17,
+    sensors = {item.dp_id: item for item in sensor.get_mapping_by_device(device)}
+    assert list(sensors) == [7, 12, 9, 13, 15, 16, 17]
+    assert sensors[13].description.options == [
+        "sunny",
+        "clear",
+        "cloud",
+        "cloudy",
+        "rainy",
+        "snow",
+        "fog",
     ]
     assert [item.dp_id for item in number.get_mapping_by_device(device)] == [11]
     assert [item.dp_id for item in switch.get_mapping_by_device(device)] == [14]

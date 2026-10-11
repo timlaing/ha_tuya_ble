@@ -28,10 +28,13 @@ entities:
       icon: mdi:weather-cloudy-alert
       device_class: enum
       options:
-        - no_forecast
         - sunny
+        - clear
+        - cloud
         - cloudy
         - rainy
+        - snow
+        - fog
     - dp_id: 15
       translation_key: last_use_time
       name: Last use time
