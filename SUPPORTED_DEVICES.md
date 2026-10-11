@@ -29,6 +29,8 @@ Programming (series of actions) is implemented for Fingerbot Plus. Exposed entit
 
 - Smart Lock (product_ids `ludzroix`, `isk2p555`, `gumrixyt`, `uamrw6h3`, `sidhzylo`, `mqc2hevy`, `a6nttc41`, `okkyfgfs`, `k53ok3u9`). Supports lock/unlock, alarm events, door status, and per-device unlock tracking (BLE, fingerprint, password, card, phone remote, dynamic code).
 - Unnamed lock (product_id `bvclwu9b`). Identical coverage to `gumrixyt` — lock/unlock on DP 47 from the `_category_ms.yaml` default, plus battery, door status and lock alarm status — minus the lock motor-state switch.
+- TenixLox KB150A (product_id `0binhnjg`). Lock/unlock on DP 47, plus battery, alarm events and the lock motor-state switch.
+- Pulido P13 (product_id `kdq0tdbz`). Lock/unlock on DP 47, plus alarm events and the lock motor-state switch.
 
 ## Smart Locks (category_id `jtmspro`)
 
@@ -38,6 +40,7 @@ Programming (series of actions) is implemented for Fingerbot Plus. Exposed entit
 - B16 (product_id `ajk32biq`).
 - Smart Cylinder Lock (product_ids `z7lj676i`, `hs21i377`).
 - CentralAcesso (product_id `ebd5e0uauqx0vfsp`).
+- HU06 Smart Lock (product_id `stugc8dl`).
 
 Supports lock/unlock, alarm events, fingerprint/card/password unlock tracking, and battery status.
 
@@ -63,6 +66,7 @@ Supports lock/unlock, alarm events, fingerprint/card/password unlock tracking, a
 - SOP10 water timer (product_ids `nxquc5lb`, `c8800fd30884068f`, `so5ybnw9`).
 - Valve controller (product_ids `svhikeyq`, `0axr5s0b`).
 - Water valve controller (product_ids `46zia2nz`, `1fcnd8xk`).
+- HCT-611 water timer (product_id `tqzkwarw`).
 - ZX-7378 Smart Irrigation Controller (product_id `ldcdnigc`).
 
 Entities available across this category: valve (open/close/stop), the matching water-valve switch, battery (with battery-state and alternate-percentage diagnostics on some models), countdown/irrigation timers, accumulated use time, work state, weather forecast, weather-delay select, smart-weather switch, fault code, soak and irrigation schedules, and valve opening percentage on `16wgjvck`.
@@ -87,7 +91,7 @@ Entities: on/off, brightness, color temperature, RGB color.
 
 ## Blind / curtain controllers (category_id `cl`)
 
-- Blind Controller (product_ids `4pbr8eig`, `vlwf3ud6`).
+- Blind Controller (product_ids `4pbr8eig`, `vlwf3ud6`, `ulughw4g`).
 - Curtain Controller (product_id `kcy0x4pi`).
 - AOK AM24 Venetian Blinds Motor (product_id `dy4dh1q0`).
 - Unnamed curtain motor (product_id `qqdxfdht`). Identical coverage to `kcy0x4pi`: open/close/stop via the `_category_cl.yaml` cover default (state DP 1, position set DP 2, position DP 3), plus battery, work state and speed (DP 105).
