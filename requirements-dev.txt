@@ -1,5 +1,5 @@
 aiousbwatcher
-homeassistant==2026.10.0
+homeassistant==2026.10.1
 mypy
 prek
 pycryptodome
@@ -7,7 +7,7 @@ pylint
 pytest
 pytest-asyncio
 pytest-cov
-pytest-homeassistant-custom-component==0.13.371
+pytest-homeassistant-custom-component==0.13.372
 ruff
 serialx
 tuya-device-handlers
