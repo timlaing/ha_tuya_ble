@@ -586,6 +586,9 @@ async def test_diagnostics_expose_stored_cloud_info(hass: HomeAssistant) -> None
     assert payload["cloud_info"]["pv"] == "1.0.5"
     assert payload["cloud_info"]["online"] is True
     assert payload["cloud_info"]["captured_at"] == "2026-09-30T00:00:00+00:00"
+    # Stored snapshots predate the allowlist, so identifying fields are
+    # stripped on export.
+    assert "ip" not in payload["cloud_info"]
 
 
 async def test_diagnostics_refresh_captures_fresh_cloud_info(

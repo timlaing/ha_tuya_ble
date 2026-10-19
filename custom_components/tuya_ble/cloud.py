@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import logging
 from typing import Any
 
@@ -179,31 +180,29 @@ def capture_local_schema(device: CustomerDevice) -> dict[str, Any]:
     }
 
 
-# Keys dropped from the cloud snapshot: the BLE local key is a credential, the
-# function/status-range/strategy blobs are persisted separately in the captured
-# schema, and ``status`` is live device state reported by the diagnostics ``live``
-# section. Everything else the cloud returned is kept, so version/firmware fields
-# surface without the integration having to know their names.
-_CLOUD_INFO_SKIP: frozenset[str] = frozenset({
-    "local_key",
-    "function",
-    "status_range",
-    "local_strategy",
-    "status",
+# Allowlist for the cloud device snapshot: only product identity, version and
+# capability metadata that diagnostics need. The sharing SDK builds the device
+# straight from the raw API payload, which also carries identifying fields
+# (``ip``, ``asset_id``, ``time_zone``, and potentially ``lat``/``lon`` or
+# owner/user ids); anything not named here is dropped, so those can never
+# reach the config entry or a diagnostics download.
+_CLOUD_INFO_ALLOW: frozenset[str] = frozenset({
+    "category",
+    "firmware_version",
+    "mcu_sw_version",
+    "online",
+    "product_id",
+    "product_model",
+    "product_name",
+    "pv",
+    "sub",
+    "support_local",
+    "sw_version",
 })
 
-# On top of the explicit skips, anything that looks like a credential is dropped
-# so an unexpected secret field in the raw payload never reaches the config
-# entry or a diagnostics download.
-_SECRET_KEY_MARKERS: frozenset[str] = frozenset({
-    "key",
-    "secret",
-    "token",
-    "password",
-    "passwd",
-    "credential",
-    "private",
-})
+# What an exported snapshot may contain: the allowlisted fields plus the
+# capture timestamp this module adds itself.
+_CLOUD_INFO_EXPORT: frozenset[str] = _CLOUD_INFO_ALLOW | {"captured_at"}
 
 
 _JSON_SCALARS = str | int | float | bool
@@ -214,32 +213,31 @@ def _is_json_scalar(value: Any) -> bool:
     return value is None or isinstance(value, _JSON_SCALARS)
 
 
-def _is_secret_key(key: str) -> bool:
-    """Return True for keys that look like they hold a credential."""
-    lowered = key.lower()
-    return any(marker in lowered for marker in _SECRET_KEY_MARKERS)
-
-
 def capture_cloud_info(device: CustomerDevice) -> dict[str, Any]:
-    """Capture the scalar attributes the cloud reports for the device.
+    """Capture the allowlisted product/version fields the cloud reports.
 
-    The sharing SDK builds the device from the raw API payload, so this keeps
-    every JSON-safe field (including firmware/version metadata when present)
-    for diagnostics. Secrets, credential-shaped keys, and the blobs captured
-    elsewhere are dropped, and only scalars/simple scalar lists are kept so the
-    entry stays JSON-safe.
+    The sharing SDK builds the device from the raw API payload, so the field
+    set is restricted to ``_CLOUD_INFO_ALLOW`` rather than denylisted — the
+    raw payload also carries network/location identifiers that must not be
+    persisted. Only scalars are kept so the entry stays JSON-safe.
     """
     info: dict[str, Any] = {"captured_at": dt_util.utcnow().isoformat()}
     for key, value in vars(device).items():
-        if key in _CLOUD_INFO_SKIP or _is_secret_key(key):
+        if key not in _CLOUD_INFO_ALLOW:
             continue
         if _is_json_scalar(value):
             info[key] = value
-        elif isinstance(value, (list, tuple)) and all(
-            _is_json_scalar(item) for item in value
-        ):
-            info[key] = list(value)
     return info
+
+
+def filter_cloud_info(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    """Strip a stored cloud snapshot down to the allowlisted export fields.
+
+    Entries captured before the allowlist existed may carry identifying
+    fields; filtering on export keeps a diagnostics download free of them
+    without rewriting stored entry data.
+    """
+    return {key: value for key, value in snapshot.items() if key in _CLOUD_INFO_EXPORT}
 
 
 def _build_credentials(device: CustomerDevice) -> TuyaBLEDeviceCredentials:

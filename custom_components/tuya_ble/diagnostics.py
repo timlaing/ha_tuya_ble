@@ -26,6 +26,7 @@ from .cloud import (
     HASSTuyaBLEDeviceManager,
     capture_cloud_info,
     capture_local_schema,
+    filter_cloud_info,
 )
 from .const import (
     CONF_CATEGORY,
@@ -58,7 +59,10 @@ _LOGGER = logging.getLogger(__name__)
 # The BLE local key is the only secret needed to talk to the device, and the
 # token set is enough to act on the user's cloud account. `uuid` and `device_id`
 # stay in the clear: they identify the device but cannot reach it, and without
-# them a diagnostics download cannot be matched to a report.
+# them a diagnostics download cannot be matched to a report. The network and
+# owner identifiers are the fields the raw cloud payload used to leak through
+# `cloud_info`; they stay redacted across the whole payload even though the
+# capture is allowlisted now.
 _TO_REDACT = frozenset({
     CONF_ENDPOINT,
     CONF_LOCAL_KEY,
@@ -66,8 +70,14 @@ _TO_REDACT = frozenset({
     CONF_TOKEN_INFO,
     CONF_USER_CODE,
     "access_token",
+    "asset_id",
+    "ip",
+    "lat",
+    "lon",
+    "owner_id",
     "refresh_token",
     "t",
+    "uid",
 })
 
 # Only a re-authentication leaves tokens on the entry; the QR login of the
@@ -238,7 +248,9 @@ async def _async_diagnostics(
 
     cloud_device = await _async_refresh_cloud_device(hass, entry, uuid)
     schema, schema_source = _select_schema(cloud_device, entry)
-    cloud_info: dict[str, Any] = (
+    # Fresh captures are already allowlisted; stored snapshots may predate it,
+    # so they are filtered down on export as well.
+    cloud_info: dict[str, Any] = filter_cloud_info(
         capture_cloud_info(cloud_device)
         if cloud_device is not None
         else entry.data.get(CONF_CLOUD_INFO) or {}

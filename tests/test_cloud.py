@@ -19,6 +19,7 @@ from custom_components.tuya_ble.cloud import (
     _extract_status_range,
     capture_cloud_info,
     capture_local_schema,
+    filter_cloud_info,
 )
 
 
@@ -365,23 +366,59 @@ def test_capture_local_schema_tolerates_missing_attributes() -> None:
     assert schema["status_range"] == []
 
 
-def test_capture_cloud_info_keeps_scalars_and_version_fields() -> None:
-    """Scalar cloud fields, including version metadata, are snapshotted."""
+def test_capture_cloud_info_keeps_allowlisted_version_fields() -> None:
+    """Allowlisted product/version fields, and only those, are snapshotted."""
     device = make_device(
         online=True,
-        ip="10.0.0.5",
-        time_zone="Europe/London",
         pv="1.0.5",
-        active_time=123,
+        mcu_sw_version="1.2.3",
+        sw_version="4.5.6",
+        product_model="abcd",
+        sub=False,
+        support_local=True,
     )
 
     info = capture_cloud_info(device)
 
     assert info["captured_at"].endswith("+00:00")
+    assert info["category"] == "wk"
+    assert info["product_id"] == "pid"
+    assert info["product_name"] == "Product"
     assert info["online"] is True
-    assert info["ip"] == "10.0.0.5"
     assert info["pv"] == "1.0.5"
-    assert info["active_time"] == 123
+    assert info["mcu_sw_version"] == "1.2.3"
+    assert info["sw_version"] == "4.5.6"
+    assert info["product_model"] == "abcd"
+    assert info["sub"] is False
+    assert info["support_local"] is True
+
+
+def test_capture_cloud_info_drops_identifying_fields() -> None:
+    """Network, location and owner identifiers from the raw payload are dropped."""
+    device = make_device(
+        ip="10.0.0.5",
+        time_zone="Europe/London",
+        asset_id="asset",
+        lat=51.5,
+        lon=-0.1,
+        uid="user-id",
+        owner_id="owner-id",
+        active_time=123,
+    )
+
+    info = capture_cloud_info(device)
+
+    for key in (
+        "ip",
+        "time_zone",
+        "asset_id",
+        "lat",
+        "lon",
+        "uid",
+        "owner_id",
+        "active_time",
+    ):
+        assert key not in info
 
 
 def test_capture_cloud_info_drops_secrets_and_blobs() -> None:
@@ -407,15 +444,49 @@ def test_capture_cloud_info_drops_credential_shaped_keys() -> None:
     assert "product_key" not in info
 
 
-def test_capture_cloud_info_keeps_scalar_lists_only() -> None:
-    """Simple scalar lists survive, while nested or complex values are dropped."""
+def test_capture_cloud_info_drops_unlisted_and_complex_fields() -> None:
+    """Unknown fields and non-scalar values never reach the snapshot."""
     device = make_device(tags=["a", "b"], nested={"k": "v"}, objects=[object()])
 
     info = capture_cloud_info(device)
 
-    assert info["tags"] == ["a", "b"]
+    assert "tags" not in info
     assert "nested" not in info
     assert "objects" not in info
+
+
+def test_capture_cloud_info_drops_allowlisted_non_scalar() -> None:
+    """An allowlisted key carrying a non-scalar value is still dropped."""
+    device = make_device(online={"unexpected": "dict"})
+
+    info = capture_cloud_info(device)
+
+    assert "online" not in info
+
+
+def test_filter_cloud_info_strips_stored_snapshots() -> None:
+    """Stored snapshots are reduced to the allowlisted export fields."""
+    stored = {
+        "captured_at": "2026-09-30T00:00:00+00:00",
+        "online": True,
+        "pv": "1.0.5",
+        "ip": "10.0.0.5",
+        "asset_id": "asset",
+        "uid": "user-id",
+    }
+
+    filtered = filter_cloud_info(stored)
+
+    assert filtered == {
+        "captured_at": "2026-09-30T00:00:00+00:00",
+        "online": True,
+        "pv": "1.0.5",
+    }
+
+
+def test_filter_cloud_info_tolerates_empty() -> None:
+    """An empty stored snapshot stays empty."""
+    assert filter_cloud_info({}) == {}
 
 
 async def test_get_cloud_device_by_uuid_returns_raw_device() -> None:
