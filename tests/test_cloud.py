@@ -489,6 +489,27 @@ def test_filter_cloud_info_tolerates_empty() -> None:
     assert filter_cloud_info({}) == {}
 
 
+def test_filter_cloud_info_drops_non_scalar_values() -> None:
+    """Allowlisted keys holding non-scalars are dropped from stored snapshots.
+
+    The pre-allowlist capture could store scalar-only lists, so a stored
+    snapshot must be reduced to scalars on export too.
+    """
+    stored = {
+        "captured_at": "2026-09-30T00:00:00+00:00",
+        "online": True,
+        "pv": ["1.0.5", "1.0.6"],
+        "category": {"nested": "dict"},
+    }
+
+    filtered = filter_cloud_info(stored)
+
+    assert filtered == {
+        "captured_at": "2026-09-30T00:00:00+00:00",
+        "online": True,
+    }
+
+
 async def test_get_cloud_device_by_uuid_returns_raw_device() -> None:
     """The raw cloud device is returned without building credentials."""
     device = make_device()

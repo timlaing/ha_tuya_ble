@@ -237,7 +237,11 @@ def filter_cloud_info(snapshot: Mapping[str, Any]) -> dict[str, Any]:
     fields; filtering on export keeps a diagnostics download free of them
     without rewriting stored entry data.
     """
-    return {key: value for key, value in snapshot.items() if key in _CLOUD_INFO_EXPORT}
+    return {
+        key: value
+        for key, value in snapshot.items()
+        if key in _CLOUD_INFO_EXPORT and _is_json_scalar(value)
+    }
 
 
 def _build_credentials(device: CustomerDevice) -> TuyaBLEDeviceCredentials:
