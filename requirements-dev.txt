@@ -1,5 +1,5 @@
 aiousbwatcher
-homeassistant==2026.10.1
+homeassistant==2026.10.2
 mypy
 prek
 pycryptodome
