@@ -251,6 +251,17 @@ entities:
       unit: "%"
       entity_category: config
       mode: box
+  select:
+    - dp_id: 105
+      translation_key: working_mode
+      name: Battery work mode
+      icon: mdi:cog-transfer
+      entity_category: config
+      options:
+        - Performance
+        - Balanced
+        - Eco
+        - Expert
   switch:
     - dp_id: 12
       translation_key: upper_temp_switch

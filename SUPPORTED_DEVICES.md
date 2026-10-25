@@ -80,7 +80,7 @@ Per-product coverage varies — `0axr5s0b` exposes only five entities, while the
 - PARKSIDE Smart battery 4Ah (2026 revision, product_id `vllfabvs`).
 - PARKSIDE Smart battery 8Ah (2026 revision, product_id `r04rvmaq`).
 
-Entities: battery, temperature, charge/discharge current and voltage, tool diagnostics (rotation speed, torque, runtime), fault counters, configuration switches (upper temp, security, kickback, lamp, laser), identify switch (DP 115, 2026 revisions).
+Entities: battery, temperature, charge/discharge current and voltage, tool diagnostics (rotation speed, torque, runtime), fault counters, configuration switches (upper temp, security, kickback, lamp, laser), identify switch (DP 115) and battery work mode select (DP 105, Performance/Balanced/Eco/Expert) — both on the 2026 revisions.
 
 ## LED strip lights and lamps (category_id `dd`)
 
