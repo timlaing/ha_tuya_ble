@@ -29,6 +29,7 @@ from .exceptions import (
     TuyaBLEDataFormatError,
     TuyaBLEDeviceError,
     TuyaBLEOutgoingDataLengthError,
+    TuyaBLEResponseTimeoutError,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -114,7 +115,7 @@ class TuyaBLEProtocolSendMixin:
 
         The BLE payload is atomic, the state transition is not: the device may
         reject it. The values are therefore applied inside
-        `TuyaBLEDataPoints.revert_on_failure`, which snapshots them first and
+        `TuyaBLEDataPoints.apply_with_rollback`, which snapshots them first and
         restores them if anything in the update fails, so an entity never keeps
         reporting a value the device did not accept.
         """
@@ -136,9 +137,7 @@ class TuyaBLEProtocolSendMixin:
         if not updates:
             return
 
-        with self._datapoints.revert_on_failure([dp for dp, _ in updates]):
-            for dp, value in updates:
-                dp.set_value_no_notify(value)
+        with self._datapoints.apply_with_rollback(updates):
             await self.send_datapoints([dp.dp_id for dp, _ in updates])
 
     async def _send_datapoints_v3(self, datapoint_ids: list[int]) -> None:
@@ -301,13 +300,20 @@ class TuyaBLEProtocolSendMixin:
         data: bytes,
         wait_for_response: bool = True,
     ) -> None:
-        """Send packet to device and optional read response."""
+        """Send packet to device and optionally wait for its response.
+
+        A response that never arrives is a failure, not a silent success:
+        raising lets callers such as the datapoint rollback treat the write as
+        unconfirmed instead of leaving local state ahead of the device.
+        """
         if self._expected_disconnect:
             return
         await self._ensure_connected()
         if self._expected_disconnect:  # noqa: S2583
             return
-        await self._send_packet_while_connected(code, data, 0, wait_for_response)
+        sent = await self._send_packet_while_connected(code, data, 0, wait_for_response)
+        if not sent:
+            raise TuyaBLEResponseTimeoutError(code.name)
 
     async def _send_response(
         self,

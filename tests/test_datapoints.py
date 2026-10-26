@@ -157,6 +157,50 @@ async def test_set_value_reverts_local_value_when_send_fails(
     assert "Update of datapoints [1] failed, local values reverted" in caplog.text
 
 
+async def test_set_value_keeps_device_report_arriving_during_failed_send(
+    datapoints: TuyaBLEDataPoints,
+    datapoints_owner: FakeDatapointsOwner,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A report landing mid-send wins over the rollback's stale snapshot."""
+    dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_VALUE, value=0)
+
+    async def report_then_fail(_dp_ids: list[int]) -> None:
+        dp.update_from_device(2.0, 0, TuyaBLEDataPointType.DT_VALUE, 7)
+        raise BleakError()
+
+    with (
+        patch.object(datapoints_owner, "send_datapoints", new=report_then_fail),
+        caplog.at_level(logging.DEBUG),
+        pytest.raises(BleakError),
+    ):
+        await dp.set_value(42)
+
+    assert dp.value == 7
+    assert "Datapoints [1] changed while the update was pending" in caplog.text
+    assert "local values reverted" not in caplog.text
+
+
+async def test_set_value_keeps_concurrent_write_during_failed_send(
+    datapoints: TuyaBLEDataPoints,
+    datapoints_owner: FakeDatapointsOwner,
+) -> None:
+    """A local write landing mid-send wins over the rollback's stale snapshot."""
+    dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_VALUE, value=0)
+
+    async def other_write_then_fail(_dp_ids: list[int]) -> None:
+        dp.set_value_no_notify(9)
+        raise BleakError()
+
+    with (
+        patch.object(datapoints_owner, "send_datapoints", new=other_write_then_fail),
+        pytest.raises(BleakError),
+    ):
+        await dp.set_value(42)
+
+    assert dp.value == 9
+
+
 def test_enum_positive_zero_set(datapoints: TuyaBLEDataPoints) -> None:
     """Assert the data point keeps its enum type after an update."""
     dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_ENUM, value=1)

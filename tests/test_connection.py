@@ -23,6 +23,7 @@ from custom_components.tuya_ble.tuya_ble.exceptions import (
     TuyaBLEDataLengthError,
     TuyaBLEDeviceError,
     TuyaBLEError,
+    TuyaBLEResponseTimeoutError,
 )
 from tests.conftest import (
     FakeBleakClient,
@@ -488,6 +489,17 @@ async def test_timeout_returns_false() -> None:
             TuyaBLECode.FUN_SENDER_DEVICE_STATUS, b"", 0, True
         )
         assert result is False
+
+
+async def test_send_packet_raises_on_response_timeout() -> None:
+    """A missing response must surface from _send_packet, not be discarded."""
+    h = ProtocolHarness()
+
+    with (
+        patch("asyncio.wait_for", side_effect=TimeoutError),
+        pytest.raises(TuyaBLEResponseTimeoutError),
+    ):
+        await h.device._send_packet(TuyaBLECode.FUN_SENDER_DEVICE_STATUS, b"")
 
 
 async def test_no_wait_for_response() -> None:

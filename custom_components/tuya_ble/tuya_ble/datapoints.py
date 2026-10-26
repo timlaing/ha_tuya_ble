@@ -42,6 +42,7 @@ class TuyaBLEDataPoint:
         self._value = value
         self._changed_by_device = False
         self._raw_value = raw_value
+        self._revision = 0
         self.update_from_device(timestamp, flags, dp_type, value, raw_value)
 
     def update_from_device(
@@ -74,6 +75,7 @@ class TuyaBLEDataPoint:
             )
         self._value = value
         self._raw_value = raw_value
+        self._revision += 1
 
     @staticmethod
     def _pack_enum(value: int) -> bytes:
@@ -156,6 +158,17 @@ class TuyaBLEDataPoint:
         """Return whether the value was changed by the device."""
         return self._changed_by_device
 
+    @property
+    def revision(self) -> int:
+        """Return a counter that changes on every value update.
+
+        Bumped by device reports and local writes alike, so a write pending
+        against the device can tell whether anything — a report arriving
+        mid-send, a concurrent write — has touched its data point since it
+        applied its own value.
+        """
+        return self._revision
+
     def set_value_no_notify(self, value: TuyaBLEDataPointValue) -> None:
         """Set the value without sending an update to the device."""
         match self._type:
@@ -174,6 +187,7 @@ class TuyaBLEDataPoint:
             case TuyaBLEDataPointType.DT_STRING:
                 self._value = str(value)
         self._changed_by_device = False
+        self._revision += 1
         _LOGGER.debug(
             "Data point %s set locally without notifying the device: %s",
             self._id,
@@ -183,13 +197,12 @@ class TuyaBLEDataPoint:
     async def set_value(self, value: TuyaBLEDataPointValue) -> None:
         """Set the data point value and send the update to the device.
 
-        The value is applied optimistically, so the whole apply-and-send runs
-        inside the owner's `revert_on_failure`: if the send fails, the previous
-        value is restored instead of the entity continuing to report a write
-        the device never accepted.
+        The value is applied optimistically inside the owner's
+        `apply_with_rollback`: if the send fails, the previous value is
+        restored instead of the entity continuing to report a write the device
+        never accepted.
         """
-        with self._owner.revert_on_failure([self]):
-            self.set_value_no_notify(value)
+        with self._owner.apply_with_rollback([(self, value)]):
             await self._owner.update_from_user(self._id)
 
     def _set_enum_value(self, value: TuyaBLEDataPointValue) -> None:
@@ -288,25 +301,52 @@ class TuyaBLEDataPoints:
         await self._owner.send_datapoints([dp_id])
 
     @contextmanager
-    def revert_on_failure(self, dps: Iterable[TuyaBLEDataPoint]) -> Iterator[None]:
-        """Snapshot `dps` and restore their values if the block fails.
+    def apply_with_rollback(
+        self, updates: Iterable[tuple[TuyaBLEDataPoint, TuyaBLEDataPointValue]]
+    ) -> Iterator[None]:
+        """Apply `updates` locally and undo them if the block fails.
 
         Local values are applied optimistically, before the device has accepted
-        them, so a failed send would otherwise leave Home Assistant reporting a
-        value the device never had. Both write paths — the single-DP
+        them, so a failed block would otherwise leave Home Assistant reporting
+        what the device never had. Both write paths — the single-DP
         `TuyaBLEDataPoint.set_value` and the device's bulk
-        `set_multiple_values` — apply their values inside this block so they
-        roll back identically.
+        `set_multiple_values` — run inside this block so they roll back
+        identically.
+
+        Any failure the caller sees — a rejected or unacknowledged send, or a
+        value that cannot be coerced — restores every value this block applied
+        and then propagates, so a batch is never left half-applied. Data
+        points changed again while the block ran (a device report or a
+        concurrent write arriving mid-send) keep their newer value instead of
+        being reset to the stale snapshot.
         """
-        previous_values = [(dp, dp.value) for dp in dps]
+        applied: list[tuple[TuyaBLEDataPoint, bytes | bool | int | str, int]] = []
         try:
+            for dp, value in updates:
+                previous = dp.value
+                dp.set_value_no_notify(value)
+                applied.append((dp, previous, dp.revision))
             yield
-        except BLE_CONNECTION_EXCEPTIONS:
-            for dp, previous in previous_values:
+        except BLE_CONNECTION_EXCEPTIONS + (ValueError, TypeError):
+            reverted: list[int] = []
+            kept: list[int] = []
+            for dp, previous, revision in applied:
+                if dp.revision != revision:
+                    kept.append(dp.dp_id)
+                    continue
                 dp.set_value_no_notify(previous)
-            _LOGGER.warning(
-                "%s: Update of datapoints %s failed, local values reverted",
-                self._owner.address,
-                [dp.dp_id for dp, _ in previous_values],
-            )
+                reverted.append(dp.dp_id)
+            if reverted:
+                _LOGGER.warning(
+                    "%s: Update of datapoints %s failed, local values reverted",
+                    self._owner.address,
+                    reverted,
+                )
+            if kept:
+                _LOGGER.debug(
+                    "%s: Datapoints %s changed while the update was pending, "
+                    "keeping the newer values",
+                    self._owner.address,
+                    kept,
+                )
             raise
