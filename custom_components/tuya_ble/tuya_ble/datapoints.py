@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 import logging
 from struct import pack
 import time
 from typing import TYPE_CHECKING
 
 from .const import TuyaBLEDataPointType
-from .exceptions import TuyaBLEDataFormatError, TuyaBLEEnumValueError
+from .exceptions import (
+    BLE_CONNECTION_EXCEPTIONS,
+    TuyaBLEDataFormatError,
+    TuyaBLEEnumValueError,
+)
 
 if TYPE_CHECKING:
     from .base import TuyaBLEDevice
@@ -176,9 +181,16 @@ class TuyaBLEDataPoint:
         )
 
     async def set_value(self, value: TuyaBLEDataPointValue) -> None:
-        """Set the data point value and send the update to the device."""
-        self.set_value_no_notify(value)
-        await self._owner.update_from_user(self._id)
+        """Set the data point value and send the update to the device.
+
+        The value is applied optimistically, so the whole apply-and-send runs
+        inside the owner's `revert_on_failure`: if the send fails, the previous
+        value is restored instead of the entity continuing to report a write
+        the device never accepted.
+        """
+        with self._owner.revert_on_failure([self]):
+            self.set_value_no_notify(value)
+            await self._owner.update_from_user(self._id)
 
     def _set_enum_value(self, value: TuyaBLEDataPointValue) -> None:
         """Set an enum value, accepting both integer indices and string values."""
@@ -274,3 +286,27 @@ class TuyaBLEDataPoints:
         """Handle a user-initiated data point update."""
         _LOGGER.debug("Data point %s sent immediately", dp_id)
         await self._owner.send_datapoints([dp_id])
+
+    @contextmanager
+    def revert_on_failure(self, dps: Iterable[TuyaBLEDataPoint]) -> Iterator[None]:
+        """Snapshot `dps` and restore their values if the block fails.
+
+        Local values are applied optimistically, before the device has accepted
+        them, so a failed send would otherwise leave Home Assistant reporting a
+        value the device never had. Both write paths — the single-DP
+        `TuyaBLEDataPoint.set_value` and the device's bulk
+        `set_multiple_values` — apply their values inside this block so they
+        roll back identically.
+        """
+        previous_values = [(dp, dp.value) for dp in dps]
+        try:
+            yield
+        except BLE_CONNECTION_EXCEPTIONS:
+            for dp, previous in previous_values:
+                dp.set_value_no_notify(previous)
+            _LOGGER.warning(
+                "%s: Update of datapoints %s failed, local values reverted",
+                self._owner.address,
+                [dp.dp_id for dp, _ in previous_values],
+            )
+            raise

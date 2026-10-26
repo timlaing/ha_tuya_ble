@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+from unittest.mock import AsyncMock, patch
 
+from bleak.exc import BleakError
 import pytest
 
 from custom_components.tuya_ble.tuya_ble.const import TuyaBLEDataPointType
@@ -131,6 +133,28 @@ async def test_set_value_enum_negative_raises(datapoints: TuyaBLEDataPoints) -> 
     dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_ENUM, value=1)
     with pytest.raises(TuyaBLEEnumValueError):
         await dp.set_value(-1)
+
+
+async def test_set_value_reverts_local_value_when_send_fails(
+    datapoints: TuyaBLEDataPoints,
+    datapoints_owner: FakeDatapointsOwner,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A failed send must roll the local value back, not leave it optimistic."""
+    dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_BOOL, value=False)
+    send = AsyncMock(side_effect=BleakError())
+
+    with (
+        patch.object(datapoints_owner, "send_datapoints", new=send),
+        caplog.at_level(logging.WARNING),
+        pytest.raises(BleakError),
+    ):
+        await dp.set_value(True)
+
+    assert dp.value is False
+    assert dp.changed_by_device is False
+    send.assert_awaited_once_with([1])
+    assert "Update of datapoints [1] failed, local values reverted" in caplog.text
 
 
 def test_enum_positive_zero_set(datapoints: TuyaBLEDataPoints) -> None:

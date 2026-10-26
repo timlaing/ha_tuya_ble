@@ -13,7 +13,6 @@ from typing import Any
 from bleak.exc import BleakDBusError, BleakError
 from bleak_retry_connector import (
     BLEAK_BACKOFF_TIME,
-    BLEAK_RETRY_EXCEPTIONS,
     BleakNotFoundError,
 )
 from Crypto.Cipher import AES
@@ -26,9 +25,9 @@ from .const import (
 )
 from .datapoints import TuyaBLEDataPoint, TuyaBLEDataPoints
 from .exceptions import (
+    BLEAK_EXCEPTIONS,
     TuyaBLEDataFormatError,
     TuyaBLEDeviceError,
-    TuyaBLEError,
     TuyaBLEOutgoingDataLengthError,
 )
 
@@ -37,17 +36,6 @@ _LOGGER = logging.getLogger(__name__)
 # The v3 datapoint envelope encodes each datapoint as three single-byte fields
 # (dp_id, dp_type, value length), which bounds both to this value.
 MAX_BYTE = 255
-
-# BLEAK_RETRY_EXCEPTIONS includes AttributeError, which would otherwise make a
-# programming error (typo'd attribute, missing Protocol member, None access)
-# look like a transient BLE failure and be retried silently. Excluding it keeps
-# real bugs visible instead of presenting them as a flaky device.
-BLEAK_EXCEPTIONS = (
-    *(err for err in BLEAK_RETRY_EXCEPTIONS if err is not AttributeError),
-    OSError,
-)
-
-BLE_CONNECTION_EXCEPTIONS = (TuyaBLEError, *BLEAK_EXCEPTIONS)
 
 
 class TuyaBLEProtocolSendMixin:
@@ -125,15 +113,15 @@ class TuyaBLEProtocolSendMixin:
         """Set multiple datapoint values in a single atomic BLE payload.
 
         The BLE payload is atomic, the state transition is not: the device may
-        reject it. Local values are therefore snapshotted first and restored if
-        the send fails, so an entity never keeps reporting a value the device
-        did not accept.
+        reject it. The values are therefore applied inside
+        `TuyaBLEDataPoints.revert_on_failure`, which snapshots them first and
+        restores them if anything in the update fails, so an entity never keeps
+        reporting a value the device did not accept.
         """
         if self._protocol_version != 3:
             raise TuyaBLEDeviceError(0)
 
-        sent_ids: list[int] = []
-        previous_values: list[tuple[TuyaBLEDataPoint, bytes | bool | int | str]] = []
+        updates: list[tuple[TuyaBLEDataPoint, bytes | bool | int | str]] = []
         for dp_id, value in dp_updates.items():
             dp = self._datapoints[dp_id]
             if dp is None:
@@ -143,28 +131,15 @@ class TuyaBLEProtocolSendMixin:
                     dp_id,
                 )
                 continue
+            updates.append((dp, value))
 
-            previous_values.append((dp, dp.value))
-            dp.set_value_no_notify(value)
-            sent_ids.append(dp_id)
-
-        if not sent_ids:
+        if not updates:
             return
 
-        try:
-            await self.send_datapoints(sent_ids)
-        except BLE_CONNECTION_EXCEPTIONS:
-            # Any failure the caller would see as a send failure must also revert
-            # the local values, otherwise HA keeps reporting what the device
-            # never accepted.
-            for dp, previous in previous_values:
-                dp.set_value_no_notify(previous)
-            _LOGGER.warning(
-                "%s: Bulk update of datapoints %s failed, local values reverted",
-                self.address,
-                sent_ids,
-            )
-            raise
+        with self._datapoints.revert_on_failure([dp for dp, _ in updates]):
+            for dp, value in updates:
+                dp.set_value_no_notify(value)
+            await self.send_datapoints([dp.dp_id for dp, _ in updates])
 
     async def _send_datapoints_v3(self, datapoint_ids: list[int]) -> None:
         """Serialize and send datapoint updates using the v3 protocol envelope.

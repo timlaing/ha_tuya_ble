@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from bleak_retry_connector import BLEAK_RETRY_EXCEPTIONS
+
 
 class TuyaBLEError(Exception):
     """Base class for Tuya BLE errors."""
@@ -55,3 +57,15 @@ class TuyaBLEDeviceError(TuyaBLEError):
 
     def __init__(self, code: int) -> None:
         super().__init__(f"BLE device returned error code {code}")
+
+
+# BLEAK_RETRY_EXCEPTIONS includes AttributeError, which would otherwise make a
+# programming error (typo'd attribute, missing Protocol member, None access)
+# look like a transient BLE failure and be retried silently. Excluding it keeps
+# real bugs visible instead of presenting them as a flaky device.
+BLEAK_EXCEPTIONS = (
+    *(err for err in BLEAK_RETRY_EXCEPTIONS if err is not AttributeError),
+    OSError,
+)
+
+BLE_CONNECTION_EXCEPTIONS = (TuyaBLEError, *BLEAK_EXCEPTIONS)

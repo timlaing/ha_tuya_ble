@@ -148,6 +148,8 @@ class FakeDatapointsOwner:
     """A minimal owner whose send_datapoints calls are recorded."""
 
     def __init__(self) -> None:
+        # The revert-on-failure warning prefixes the device address.
+        self.address: str = "AA:BB:CC:DD:EE:FF"
         self.sent: list[list[int]] = []
 
     async def send_datapoints(self, dp_ids: list[int]) -> None:

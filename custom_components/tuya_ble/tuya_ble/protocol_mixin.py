@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
+from .exceptions import BLE_CONNECTION_EXCEPTIONS, BLEAK_EXCEPTIONS
 from .protocol_notify import TuyaBLEProtocolNotifyMixin
-from .protocol_send import (
-    BLE_CONNECTION_EXCEPTIONS,
-    BLEAK_EXCEPTIONS,
-)
 
 __all__ = [
     "BLEAK_EXCEPTIONS",

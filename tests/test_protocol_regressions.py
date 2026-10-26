@@ -251,3 +251,22 @@ async def test_set_multiple_values_reverts_on_ble_write_failure(
         await h.device.set_multiple_values({1: True})
 
     assert dp.value is False
+
+
+async def test_set_multiple_values_reverts_earlier_values_on_invalid_value(
+    h: ProtocolHarness,
+) -> None:
+    """A bad value later in the batch must not leave the earlier ones applied."""
+    h.device._protocol_version = 3
+    toggle = h.device.get_or_create_datapoint(1, TuyaBLEDataPointType.DT_BOOL, False)
+    raw = h.device.get_or_create_datapoint(2, TuyaBLEDataPointType.DT_RAW, b"")
+
+    with (
+        patch.object(h.device, "send_datapoints") as send,
+        pytest.raises(TuyaBLEDataFormatError),
+    ):
+        await h.device.set_multiple_values({1: True, 2: "not-bytes"})
+
+    assert toggle.value is False
+    assert raw.value == b""
+    send.assert_not_called()
