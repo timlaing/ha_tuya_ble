@@ -929,6 +929,8 @@ _MANUFACTURER_FROM_PRODUCTS = {
     "ggq/jntxv3q4": "Insoma",
     "ggq/qycalacn": "Yohgee",
     "sfkzq/16wgjvck": "Ferrex",
+    "dcb/r04rvmaq": "PARKSIDE",
+    "dcb/vllfabvs": "PARKSIDE",
 }
 
 _NAMES_FROM_PRODUCTS = {

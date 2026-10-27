@@ -1,5 +1,6 @@
 category: dcb
 product_id: vllfabvs
+manufacturer: PARKSIDE
 entities:
   sensor:
     - dp_id: 16
