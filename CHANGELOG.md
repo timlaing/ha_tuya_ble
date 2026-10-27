@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog],
 and this project adheres to [Semantic Versioning].
 
+## [2.7.0] - 2026-10-27
+
+### Added
+
+- **Parkside smart battery descriptor for the 4 Ah PID `fab74vxu` (PAPP 204 A1)**: a third 2026-generation `dcb` battery descriptor sharing the `vllfabvs`/`r04rvmaq` data-point layout — including the DP 115 Identify switch and DP 105 work-mode select — with the corrected DP 102 status order, the corrected DP 101 unit and `PARKSIDE` as the manufacturer, catalogued in `SUPPORTED_DEVICES.md`.
+- **Globo WiFi/BLE CCT ceiling light descriptor (`xdd`/`6tny2vqxktdzowt1`)**: on/off, work mode, brightness (10–1000) and colour temperature (0–1000) on the Tuya light template's data points. The light reports no `color_data` data point, so it declares colour temperature only, and `work_mode` is still driven so a light left in scene mode follows a colour-temperature write.
+
+### Fixed
+
+- **Battery status order and discharging-current unit on the 2026 Parkside batteries**: DP 102's `battery_status` options were shifted (Ready listed first while the devices report `Charging=0 .. Error=5`), so a charging battery showed _Ready_, a finished charge showed _Discharging_ and _Full_ never appeared; DP 101 `discharging_current` is in amperes but was declared as `mA`, so a drill load showed as 2 mA. Both descriptors also declare `manufacturer: PARKSIDE` instead of falling back to `tuya`. Refs #103.
+- **Colour-temperature and colour changes reach the device again**: `TuyaBLELight.turn_on` sent the strings `white`/`colour` for the `DT_ENUM` work-mode data point, which raises `TuyaBLEDataFormatError`, so every such change rolled back without reaching the device (#113). The write now resolves through `_work_mode_write` — a `DT_STRING` work-mode data point gets the name, anything else gets the standard index (`white=0`, `colour=1`) — and `color_mode` treats index 0 as white mode. A single `turn_on` carrying both `hs_color` and `color_temp` now applies one work mode (explicit colour wins, the stray temperature write is dropped) instead of collapsing two work-mode writes in the batch. Raised by Sourcery.
+
 ## [2.6.0] - 2026-10-26
 
 ### Added
