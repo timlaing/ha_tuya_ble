@@ -8,6 +8,7 @@ rather than a round trip.
 # pylint: disable=protected-access, redefined-outer-name
 from __future__ import annotations
 
+import asyncio
 import logging
 from unittest.mock import patch
 
@@ -304,3 +305,44 @@ async def test_set_value_reverts_on_response_timeout(h: ProtocolHarness) -> None
         await dp.set_value(True)
 
     assert dp.value is False
+
+
+async def test_overlapping_failed_bulk_writes_restore_pre_write_value(
+    h: ProtocolHarness,
+) -> None:
+    """Overlapping bulk writes must not leave either one's optimistic value.
+
+    The bulk path shares the per-device write lock with the single-DP path
+    (issue #116), so a second batch waits for the first to finish — including
+    its rollback — instead of snapshotting values the device never accepted.
+    """
+    h.device._protocol_version = 3
+    dp = h.device.get_or_create_datapoint(1, TuyaBLEDataPointType.DT_VALUE, 0)
+    in_send = asyncio.Event()
+    fail = asyncio.Event()
+    sent_values: list[bytes | bool | int | str] = []
+
+    async def blocking_send(_dp_ids: list[int]) -> None:
+        sent_values.append(dp.value)
+        in_send.set()
+        await fail.wait()
+        raise TuyaBLEDeviceError(0)
+
+    with patch.object(h.device, "send_datapoints", new=blocking_send):
+        first = asyncio.create_task(h.device.set_multiple_values({1: 10}))
+        await in_send.wait()
+        second = asyncio.create_task(h.device.set_multiple_values({1: 20}))
+        for _ in range(3):
+            await asyncio.sleep(0)
+        assert dp.value == 10
+
+        fail.set()
+        with pytest.raises(TuyaBLEDeviceError):
+            await first
+        with pytest.raises(TuyaBLEDeviceError):
+            await second
+
+    assert dp.value == 0
+    # Both batches really applied their own value before sending: a queued
+    # batch that was silently dropped would only ever record [10].
+    assert sent_values == [10, 20]
