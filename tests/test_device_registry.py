@@ -994,6 +994,45 @@ def test_new_descriptors_are_registered(product_key: str) -> None:
     assert product.model_name == product_id
 
 
+# The 2026 Parkside batteries (issue #103) report DP 102 with Tuya enum
+# indexes Charging=0, Discharging=1, Ready=2, Full=3, Sleep=4, Error=5. The
+# descriptors had "Ready" first, so every label was shifted: a charging
+# battery displayed "Ready", a finished charge displayed "Discharging", and
+# "Full" never appeared -- the batteries report Ready once charged, not
+# Full. DP 101 is in amperes: declared as mA, a drill load showed up in HA
+# as 2 mA.
+_2026_PARKSIDE_BATTERIES = ("vllfabvs", "r04rvmaq")
+
+
+@pytest.mark.parametrize("product_id", _2026_PARKSIDE_BATTERIES)
+def test_2026_parkside_battery_status_matches_tuya_enum_order(
+    product_id: str,
+) -> None:
+    """DP 102 option order must line up with the device's enum indexes."""
+    product = get_registry().get("dcb", product_id)
+    assert product is not None
+    status = next(desc for desc in product.get("sensor") if desc.dp_id == 102)
+    assert status.options == [
+        "Charging",
+        "Discharging",
+        "Ready",
+        "Full",
+        "Sleep",
+        "Error",
+    ]
+
+
+@pytest.mark.parametrize("product_id", _2026_PARKSIDE_BATTERIES)
+def test_2026_parkside_discharging_current_is_in_amperes(
+    product_id: str,
+) -> None:
+    """DP 101 reports amperes; declaring mA made a drill load read as 2 mA."""
+    product = get_registry().get("dcb", product_id)
+    assert product is not None
+    current = next(desc for desc in product.get("sensor") if desc.dp_id == 101)
+    assert current.unit == "A"
+
+
 @pytest.mark.parametrize("product_id", ["0qgrjxum", "6jxcdae1", "umzu0c2y", "nvfrtxlq"])
 def test_dd_descriptors_inherit_the_strip_light_mapping(product_id: str) -> None:
     """The ``dd`` descriptors are identity-only and inherit ``_category_dd.yaml``.

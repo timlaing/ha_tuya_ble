@@ -24,9 +24,9 @@ entities:
       name: Battery status
       device_class: enum
       options:
-        - Ready
         - Charging
         - Discharging
+        - Ready
         - Full
         - Sleep
         - Error
@@ -48,7 +48,7 @@ entities:
       translation_key: discharging_current
       name: Discharging current
       device_class: current
-      unit: mA
+      unit: A
       state_class: measurement
     - dp_id: 103
       translation_key: charge_to_full_time
