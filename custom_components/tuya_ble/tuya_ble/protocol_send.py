@@ -117,7 +117,9 @@ class TuyaBLEProtocolSendMixin:
         reject it. The values are therefore applied inside
         `TuyaBLEDataPoints.apply_with_rollback`, which snapshots them first and
         restores them if anything in the update fails, so an entity never keeps
-        reporting a value the device did not accept.
+        reporting a value the device did not accept. That helper also holds the
+        per-device write lock, so this batch cannot interleave with another
+        write and snapshot its unconfirmed values.
         """
         if self._protocol_version != 3:
             raise TuyaBLEDeviceError(0)
@@ -137,7 +139,7 @@ class TuyaBLEProtocolSendMixin:
         if not updates:
             return
 
-        with self._datapoints.apply_with_rollback(updates):
+        async with self._datapoints.apply_with_rollback(updates):
             await self.send_datapoints([dp.dp_id for dp, _ in updates])
 
     async def _send_datapoints_v3(self, datapoint_ids: list[int]) -> None:

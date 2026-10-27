@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
-from contextlib import contextmanager
+import asyncio
+from collections.abc import AsyncIterator, Iterable
+from contextlib import asynccontextmanager
 import logging
 from struct import pack
 import time
@@ -200,9 +201,10 @@ class TuyaBLEDataPoint:
         The value is applied optimistically inside the owner's
         `apply_with_rollback`: if the send fails, the previous value is
         restored instead of the entity continuing to report a write the device
-        never accepted.
+        never accepted. The owner serializes writes, so this cannot overlap
+        another one and snapshot its unconfirmed value.
         """
-        with self._owner.apply_with_rollback([(self, value)]):
+        async with self._owner.apply_with_rollback([(self, value)]):
             await self._owner.update_from_user(self._id)
 
     def _set_enum_value(self, value: TuyaBLEDataPointValue) -> None:
@@ -240,6 +242,9 @@ class TuyaBLEDataPoints:
     def __init__(self, owner: TuyaBLEDevice) -> None:
         self._owner = owner
         self._datapoints: dict[int, TuyaBLEDataPoint] = {}
+        # Serializes writes: a second write must not snapshot the first one's
+        # unconfirmed optimistic value (issue #116).
+        self._write_lock = asyncio.Lock()
 
     def __len__(self) -> int:
         return len(self._datapoints)
@@ -300,10 +305,10 @@ class TuyaBLEDataPoints:
         _LOGGER.debug("Data point %s sent immediately", dp_id)
         await self._owner.send_datapoints([dp_id])
 
-    @contextmanager
-    def apply_with_rollback(
+    @asynccontextmanager
+    async def apply_with_rollback(
         self, updates: Iterable[tuple[TuyaBLEDataPoint, TuyaBLEDataPointValue]]
-    ) -> Iterator[None]:
+    ) -> AsyncIterator[None]:
         """Apply `updates` locally and undo them if the block fails.
 
         Local values are applied optimistically, before the device has accepted
@@ -313,40 +318,48 @@ class TuyaBLEDataPoints:
         `set_multiple_values` — run inside this block so they roll back
         identically.
 
+        The whole apply → send → rollback sequence runs under a per-device
+        lock, so writes never overlap: the snapshot a write restores is always
+        taken while no other write is pending, and a failed write can never
+        restore an earlier failed write's optimistic value. The revision check
+        below still matters for the one thing that *can* change a value
+        mid-send — a device report.
+
         Any failure the caller sees — a rejected or unacknowledged send, or a
         value that cannot be coerced — restores every value this block applied
         and then propagates, so a batch is never left half-applied. Data
-        points changed again while the block ran (a device report or a
-        concurrent write arriving mid-send) keep their newer value instead of
-        being reset to the stale snapshot.
+        points changed again while the block ran (a device report arriving
+        mid-send) keep their newer value instead of being reset to the stale
+        snapshot.
         """
-        applied: list[tuple[TuyaBLEDataPoint, bytes | bool | int | str, int]] = []
-        try:
-            for dp, value in updates:
-                previous = dp.value
-                dp.set_value_no_notify(value)
-                applied.append((dp, previous, dp.revision))
-            yield
-        except BLE_CONNECTION_EXCEPTIONS + (ValueError, TypeError):
-            reverted: list[int] = []
-            kept: list[int] = []
-            for dp, previous, revision in applied:
-                if dp.revision != revision:
-                    kept.append(dp.dp_id)
-                    continue
-                dp.set_value_no_notify(previous)
-                reverted.append(dp.dp_id)
-            if reverted:
-                _LOGGER.warning(
-                    "%s: Update of datapoints %s failed, local values reverted",
-                    self._owner.address,
-                    reverted,
-                )
-            if kept:
-                _LOGGER.debug(
-                    "%s: Datapoints %s changed while the update was pending, "
-                    "keeping the newer values",
-                    self._owner.address,
-                    kept,
-                )
-            raise
+        async with self._write_lock:
+            applied: list[tuple[TuyaBLEDataPoint, bytes | bool | int | str, int]] = []
+            try:
+                for dp, value in updates:
+                    previous = dp.value
+                    dp.set_value_no_notify(value)
+                    applied.append((dp, previous, dp.revision))
+                yield
+            except BLE_CONNECTION_EXCEPTIONS + (ValueError, TypeError):
+                reverted: list[int] = []
+                kept: list[int] = []
+                for dp, previous, revision in applied:
+                    if dp.revision != revision:
+                        kept.append(dp.dp_id)
+                        continue
+                    dp.set_value_no_notify(previous)
+                    reverted.append(dp.dp_id)
+                if reverted:
+                    _LOGGER.warning(
+                        "%s: Update of datapoints %s failed, local values reverted",
+                        self._owner.address,
+                        reverted,
+                    )
+                if kept:
+                    _LOGGER.debug(
+                        "%s: Datapoints %s changed while the update was pending, "
+                        "keeping the newer values",
+                        self._owner.address,
+                        kept,
+                    )
+                raise

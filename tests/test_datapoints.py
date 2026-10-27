@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from unittest.mock import AsyncMock, patch
 
@@ -185,7 +186,12 @@ async def test_set_value_keeps_concurrent_write_during_failed_send(
     datapoints: TuyaBLEDataPoints,
     datapoints_owner: FakeDatapointsOwner,
 ) -> None:
-    """A local write landing mid-send wins over the rollback's stale snapshot."""
+    """A raw local mutation landing mid-send wins over the stale snapshot.
+
+    Writes are serialized (issue #116), so a second `set_value` can no longer
+    land here; `set_value_no_notify` stands in for any other mid-send change
+    and keeps the revision-skip branch honest.
+    """
     dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_VALUE, value=0)
 
     async def other_write_then_fail(_dp_ids: list[int]) -> None:
@@ -199,6 +205,48 @@ async def test_set_value_keeps_concurrent_write_during_failed_send(
         await dp.set_value(42)
 
     assert dp.value == 9
+
+
+async def test_overlapping_failed_writes_restore_pre_write_value(
+    datapoints: TuyaBLEDataPoints,
+    datapoints_owner: FakeDatapointsOwner,
+) -> None:
+    """Two overlapping failed writes must leave the value from before both.
+
+    Before issue #116 the second write snapshotted the first write's
+    optimistic value: both sends failed, the first rollback was skipped
+    because the revision had moved, and the second restored the first
+    write's value — one the device never had. Writes are serialized now, so
+    the second write waits and both roll back to the original value.
+    """
+    dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_VALUE, value=0)
+    in_send = asyncio.Event()
+    fail = asyncio.Event()
+
+    async def blocking_send(dp_ids: list[int]) -> None:
+        datapoints_owner.sent.append(dp_ids)
+        in_send.set()
+        await fail.wait()
+        raise BleakError()
+
+    with patch.object(datapoints_owner, "send_datapoints", new=blocking_send):
+        first = asyncio.create_task(dp.set_value(10))
+        await in_send.wait()
+        second = asyncio.create_task(dp.set_value(20))
+        # The second write must queue behind the first, not snapshot it.
+        for _ in range(3):
+            await asyncio.sleep(0)
+        assert dp.value == 10
+        assert datapoints_owner.sent == [[1]]
+
+        fail.set()
+        with pytest.raises(BleakError):
+            await first
+        with pytest.raises(BleakError):
+            await second
+
+    assert dp.value == 0
+    assert datapoints_owner.sent == [[1], [1]]
 
 
 def test_enum_positive_zero_set(datapoints: TuyaBLEDataPoints) -> None:
