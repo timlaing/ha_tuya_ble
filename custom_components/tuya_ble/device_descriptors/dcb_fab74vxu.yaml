@@ -1,5 +1,6 @@
 category: dcb
 product_id: fab74vxu
+manufacturer: PARKSIDE
 entities:
   sensor:
     - dp_id: 16
