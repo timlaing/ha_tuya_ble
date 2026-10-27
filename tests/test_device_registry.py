@@ -941,7 +941,8 @@ _NAMES_FROM_PRODUCTS = {
 }
 
 # Products that had no descriptor of their own until their entities were lifted
-# out of the category defaults, plus the lock added in this change.
+# out of the category defaults, the lock added in a previous change, and the
+# 2026 Parkside 4 Ah battery (PAPP 204 A1) added for issue #103.
 _NEW_DESCRIPTORS = (
     "dd/0qgrjxum",
     "dd/6jxcdae1",
@@ -952,6 +953,7 @@ _NEW_DESCRIPTORS = (
     "jtmspro/stugc8dl",
     "ms/0binhnjg",
     "ms/kdq0tdbz",
+    "dcb/fab74vxu",
 )
 
 
