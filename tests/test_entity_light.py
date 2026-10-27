@@ -206,6 +206,47 @@ async def test_color_mode_hs(hass: HomeAssistant) -> None:
     assert entity.color_mode == ColorMode.HS
 
 
+async def test_color_mode_hs_when_work_mode_reports_its_index(
+    hass: HomeAssistant,
+) -> None:
+    """A device reports the enum index, so index 1 is colour mode."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(hass, device, coordinator, product)
+    add_dp(device, 2, TuyaBLEDataPointType.DT_ENUM, 1)
+    add_dp(device, 5, TuyaBLEDataPointType.DT_STRING, "00e600640064")
+    assert entity.color_mode == ColorMode.HS
+
+
+async def test_color_mode_color_temp_when_work_mode_reports_white_index(
+    hass: HomeAssistant,
+) -> None:
+    """White mode is index 0 on the wire, not the string "white".
+
+    Comparing the index against the name would report HS while the device is
+    in white mode, hiding the colour temperature it is actually using.
+    """
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(hass, device, coordinator, product)
+    add_dp(device, 2, TuyaBLEDataPointType.DT_ENUM, 0)
+    add_dp(device, 5, TuyaBLEDataPointType.DT_STRING, "00e600640064")
+    add_dp(device, 4, TuyaBLEDataPointType.DT_VALUE, 50)
+    assert entity.color_mode == ColorMode.COLOR_TEMP
+
+
+async def test_work_mode_write_rejects_a_mode_outside_the_standard_table(
+    hass: HomeAssistant,
+) -> None:
+    """A work mode with no standard index resolves to no command.
+
+    Only `white` and `colour` are ever written today, so an unmapped name
+    must not be sent as a bare enum index guessed from nothing.
+    """
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(hass, device, coordinator, product)
+    assert entity._work_mode_write("scene") is None
+    assert entity._work_mode_write("white") == (TuyaBLEDataPointType.DT_ENUM, 0)
+
+
 # --- hs_color ---
 
 
@@ -309,7 +350,13 @@ async def test_turn_on_with_brightness(hass: HomeAssistant) -> None:
 
 
 async def test_turn_on_with_color_temp(hass: HomeAssistant) -> None:
-    """Verify turn_on with color_temp_kelvin sends work_mode white."""
+    """Verify turn_on with color_temp_kelvin sends work_mode white.
+
+    The work mode goes out as the standard enum index, not the name: a
+    ``DT_ENUM`` data point serialises integers only, so a name string would
+    raise ``TuyaBLEDataFormatError`` when the packet is built and the whole
+    batch would roll back.
+    """
     device, coordinator, product = build_context(hass)
     entity = _make_entity(hass, device, coordinator, product)
     entity.turn_on(color_temp_kelvin=4000)
@@ -317,8 +364,40 @@ async def test_turn_on_with_color_temp(hass: HomeAssistant) -> None:
     dp_mode = device.datapoints[2]
     dp_temp = device.datapoints[4]
     assert dp_mode is not None
-    assert dp_mode.value == "white"
+    assert dp_mode.value == 0
+    assert dp_mode.get_value() == b"\x00"
     assert dp_temp is not None
+    assert isinstance(dp_temp.get_value(), bytes)
+
+
+async def test_turn_on_with_color_temp_when_work_mode_is_a_string_dp(
+    hass: HomeAssistant,
+) -> None:
+    """A work mode reported as a string data point still gets the name.
+
+    The type decides the representation: only an enum data point needs the
+    index, and a string data point cannot serialise an integer as anything
+    but ``"0"``.
+    """
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(hass, device, coordinator, product)
+    add_dp(device, 2, TuyaBLEDataPointType.DT_STRING, "scene")
+    entity.turn_on(color_temp_kelvin=4000)
+    await hass.async_block_till_done()
+    dp_mode = device.datapoints[2]
+    assert dp_mode is not None
+    assert dp_mode.value == "white"
+    assert dp_mode.get_value() == b"white"
+
+
+async def test_turn_on_with_color_temp_without_mode_dp(hass: HomeAssistant) -> None:
+    """No color_mode data point means no work-mode command at all."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(hass, device, coordinator, product, color_mode_dp_id=0)
+    entity.turn_on(color_temp_kelvin=4000)
+    await hass.async_block_till_done()
+    assert device.datapoints[2] is None
+    assert device.datapoints[4] is not None
 
 
 async def test_turn_on_with_hs_color(hass: HomeAssistant) -> None:
@@ -330,7 +409,8 @@ async def test_turn_on_with_hs_color(hass: HomeAssistant) -> None:
     dp_mode = device.datapoints[2]
     dp_color = device.datapoints[5]
     assert dp_mode is not None
-    assert dp_mode.value == "colour"
+    assert dp_mode.value == 1
+    assert dp_mode.get_value() == b"\x01"
     assert dp_color is not None
     assert isinstance(dp_color.value, str)
     assert len(dp_color.value) == 12
@@ -450,7 +530,7 @@ async def test_turn_on_with_color_temp_and_mode_dp(hass: HomeAssistant) -> None:
     entity.turn_on(color_temp_kelvin=4000)
     dp_mode = device.datapoints[2]
     assert dp_mode is not None
-    assert dp_mode.value == "white"
+    assert dp_mode.value == 0
     dp_temp = device.datapoints[4]
     assert dp_temp is not None
 
@@ -462,7 +542,7 @@ async def test_turn_on_with_hs_color_and_mode_dp(hass: HomeAssistant) -> None:
     entity.turn_on(hs_color=(180.0, 50.0), brightness=128)
     dp_mode = device.datapoints[2]
     assert dp_mode is not None
-    assert dp_mode.value == "colour"
+    assert dp_mode.value == 1
     dp_color = device.datapoints[5]
     assert dp_color is not None
     assert isinstance(dp_color.value, str)

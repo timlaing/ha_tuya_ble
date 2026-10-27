@@ -56,6 +56,23 @@ class TuyaBLECategoryLightMapping:
     mapping: list[TuyaBLELightMapping] | None = None
 
 
+# Tuya's standard `work_mode` table, the same template the descriptors take
+# their data point ids from: white, colour, scene, music.
+_WORK_MODE_INDEX: dict[str, int] = {"white": 0, "colour": 1}
+
+
+def _is_white_work_mode(value: object) -> bool:
+    """Return whether a work-mode data point reports white mode.
+
+    A device reports the enum index — `white` is 0 in the standard
+    `work_mode` table — while a device whose work mode is a string data
+    point reports the name, so both spellings count.
+    """
+    if isinstance(value, str):
+        return value.lower() in {"white", "0"}
+    return value == 0
+
+
 def _light_description(desc: EntityDescriptor) -> LightEntityDescription:
     """Build a LightEntityDescription from a registry descriptor."""
     return LightEntityDescription(
@@ -234,13 +251,38 @@ class TuyaBLELight(TuyaBLEEntity, LightEntity):
         """Return the current color mode."""
         if self._mapping.color_mode_dp_id != 0 and self._mapping.color_data_dp_id != 0:
             datapoint = self.device.datapoints[self._mapping.color_mode_dp_id]
-            if datapoint is not None and str(datapoint.value).lower() != "white":
+            if datapoint is not None and not _is_white_work_mode(datapoint.value):
                 return ColorMode.HS
         if self._mapping.color_temp_dp_id != 0:
             return ColorMode.COLOR_TEMP
         if self._mapping.brightness_dp_id != 0:
             return ColorMode.BRIGHTNESS
         return ColorMode.ONOFF
+
+    def _work_mode_write(
+        self, mode: str
+    ) -> tuple[TuyaBLEDataPointType, str | int] | None:
+        """Resolve the wire type and value for a work-mode write.
+
+        A `DT_ENUM` data point serialises integers only — a name string raises
+        `TuyaBLEDataFormatError` when the packet is built, which rolls back the
+        whole `turn_on` batch — so the write carries the standard `work_mode`
+        index. A device that reports work mode as a string data point gets the
+        name instead, which is the only form that data point can serialise.
+        """
+        dp_id = self._mapping.color_mode_dp_id
+        if dp_id == 0:
+            return None
+        datapoint = self.device.datapoints[dp_id]
+        if (
+            datapoint is not None
+            and datapoint.dp_type is TuyaBLEDataPointType.DT_STRING
+        ):
+            return TuyaBLEDataPointType.DT_STRING, mode
+        index = _WORK_MODE_INDEX.get(mode)
+        if index is None:
+            return None
+        return TuyaBLEDataPointType.DT_ENUM, index
 
     def turn_on(self, **kwargs: Any) -> None:
         """Turn on the light."""
@@ -254,11 +296,13 @@ class TuyaBLELight(TuyaBLEEntity, LightEntity):
             })
 
         if ATTR_COLOR_TEMP_KELVIN in kwargs and self._mapping.color_temp_dp_id != 0:
-            if self._mapping.color_mode_dp_id != 0:
+            work_mode = self._work_mode_write("white")
+            if work_mode is not None:
+                mode_dp_type, mode_value = work_mode
                 commands.append({
                     "dp_id": self._mapping.color_mode_dp_id,
-                    "dp_type": TuyaBLEDataPointType.DT_ENUM,
-                    "value": "white",
+                    "dp_type": mode_dp_type,
+                    "value": mode_value,
                 })
             mireds = color_util.color_temperature_kelvin_to_mired(
                 kwargs[ATTR_COLOR_TEMP_KELVIN]
@@ -280,11 +324,13 @@ class TuyaBLELight(TuyaBLEEntity, LightEntity):
             })
 
         if ATTR_HS_COLOR in kwargs and self._mapping.color_data_dp_id != 0:
-            if self._mapping.color_mode_dp_id != 0:
+            work_mode = self._work_mode_write("colour")
+            if work_mode is not None:
+                mode_dp_type, mode_value = work_mode
                 commands.append({
                     "dp_id": self._mapping.color_mode_dp_id,
-                    "dp_type": TuyaBLEDataPointType.DT_ENUM,
-                    "value": "colour",
+                    "dp_type": mode_dp_type,
+                    "value": mode_value,
                 })
             hs_color = kwargs[ATTR_HS_COLOR]
             brightness = kwargs.get(ATTR_BRIGHTNESS, self.brightness or 0)
