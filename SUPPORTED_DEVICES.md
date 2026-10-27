@@ -91,6 +91,12 @@ Entities: battery, temperature, charge/discharge current and voltage, tool diagn
 
 Entities: on/off, brightness, color temperature, RGB color.
 
+## Ceiling lights (category_id `xdd`)
+
+- Globo CCT Ceiling Light (product_id `6tny2vqxktdzowt1`): WiFi/BLE ceiling light from Globo Lighting.
+
+Entities: on/off, brightness, color temperature. `work_mode` and `scene_data` are not mapped yet — the reported data points cover `switch_led`, `work_mode`, `bright_value` and `temp_value` only.
+
 ## Blind / curtain controllers (category_id `cl`)
 
 - Blind Controller (product_ids `4pbr8eig`, `vlwf3ud6`, `ulughw4g`).

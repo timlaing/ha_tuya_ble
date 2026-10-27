@@ -175,6 +175,7 @@ The integration supports a broad range of Tuya BLE devices across the following 
 | Smart water bottle (`znhsb`)             | Smart water bottles                                                       |
 | PARKSIDE batteries (`dcb`)               | Smart batteries 4Ah / 8Ah                                                 |
 | Lights (`dd`)                            | LED strip lights, floor/sunset lamps                                      |
+| Ceiling lights (`xdd`)                   | Globo WiFi/BLE CCT ceiling light                                          |
 | Blinds & curtains (`cl`)                 | Blind/curtain controllers, venetian blind motors                          |
 | Plant sensors (`zwjcy`)                  | Soil moisture / plant sensors                                             |
 

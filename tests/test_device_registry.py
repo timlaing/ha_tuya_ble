@@ -932,6 +932,7 @@ _MANUFACTURER_FROM_PRODUCTS = {
     "dcb/fab74vxu": "PARKSIDE",
     "dcb/r04rvmaq": "PARKSIDE",
     "dcb/vllfabvs": "PARKSIDE",
+    "xdd/6tny2vqxktdzowt1": "Globo Lighting",
 }
 
 _NAMES_FROM_PRODUCTS = {
@@ -955,6 +956,7 @@ _NEW_DESCRIPTORS = (
     "ms/0binhnjg",
     "ms/kdq0tdbz",
     "dcb/fab74vxu",
+    "xdd/6tny2vqxktdzowt1",
 )
 
 
@@ -1062,6 +1064,34 @@ def test_dd_descriptors_inherit_the_strip_light_mapping(product_id: str) -> None
         "brightness_min": 0,
         "brightness_max": 1000,
     }
+
+
+def test_globo_ceiling_light_maps_the_reported_data_points() -> None:
+    """The Globo ``xdd`` ceiling light exposes on/off, brightness and colour temp.
+
+    The reporter's cloud functions name ``switch_led``, ``work_mode``,
+    ``bright_value`` (10-1000) and ``temp_value`` (0-1000), which is the Tuya
+    light template's data points 1-4. No ``color_data`` data point is reported,
+    so the light must not advertise a colour mode, and ``work_mode`` is still
+    driven so a light left in scene mode follows a colour temperature write.
+    """
+    product = get_registry().get("xdd", "6tny2vqxktdzowt1")
+    assert product is not None
+    light = product.get("light")
+    assert len(light) == 1
+    assert light[0].translation_key == "switch_led"
+    assert light[0].name == "Ceiling light"
+    assert light[0].extra == {
+        "switch_dp_id": 1,
+        "color_mode_dp_id": 2,
+        "brightness_dp_id": 3,
+        "brightness_min": 10,
+        "brightness_max": 1000,
+        "color_temp_dp_id": 4,
+        "color_temp_min": 0,
+        "color_temp_max": 1000,
+    }
+    assert product.entities == {"light": light}
 
 
 def test_central_acesso_descriptor_matches_the_smart_cylinder_lock() -> None:
