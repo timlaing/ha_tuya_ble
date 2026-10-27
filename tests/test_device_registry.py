@@ -612,10 +612,10 @@ def test_get_mapped_dp_ids_includes_handler_only_specs() -> None:
     assert {8, 15, 17, 121} <= dr.get_mapped_dp_ids("szjqr", "riecov42")
 
 
-# The three ``kg`` Fingerbot Plus products, and the data points upstream's
+# The four ``kg`` Fingerbot Plus products, and the data points upstream's
 # mapping declares for them. Held here so a future edit that renumbers a data
 # point is caught rather than silently reaching for the wrong one on-device.
-_KG_FINGERBOT_PLUS = ("bs3ubslo", "mknd4lci", "riecov42")
+_KG_FINGERBOT_PLUS = ("6jcvqwh0", "bs3ubslo", "mknd4lci", "riecov42")
 
 _KG_FINGERBOT_PLUS_MAPPING: dict[str, list[tuple[int, str, str | None]]] = {
     "button": [(108, "push", "fingerbot.mode.in_push_mode")],
@@ -637,9 +637,10 @@ _KG_DOWN_POSITION_FLOOR = 50
 def test_kg_fingerbot_mapping_matches_upstream(product_id: str) -> None:
     """Each ``kg`` data point, its translation key and its mode gate are as upstream.
 
-    These three products shipped with only their ``switch`` and ``sensor``
-    blocks, so the upstream numbers, mode select, push button and program text
-    were never reachable. The data points are not the same as the ``szjqr``
+    These products shipped with only their ``switch`` and ``sensor`` blocks, so
+    the upstream numbers, mode select, push button and program text were never
+    reachable, and ``6jcvqwh0`` had no ``kg`` descriptor at all so it loaded
+    with no entities. The data points are not the same as the ``szjqr``
     Fingerbot's, so each one is asserted individually.
     """
     product = get_registry().get("kg", product_id)
@@ -655,7 +656,7 @@ def test_kg_fingerbot_mapping_matches_upstream(product_id: str) -> None:
 
 @pytest.mark.parametrize("product_id", _KG_FINGERBOT_PLUS)
 def test_kg_fingerbot_products_are_identical(product_id: str) -> None:
-    """The three ``kg`` products are one device, so their descriptors must agree."""
+    """The ``kg`` products are one device, so their descriptors must agree."""
     for other in _KG_FINGERBOT_PLUS:
         reference = get_registry().get("kg", other)
         product = get_registry().get("kg", product_id)

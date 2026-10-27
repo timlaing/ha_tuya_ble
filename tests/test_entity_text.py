@@ -312,7 +312,7 @@ async def test_fingerbot_descriptors_declare_a_usable_pattern() -> None:
             )
             assert descriptor.max_length is not None
             assert descriptor.max_length >= len(long_program)
-    assert product_programs == 10
+    assert product_programs == 11
 
 
 async def test_set_fingerbot_program_empty_clears_steps(

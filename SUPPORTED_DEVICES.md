@@ -12,7 +12,7 @@ Programming (series of actions) is implemented for Fingerbot Plus. Exposed entit
 
 ## Fingerbot Plus / Switch Robot (category_id `kg`)
 
-- **Fingerbot Plus** (product_ids `mknd4lci`, `riecov42`, `bs3ubslo`): uses kg DP IDs.
+- **Fingerbot Plus** (product_ids `mknd4lci`, `riecov42`, `bs3ubslo`, `6jcvqwh0`): uses kg DP IDs.
 - **Switch Robot** (product_id `4ctjfrzq`).
 
 ## Temperature and humidity sensors (category_id `wsdcg`)
