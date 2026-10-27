@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog],
 and this project adheres to [Semantic Versioning].
 
+## [2.8.0] - 2026-10-27
+
+### Added
+
+- **`dj` light category and Smart LED Wall Lamp (`joe8qqgiwhpqgwex`)**: `_category_dj.yaml` supplies the default `light` entity on the standard Tuya light data points — switch 20, work mode 21, brightness 10–1000, colour temperature 0–1000 and colour data 24 — because `dj` lights use these rather than the `dd` strip-light data points 1–5. The Smart LED Wall Lamp ships as an identity-only descriptor inheriting the category default. First contribution by @magicx78 (#120).
+- **Fingerbot Plus descriptor for the `kg` product `6jcvqwh0`** (#121, fixes #104): the product existed only under `szjqr`, so a device reporting category `kg` logged "no descriptor" and loaded with no entities. The descriptor mirrors the other `kg` Fingerbot Plus layouts — switch, mode select, programs, battery, tap-to-run and custom program.
+
+### Fixed
+
+- **Overlapping datapoint writes can no longer restore a stale value** (#119, refs #116): `apply_with_rollback` holds a per-device lock across apply → send → rollback, so overlapping single-DP and bulk writes queue instead of snapshotting each other's unconfirmed optimistic values. A write cancelled mid-send now rolls back like any other failure, and out-of-range `DT_VALUE` writes — values that cannot serialise as a signed 32-bit int — are rejected before they are applied.
+
 ## [2.7.0] - 2026-10-27
 
 ### Added
