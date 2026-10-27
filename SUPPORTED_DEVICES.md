@@ -96,7 +96,7 @@ Entities: on/off, brightness, color temperature, RGB color.
 
 - Globo CCT Ceiling Light (product_id `6tny2vqxktdzowt1`): WiFi/BLE ceiling light from Globo Lighting.
 
-Entities: on/off, brightness, color temperature. `work_mode` and `scene_data` are not mapped yet — the reported data points cover `switch_led`, `work_mode`, `bright_value` and `temp_value` only.
+Entities: on/off, brightness, color temperature. `work_mode` is driven internally for color-temperature writes but not exposed as an entity; no `color_data` or `scene_data` data points are reported.
 
 ## Blind / curtain controllers (category_id `cl`)
 
