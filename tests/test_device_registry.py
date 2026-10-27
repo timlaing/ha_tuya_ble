@@ -1006,7 +1006,7 @@ def test_new_descriptors_are_registered(product_key: str) -> None:
 # "Full" never appeared -- the batteries report Ready once charged, not
 # Full. DP 101 is in amperes: declared as mA, a drill load showed up in HA
 # as 2 mA.
-_2026_PARKSIDE_BATTERIES = ("vllfabvs", "r04rvmaq")
+_2026_PARKSIDE_BATTERIES = ("fab74vxu", "vllfabvs", "r04rvmaq")
 
 
 @pytest.mark.parametrize("product_id", _2026_PARKSIDE_BATTERIES)
