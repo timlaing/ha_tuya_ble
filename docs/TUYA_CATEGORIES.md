@@ -34,6 +34,7 @@ is how most of the categories below got their first device.
 | `co2bj`   | CO2 detector                               |                                                                                                                                                                                                                     |
 | `dd`      | Strip lights                               | Strip lights. `_category_dd.yaml` supplies the default `light` entity for every `dd` product that does not define its own.                                                                                          |
 | `xdd`     | Ceiling light                              | Ceiling lights. The one product here (`6tny2vqxktdzowt1`, Globo) declares its own `light` entity rather than inheriting a category default, because its data points are unverified.                                 |
+| `dj`      | Light                                      | Light. `_category_dj.yaml` supplies the default `light` entity (DPs 20-24) for every `dj` product that does not define its own.                                                                                     |
 | `znhsb`   | Smart glass (not in Tuya's list)           | Officially _Smart glass_, but the `cdlandip` product here is a smart water bottle. See [gotchas](#gotchas).                                                                                                         |
 
 To see the products in a category:
@@ -57,7 +58,7 @@ These turn up in log lines and issue reports but are not categories with descrip
 
 The 138 category codes in Tuya's developer documentation, for reading a log line or a
 cloud response. Ones marked _undocumented_ are absent from that documentation but are known
-from shipped devices. ✓ marks the 13 of the 15 categories this integration supports that
+from shipped devices. ✓ marks the 14 of the 16 categories this integration supports that
 appear in Tuya's list. The other two, `dcb` and `znhsb`, are not in Tuya's documentation at
 all, so they have no row here — they are in the table above.
 
@@ -91,7 +92,7 @@ all, so they have no row here — they are in the table above.
 | `dd`          | Strip lights                                                       |     ✓     |
 | `dghsxj`      | Smart Camera - Low power consumption camera (undocumented)         |           |
 | `dgnbj`       | Multi-functional alarm                                             |           |
-| `dj`          | Light                                                              |           |
+| `dj`          | Light                                                              |     ✓     |
 | `dlq`         | Circuit breaker                                                    |           |
 | `dr`          | Electric blanket                                                   |           |
 | `ds`          | TV set                                                             |           |

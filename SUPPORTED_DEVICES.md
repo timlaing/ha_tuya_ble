@@ -98,6 +98,12 @@ Entities: on/off, brightness, color temperature, RGB color.
 
 Entities: on/off, brightness, color temperature. `work_mode` is driven internally for color-temperature writes but not exposed as an entity; no `color_data` or `scene_data` data points are reported.
 
+## Lights (category_id `dj`)
+
+- Tuya Smart LED Wall Lamp (product_id `joe8qqgiwhpqgwex`).
+
+Entities: on/off, brightness, color temperature, RGB color.
+
 ## Blind / curtain controllers (category_id `cl`)
 
 - Blind Controller (product_ids `4pbr8eig`, `vlwf3ud6`, `ulughw4g`).

@@ -1095,6 +1095,34 @@ def test_globo_ceiling_light_maps_the_reported_data_points() -> None:
     assert product.entities == {"light": light}
 
 
+def test_dj_wall_lamp_inherits_the_dj_light_mapping() -> None:
+    """The ``dj`` wall lamp is identity-only and inherits ``_category_dj.yaml``.
+
+    ``dj`` lights use the standard Tuya light DPs 20-24 rather than the
+    ``dd`` strip-light DPs 1-5, so the category needs its own default.
+    """
+    product = get_registry().get("dj", "joe8qqgiwhpqgwex")
+    assert product is not None
+    assert product.entities == {}
+    assert product.manufacturer == "Tuya"
+    assert product.device_name == "Smart LED Wall Lamp"
+
+    light = product.get("light")
+    assert len(light) == 1, "dj/joe8qqgiwhpqgwex must inherit exactly one light mapping"
+    assert light[0].translation_key == "switch_led"
+    assert light[0].extra == {
+        "switch_dp_id": 20,
+        "color_mode_dp_id": 21,
+        "brightness_dp_id": 22,
+        "color_temp_dp_id": 23,
+        "color_data_dp_id": 24,
+        "brightness_min": 10,
+        "brightness_max": 1000,
+        "color_temp_min": 0,
+        "color_temp_max": 1000,
+    }
+
+
 def test_central_acesso_descriptor_matches_the_smart_cylinder_lock() -> None:
     """The new lock descriptor is the existing one under a new product id.
 
