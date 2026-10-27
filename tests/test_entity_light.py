@@ -238,13 +238,14 @@ async def test_work_mode_write_rejects_a_mode_outside_the_standard_table(
 ) -> None:
     """A work mode with no standard index resolves to no command.
 
-    Only `white` and `colour` are ever written today, so an unmapped name
-    must not be sent as a bare enum index guessed from nothing.
+    Only `white` and `colour` are ever written through the public `turn_on`
+    path, so this branch has no entity operation to drive it through: an
+    unmapped name must not be sent as a bare enum index guessed from
+    nothing.
     """
     device, coordinator, product = build_context(hass)
     entity = _make_entity(hass, device, coordinator, product)
     assert entity._work_mode_write("scene") is None
-    assert entity._work_mode_write("white") == (TuyaBLEDataPointType.DT_ENUM, 0)
 
 
 # --- hs_color ---
@@ -414,6 +415,46 @@ async def test_turn_on_with_hs_color(hass: HomeAssistant) -> None:
     assert dp_color is not None
     assert isinstance(dp_color.value, str)
     assert len(dp_color.value) == 12
+
+
+async def test_turn_on_with_color_temp_and_hs_color_applies_one_mode(
+    hass: HomeAssistant,
+) -> None:
+    """A call carrying both colour attributes applies colour mode only.
+
+    Both branches used to append a work-mode write for the same data point,
+    so the later `colour` won the merge while the colour temperature was
+    still sent: the device ended in colour mode with a temperature write it
+    could not apply.
+    """
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(hass, device, coordinator, product)
+    entity.turn_on(color_temp_kelvin=4000, hs_color=(180.0, 50.0))
+    await hass.async_block_till_done()
+    dp_mode = device.datapoints[2]
+    assert dp_mode is not None
+    assert dp_mode.value == 1
+    assert device.datapoints[4] is None
+    assert device.datapoints[5] is not None
+
+
+async def test_turn_on_with_hs_color_but_no_color_data_uses_color_temp(
+    hass: HomeAssistant,
+) -> None:
+    """A light with no colour data point falls back to colour temperature.
+
+    `hs_color` cannot be applied without a `color_data` data point, so it
+    must not suppress the colour temperature the caller also asked for.
+    """
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(hass, device, coordinator, product, color_data_dp_id=0)
+    entity.turn_on(color_temp_kelvin=4000, hs_color=(180.0, 50.0))
+    await hass.async_block_till_done()
+    dp_mode = device.datapoints[2]
+    assert dp_mode is not None
+    assert dp_mode.value == 0
+    assert device.datapoints[4] is not None
+    assert device.datapoints[5] is None
 
 
 async def test_turn_on_hs_color_no_brightness(hass: HomeAssistant) -> None:

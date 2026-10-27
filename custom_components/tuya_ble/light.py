@@ -295,7 +295,19 @@ class TuyaBLELight(TuyaBLEEntity, LightEntity):
                 "value": True,
             })
 
-        if ATTR_COLOR_TEMP_KELVIN in kwargs and self._mapping.color_temp_dp_id != 0:
+        # A call can carry both colour attributes, but the device has a single
+        # work mode, so only one of them can take effect: an explicit colour
+        # wins and the colour temperature is left out rather than written to a
+        # device that would apply it while in colour mode.
+        colour_requested = (
+            ATTR_HS_COLOR in kwargs and self._mapping.color_data_dp_id != 0
+        )
+
+        if (
+            not colour_requested
+            and ATTR_COLOR_TEMP_KELVIN in kwargs
+            and self._mapping.color_temp_dp_id != 0
+        ):
             work_mode = self._work_mode_write("white")
             if work_mode is not None:
                 mode_dp_type, mode_value = work_mode
@@ -323,7 +335,7 @@ class TuyaBLELight(TuyaBLEEntity, LightEntity):
                 "value": value,
             })
 
-        if ATTR_HS_COLOR in kwargs and self._mapping.color_data_dp_id != 0:
+        if colour_requested:
             work_mode = self._work_mode_write("colour")
             if work_mode is not None:
                 mode_dp_type, mode_value = work_mode
