@@ -282,6 +282,28 @@ async def test_cancelled_write_rolls_back_optimistic_value(
     assert dp.value == 0
 
 
+async def test_set_value_rejects_out_of_range_dt_value(
+    datapoints: TuyaBLEDataPoints,
+    datapoints_owner: FakeDatapointsOwner,
+) -> None:
+    """A DT_VALUE outside the signed 32-bit range must fail before it is applied.
+
+    `get_value()` serialises DT_VALUE with `pack(">i", ...)`, so an
+    out-of-range value would raise `struct.error` mid-send — an exception the
+    rollback handler does not catch — and leave the optimistic value behind.
+    """
+    dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_VALUE, value=7)
+
+    await dp.set_value(2**31 - 1)
+    assert dp.value == 2**31 - 1
+
+    with pytest.raises(TuyaBLEDataFormatError):
+        await dp.set_value(2**31)
+
+    assert dp.value == 2**31 - 1
+    assert datapoints_owner.sent == [[1]]
+
+
 def test_enum_positive_zero_set(datapoints: TuyaBLEDataPoints) -> None:
     """Assert the data point keeps its enum type after an update."""
     dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_ENUM, value=1)

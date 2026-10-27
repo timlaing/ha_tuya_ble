@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
 import logging
+from struct import error as struct_error
 from struct import pack
 import time
 from typing import TYPE_CHECKING
@@ -182,7 +183,16 @@ class TuyaBLEDataPoint:
                     raise TuyaBLEDataFormatError()
                 self._value = bool(value)
             case TuyaBLEDataPointType.DT_VALUE:
-                self._value = int(value)
+                int_value = int(value)
+                try:
+                    pack(">i", int_value)
+                except struct_error:
+                    # get_value() serialises DT_VALUE as a signed 32-bit int,
+                    # so an out-of-range value would only blow up mid-send —
+                    # after being applied optimistically and outside the
+                    # exceptions the rollback handler catches.
+                    raise TuyaBLEDataFormatError() from None
+                self._value = int_value
             case TuyaBLEDataPointType.DT_ENUM:
                 self._set_enum_value(value)
             case TuyaBLEDataPointType.DT_STRING:
