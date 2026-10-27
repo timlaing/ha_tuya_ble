@@ -325,12 +325,17 @@ class TuyaBLEDataPoints:
         below still matters for the one thing that *can* change a value
         mid-send — a device report.
 
-        Any failure the caller sees — a rejected or unacknowledged send, or a
-        value that cannot be coerced — restores every value this block applied
-        and then propagates, so a batch is never left half-applied. Data
-        points changed again while the block ran (a device report arriving
-        mid-send) keep their newer value instead of being reset to the stale
-        snapshot.
+        Any failure the caller sees — a rejected or unacknowledged send, a
+        value that cannot be coerced, or a write cancelled mid-send —
+        restores every value this block applied and then propagates, so a
+        batch is never left half-applied. Data points changed again while the
+        block ran (a device report arriving mid-send) keep their newer value
+        instead of being reset to the stale snapshot.
+
+        Cancellation is treated as a failure on purpose: the send never
+        completed, so the optimistic value is unconfirmed, and leaving it in
+        place would let the next write snapshot it — the same stale value
+        this lock exists to prevent.
         """
         async with self._write_lock:
             applied: list[tuple[TuyaBLEDataPoint, bytes | bool | int | str, int]] = []
@@ -340,7 +345,11 @@ class TuyaBLEDataPoints:
                     dp.set_value_no_notify(value)
                     applied.append((dp, previous, dp.revision))
                 yield
-            except BLE_CONNECTION_EXCEPTIONS + (ValueError, TypeError):
+            except BLE_CONNECTION_EXCEPTIONS + (
+                ValueError,
+                TypeError,
+                asyncio.CancelledError,
+            ):
                 reverted: list[int] = []
                 kept: list[int] = []
                 for dp, previous, revision in applied:

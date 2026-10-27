@@ -222,9 +222,11 @@ async def test_overlapping_failed_writes_restore_pre_write_value(
     dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_VALUE, value=0)
     in_send = asyncio.Event()
     fail = asyncio.Event()
+    sent_values: list[bytes | bool | int | str] = []
 
     async def blocking_send(dp_ids: list[int]) -> None:
         datapoints_owner.sent.append(dp_ids)
+        sent_values.append(dp.value)
         in_send.set()
         await fail.wait()
         raise BleakError()
@@ -247,6 +249,37 @@ async def test_overlapping_failed_writes_restore_pre_write_value(
 
     assert dp.value == 0
     assert datapoints_owner.sent == [[1], [1]]
+    # Both writes really applied their own value before sending: a queued
+    # write that was silently dropped would only ever record [10].
+    assert sent_values == [10, 20]
+
+
+async def test_cancelled_write_rolls_back_optimistic_value(
+    datapoints: TuyaBLEDataPoints,
+    datapoints_owner: FakeDatapointsOwner,
+) -> None:
+    """A write cancelled mid-send must not keep its optimistic value.
+
+    The send never completed, so the value is unconfirmed; keeping it would
+    hand the next write a stale snapshot — the very value the write lock
+    exists to prevent (issue #116).
+    """
+    dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_VALUE, value=0)
+    in_send = asyncio.Event()
+    block = asyncio.Event()
+
+    async def blocking_send(_dp_ids: list[int]) -> None:
+        in_send.set()
+        await block.wait()
+
+    with patch.object(datapoints_owner, "send_datapoints", new=blocking_send):
+        task = asyncio.create_task(dp.set_value(10))
+        await in_send.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    assert dp.value == 0
 
 
 def test_enum_positive_zero_set(datapoints: TuyaBLEDataPoints) -> None:

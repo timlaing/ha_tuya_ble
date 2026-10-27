@@ -320,8 +320,10 @@ async def test_overlapping_failed_bulk_writes_restore_pre_write_value(
     dp = h.device.get_or_create_datapoint(1, TuyaBLEDataPointType.DT_VALUE, 0)
     in_send = asyncio.Event()
     fail = asyncio.Event()
+    sent_values: list[bytes | bool | int | str] = []
 
     async def blocking_send(_dp_ids: list[int]) -> None:
+        sent_values.append(dp.value)
         in_send.set()
         await fail.wait()
         raise TuyaBLEDeviceError(0)
@@ -341,3 +343,6 @@ async def test_overlapping_failed_bulk_writes_restore_pre_write_value(
             await second
 
     assert dp.value == 0
+    # Both batches really applied their own value before sending: a queued
+    # batch that was silently dropped would only ever record [10].
+    assert sent_values == [10, 20]
