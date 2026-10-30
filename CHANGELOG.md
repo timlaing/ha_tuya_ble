@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog],
 and this project adheres to [Semantic Versioning].
 
+## [2.9.0] - 2026-10-30
+
+### Added
+
+- **SGS01B-JR smart soil sensor descriptor (`zwjcy` / `gpkyrocn`)** (#127, closes #123): the sensor connected and loaded but had no entities, because no descriptor existed for the product. It ships the SGS01 layout — soil temperature on DP 5 (scale 1), humidity on DP 3, battery state on DP 14 and battery percentage on DP 15 — copied verbatim from `zwjcy_gvygg3m8.yaml` as the reporter verified, with a registry test pinning both `zwjcy` descriptors to the same layout so they cannot drift apart.
+
+### Changed
+
+- **Development dependencies**: `homeassistant` 2026.10.2 → 2026.10.4 and `pytest-homeassistant-custom-component` 0.13.373 → 0.13.375 bumped together in one change (0.13.375 pins `homeassistant==2026.10.4`, so neither lands alone) (#126, #125), plus the SonarQube scan action 8.3.0 → 8.4.0 (#124).
+
 ## [2.8.0] - 2026-10-27
 
 ### Added
