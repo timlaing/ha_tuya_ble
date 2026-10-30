@@ -1140,3 +1140,19 @@ def test_central_acesso_descriptor_matches_the_smart_cylinder_lock() -> None:
     assert len(lock) == 1
     assert lock[0].dp_id == 47
     assert lock[0].door_dp_id == 40
+
+
+def test_sgs01b_jr_descriptor_matches_the_sgs01_plant_sensor() -> None:
+    """The ``gpkyrocn`` soil sensor is the SGS01 descriptor under a new product id.
+
+    Issue #123 got the device working by copying ``zwjcy_gvygg3m8.yaml`` and
+    changing only the product id, so assert the entity layouts stay identical: a
+    change to one descriptor has to be made to the other.
+    """
+    reference = get_registry().get("zwjcy", "gvygg3m8")
+    product = get_registry().get("zwjcy", "gpkyrocn")
+    assert reference is not None
+    assert product is not None
+    assert product.entities == reference.entities
+    assert product.device_name == "SGS01B-JR Soil Sensor"
+    assert product.model_name == "gpkyrocn"
