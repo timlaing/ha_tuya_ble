@@ -117,6 +117,7 @@ Entities: open/close/stop, battery, work state and cover speed.
 
 - SRB-PM01 Soil Moisture Sensor (product_id `jabotj1z`).
 - Smartlife Plant Sensor SGS01 (product_id `gvygg3m8`).
+- SGS01B-JR Soil Sensor (product_id `gpkyrocn`).
 
 Entities: temperature, humidity, battery state, battery percentage.
 
