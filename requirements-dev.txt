@@ -7,7 +7,7 @@ pylint
 pytest
 pytest-asyncio
 pytest-cov
-pytest-homeassistant-custom-component==0.13.373
+pytest-homeassistant-custom-component==0.13.375
 ruff
 serialx
 tuya-device-handlers
