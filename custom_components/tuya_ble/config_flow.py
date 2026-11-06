@@ -52,6 +52,8 @@ from .const import (
 from .tuya_ble import (
     MANUFACTURER_DATA_ID,
     SERVICE_UUID,
+    SERVICE_UUID_V4,
+    SERVICE_UUIDS,
     decode_tuya_ble_advertisement,
 )
 
@@ -67,7 +69,11 @@ def _advertisement_hex(discovery_info: BluetoothServiceInfoBleak) -> str:
     service_data = advertisement.service_data or {}
     manufacturer_data = advertisement.manufacturer_data or {}
     return (
-        f"service_data[{SERVICE_UUID}]={service_data.get(SERVICE_UUID, b'').hex()} "
+        " ".join(
+            f"service_data[{uuid}]={service_data.get(uuid, b'').hex()}"
+            for uuid in SERVICE_UUIDS
+        )
+        + " "
         f"manufacturer_data[{MANUFACTURER_DATA_ID}]="
         f"{manufacturer_data.get(MANUFACTURER_DATA_ID, b'').hex()}"
     )
@@ -222,6 +228,17 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         )
         await self.async_set_unique_id(discovery_info.address)
         self._abort_if_unique_id_configured()
+        if (
+            SERVICE_UUID_V4 in (discovery_info.service_data or {})
+            and decode_tuya_ble_advertisement(discovery_info.advertisement) is None
+        ):
+            service = discovery_info.service_data[SERVICE_UUID_V4]
+            if not service or service[0] >> 4 != 4:
+                return self.async_abort(reason="unsupported_device")
+            complete_info = await self._async_scan_device(discovery_info.address)
+            if complete_info is None:
+                return self.async_abort(reason="unsupported_device")
+            discovery_info = complete_info
         self.discovery_info = discovery_info
         return await self.async_step_user()
 
@@ -271,9 +288,17 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         if service_info.service_data is None or manufacturer_data is None:
             return False
         manufacturer_data_raw = manufacturer_data.get(MANUFACTURER_DATA_ID)
+        if manufacturer_data_raw is None:
+            return False
+        if SERVICE_UUID_V4 in service_info.service_data:
+            return (
+                len(service_info.service_data[SERVICE_UUID_V4]) >= 4
+                and len(manufacturer_data_raw) == 20
+                and decode_tuya_ble_advertisement(service_info.advertisement)
+                is not None
+            )
         return (
             SERVICE_UUID in service_info.service_data
-            and manufacturer_data_raw is not None
             and len(manufacturer_data_raw) > 6
             and (len(manufacturer_data_raw) - 6) % 16 == 0
         )
@@ -444,7 +469,12 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             if (
                 discovery.address in current_addresses
                 or discovery.service_data is None
-                or SERVICE_UUID not in discovery.service_data
+                or not any(uuid in discovery.service_data for uuid in SERVICE_UUIDS)
+            ):
+                continue
+            if (
+                SERVICE_UUID_V4 in discovery.service_data
+                and decode_tuya_ble_advertisement(discovery.advertisement) is None
             ):
                 continue
             self._discovered_devices[discovery.address] = discovery

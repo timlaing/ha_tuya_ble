@@ -5,15 +5,16 @@ from __future__ import annotations
 __version__ = "0.1.0"
 
 
-from .base import (
+from .advertisement import (
     TuyaBLEAdvertisementInfo,
-    TuyaBLEDevice,
-    TuyaBLEDeviceFunction,
     decode_tuya_ble_advertisement,
 )
+from .base import TuyaBLEDevice, TuyaBLEDeviceFunction
 from .const import (
     MANUFACTURER_DATA_ID,
     SERVICE_UUID,
+    SERVICE_UUID_V4,
+    SERVICE_UUIDS,
     DPType,
     TuyaBLEDataPointType,
 )
@@ -31,6 +32,8 @@ __all__ = [
     "DPType",
     "MANUFACTURER_DATA_ID",
     "SERVICE_UUID",
+    "SERVICE_UUID_V4",
+    "SERVICE_UUIDS",
     "TuyaBLEAdvertisementInfo",
     "TuyaBLEDataPoint",
     "TuyaBLEDataPoints",
