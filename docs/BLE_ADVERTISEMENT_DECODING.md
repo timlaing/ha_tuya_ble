@@ -24,9 +24,17 @@ capture was available for this implementation. Changing the version nibble on a
 synthetic protocol-4 packet is not evidence of protocol-5 compatibility. A
 protocol-5 capture with its matching cloud UUID or firmware source is needed.
 
+FD50 discovery is validated before requesting cloud login. An incomplete v4
+advertisement triggers an active scan for a supported identity; unsupported
+formats are excluded from manual discovery. Active scans ignore beacon and
+invalid-identity packets rather than ending at the first block-aligned payload.
+Fresh FD50 connections also require a decoded identity so their initial handshake
+never uses the legacy default protocol version. An established session remains
+usable when a later advertisement is only a beacon.
+
 Compressed 20-character identities (manufacturer byte 3, bit 0) are also rejected
 until their pairing representation is supported. Truncated records, invalid
-lengths/types and undecodable plaintext fail closed. There is no alternate-key
+lengths/types and undecodable or non-printable plaintext fail closed. There is no alternate-key
 guessing or fallback from FD50 to a possibly stale classic service record.
 
 ## Evidence

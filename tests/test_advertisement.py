@@ -4,6 +4,7 @@
 
 import hashlib
 from typing import cast
+from unittest.mock import AsyncMock, patch
 
 from bleak.backends.scanner import AdvertisementData
 from Crypto.Cipher import AES
@@ -15,7 +16,14 @@ from custom_components.tuya_ble.tuya_ble import (
     SERVICE_UUID_V4,
     decode_tuya_ble_advertisement,
 )
-from tests.conftest import FakeAdvertisementData, make_credentials, make_device
+from custom_components.tuya_ble.tuya_ble.const import TuyaBLECode
+from custom_components.tuya_ble.tuya_ble.exceptions import TuyaBLEDeviceError
+from tests.conftest import (
+    FakeAdvertisementData,
+    FakeBleakClient,
+    make_credentials,
+    make_device,
+)
 
 
 def advertisement(
@@ -123,6 +131,29 @@ def test_v4_invalid_plaintext(plaintext: bytes) -> None:
     assert decode_tuya_ble_advertisement(v4_advertisement(plaintext=plaintext)) is None
 
 
+@pytest.mark.parametrize("version", [3, 4])
+@pytest.mark.parametrize(
+    "plaintext",
+    [
+        b"abc\x00" + b"d" * 12,
+        b"\n" + b"d" * 15,
+        b"\x7f" + b"d" * 15,
+        "\u200b".encode() + b"d" * 13,
+    ],
+)
+def test_non_printable_identity(version: int, plaintext: bytes) -> None:
+    """Reject valid UTF-8 containing embedded NUL or other control characters."""
+    if version == 4:
+        adv = v4_advertisement(plaintext=plaintext)
+    else:
+        key = hashlib.md5(b"abcdefgh", usedforsecurity=False).digest()
+        encrypted = AES.new(key, AES.MODE_CBC, key).encrypt(plaintext)
+        adv = advertisement(
+            b"\x00abcdefgh", b"\x80\x03" + bytes(4) + encrypted, SERVICE_UUID
+        )
+    assert decode_tuya_ble_advertisement(adv) is None
+
+
 def test_v4_compressed_identity_rejected() -> None:
     """Do not misinterpret binary compressed identities as UTF-8."""
     assert decode_tuya_ble_advertisement(v4_advertisement(flags=1)) is None
@@ -176,3 +207,91 @@ def test_runtime_uses_v4_metadata() -> None:
     assert dev.uuid == "1234567890abcdef"
     assert dev._protocol_version == 4
     assert dev._is_bound is True
+
+
+@pytest.mark.parametrize(
+    "service",
+    [
+        b"\x41",
+        b"\x48\x00\x00\x08abcdefgh",
+        b"\x51\x00\x00\x08abcdefgh",
+    ],
+)
+async def test_rejected_fd50_does_not_connect(service: bytes) -> None:
+    """Stored credentials must not start a handshake using the default version."""
+    dev = make_device()
+    dev.set_ble_device_and_advertisement_data(
+        dev._ble_device, v4_advertisement(service)
+    )
+    dev.initialize_with_credentials(make_credentials())
+    with (
+        patch(
+            "custom_components.tuya_ble.tuya_ble.base.establish_connection",
+            new_callable=AsyncMock,
+        ) as connect,
+        patch.object(
+            dev, "_send_packet_while_connected", new_callable=AsyncMock
+        ) as send,
+    ):
+        with pytest.raises(TuyaBLEDeviceError):
+            await dev.update()
+        connect.assert_not_awaited()
+        send.assert_not_awaited()
+
+
+async def test_fd50_recovery_uses_v4_packet_header() -> None:
+    """A later complete identity allows real packet construction with version 4."""
+    dev = make_device()
+    dev.set_ble_device_and_advertisement_data(
+        dev._ble_device, v4_advertisement(b"\x41")
+    )
+    dev.initialize_with_credentials(make_credentials())
+    with pytest.raises(TuyaBLEDeviceError):
+        await dev.update()
+    dev.set_ble_device_and_advertisement_data(dev._ble_device, v4_advertisement())
+    codes: list[TuyaBLECode] = []
+    packets: list[bytes] = []
+
+    async def send(
+        code: TuyaBLECode, data: bytes, response_to: int, wait: bool
+    ) -> bool:
+        codes.append(code)
+        packets.append(dev._build_packets(1, code, data, response_to)[0])
+        # Simulate successful handshake replies without any BLE I/O.
+        dev._session_key = bytes(16)
+        if code == TuyaBLECode.FUN_SENDER_PAIR:
+            dev._is_paired = True
+        return True
+
+    with (
+        patch(
+            "custom_components.tuya_ble.tuya_ble.base.establish_connection",
+            new_callable=AsyncMock,
+            return_value=FakeBleakClient(),
+        ),
+        patch.object(dev, "_send_packet_while_connected", side_effect=send),
+    ):
+        await dev.update()
+    assert codes == [
+        TuyaBLECode.FUN_SENDER_DEVICE_INFO,
+        TuyaBLECode.FUN_SENDER_PAIR,
+        TuyaBLECode.FUN_SENDER_DEVICE_STATUS,
+    ]
+    assert all(packet[2] == 0x40 for packet in packets)
+
+
+async def test_paired_fd50_connection_survives_beacon() -> None:
+    """Do not block an established session when the latest scan is a beacon."""
+    dev = make_device()
+    dev.set_ble_device_and_advertisement_data(dev._ble_device, v4_advertisement())
+    dev.initialize_with_credentials(make_credentials())
+    dev._client = FakeBleakClient()  # type: ignore[assignment]
+    dev._is_paired = True
+    dev.set_ble_device_and_advertisement_data(
+        dev._ble_device, v4_advertisement(b"\x48\x00\x00\x08abcdefgh")
+    )
+    with patch.object(
+        dev, "_send_packet_while_connected", new_callable=AsyncMock, return_value=True
+    ) as send:
+        await dev.update()
+    send.assert_awaited_once()

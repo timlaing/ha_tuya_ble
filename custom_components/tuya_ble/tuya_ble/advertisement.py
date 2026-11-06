@@ -36,7 +36,7 @@ def _decode_uuid(key_material: bytes, encrypted_uuid: bytes) -> str | None:
         uuid = cipher.decrypt(encrypted_uuid).rstrip(b"\x00").decode("utf-8")
     except ValueError:
         return None
-    return uuid or None
+    return uuid if uuid and uuid.isprintable() else None
 
 
 def _product_id(raw: bytes) -> str | None:

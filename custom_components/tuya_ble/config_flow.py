@@ -228,6 +228,17 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         )
         await self.async_set_unique_id(discovery_info.address)
         self._abort_if_unique_id_configured()
+        if (
+            SERVICE_UUID_V4 in (discovery_info.service_data or {})
+            and decode_tuya_ble_advertisement(discovery_info.advertisement) is None
+        ):
+            service = discovery_info.service_data[SERVICE_UUID_V4]
+            if not service or service[0] >> 4 != 4:
+                return self.async_abort(reason="unsupported_device")
+            complete_info = await self._async_scan_device(discovery_info.address)
+            if complete_info is None:
+                return self.async_abort(reason="unsupported_device")
+            discovery_info = complete_info
         self.discovery_info = discovery_info
         return await self.async_step_user()
 
@@ -283,6 +294,8 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             return (
                 len(service_info.service_data[SERVICE_UUID_V4]) >= 4
                 and len(manufacturer_data_raw) == 20
+                and decode_tuya_ble_advertisement(service_info.advertisement)
+                is not None
             )
         return (
             SERVICE_UUID in service_info.service_data
@@ -457,6 +470,11 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
                 discovery.address in current_addresses
                 or discovery.service_data is None
                 or not any(uuid in discovery.service_data for uuid in SERVICE_UUIDS)
+            ):
+                continue
+            if (
+                SERVICE_UUID_V4 in discovery.service_data
+                and decode_tuya_ble_advertisement(discovery.advertisement) is None
             ):
                 continue
             self._discovered_devices[discovery.address] = discovery

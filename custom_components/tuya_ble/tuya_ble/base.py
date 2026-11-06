@@ -207,10 +207,10 @@ class TuyaBLEDevice(TuyaBLEProtocol):
 
         return self._device_info is not None
 
-    def _decode_advertisement_data(self) -> None:
+    def _decode_advertisement_data(self) -> bool:
         """Decode the advertisement data from the BLE device."""
         if not self._advertisement_data:
-            return
+            return False
 
         if (
             SERVICE_UUID_V4 not in self._advertisement_data.service_data
@@ -229,6 +229,8 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             self._uuid = advert.uuid
             self._is_bound = advert.is_bound
             self._protocol_version = advert.protocol_version
+            return True
+        return False
 
     @property
     def address(self) -> str:
@@ -525,6 +527,16 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             )
         if self._is_ready():
             return
+        if (
+            self._advertisement_data
+            and SERVICE_UUID_V4 in self._advertisement_data.service_data
+            and not self._decode_advertisement_data()
+        ):
+            _LOGGER.debug(
+                "%s: Waiting for a supported FD50 identity before connecting",
+                self.address,
+            )
+            raise TuyaBLEDeviceError(0)
         async with self._connect_lock:
             if self._is_ready():
                 return
