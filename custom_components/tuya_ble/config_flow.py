@@ -52,6 +52,8 @@ from .const import (
 from .tuya_ble import (
     MANUFACTURER_DATA_ID,
     SERVICE_UUID,
+    SERVICE_UUID_V4,
+    SERVICE_UUIDS,
     decode_tuya_ble_advertisement,
 )
 
@@ -67,7 +69,11 @@ def _advertisement_hex(discovery_info: BluetoothServiceInfoBleak) -> str:
     service_data = advertisement.service_data or {}
     manufacturer_data = advertisement.manufacturer_data or {}
     return (
-        f"service_data[{SERVICE_UUID}]={service_data.get(SERVICE_UUID, b'').hex()} "
+        " ".join(
+            f"service_data[{uuid}]={service_data.get(uuid, b'').hex()}"
+            for uuid in SERVICE_UUIDS
+        )
+        + " "
         f"manufacturer_data[{MANUFACTURER_DATA_ID}]="
         f"{manufacturer_data.get(MANUFACTURER_DATA_ID, b'').hex()}"
     )
@@ -271,9 +277,15 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         if service_info.service_data is None or manufacturer_data is None:
             return False
         manufacturer_data_raw = manufacturer_data.get(MANUFACTURER_DATA_ID)
+        if manufacturer_data_raw is None:
+            return False
+        if SERVICE_UUID_V4 in service_info.service_data:
+            return (
+                len(service_info.service_data[SERVICE_UUID_V4]) >= 4
+                and len(manufacturer_data_raw) == 20
+            )
         return (
             SERVICE_UUID in service_info.service_data
-            and manufacturer_data_raw is not None
             and len(manufacturer_data_raw) > 6
             and (len(manufacturer_data_raw) - 6) % 16 == 0
         )
@@ -444,7 +456,7 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             if (
                 discovery.address in current_addresses
                 or discovery.service_data is None
-                or SERVICE_UUID not in discovery.service_data
+                or not any(uuid in discovery.service_data for uuid in SERVICE_UUIDS)
             ):
                 continue
             self._discovered_devices[discovery.address] = discovery

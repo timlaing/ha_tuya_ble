@@ -19,13 +19,13 @@ from bleak_retry_connector import (
     BleakNotFoundError,
     establish_connection,
 )
-from Crypto.Cipher import AES
 
+from .advertisement import decode_tuya_ble_advertisement
 from .const import (
     CHARACTERISTIC_NOTIFY,
     MANUFACTURER_DATA_ID,
     PAIRING_REQUEST_LENGTH,
-    SERVICE_UUID,
+    SERVICE_UUID_V4,
     DPType,
     TuyaBLECode,
     TuyaBLEDataPointType,
@@ -42,60 +42,6 @@ from .protocol_mixin import (
 _LOGGER = logging.getLogger(__name__)
 
 global_connect_lock = asyncio.Lock()
-
-
-@dataclass(frozen=True)
-class TuyaBLEAdvertisementInfo:
-    """Identity data decoded from a Tuya BLE advertisement."""
-
-    product_id: str | None
-    uuid: str
-    is_bound: bool
-    protocol_version: int
-
-
-def decode_tuya_ble_advertisement(
-    advertisement_data: AdvertisementData,
-) -> TuyaBLEAdvertisementInfo | None:
-    """Decode product and device identity from a Tuya BLE advertisement."""
-    if not advertisement_data.service_data or not advertisement_data.manufacturer_data:
-        return None
-    raw_product_id = advertisement_data.service_data.get(SERVICE_UUID)
-    raw_manufacturer_data = advertisement_data.manufacturer_data.get(
-        MANUFACTURER_DATA_ID
-    )
-    if (
-        not raw_product_id
-        or len(raw_product_id) <= 1
-        or raw_product_id[0] != 0
-        or not raw_manufacturer_data
-        or len(raw_manufacturer_data) <= 6
-    ):
-        return None
-
-    product_id = raw_product_id[1:]
-    encrypted_uuid = raw_manufacturer_data[6:]
-    if len(encrypted_uuid) % AES.block_size:
-        return None
-
-    try:
-        key = hashlib.md5(product_id, usedforsecurity=False).digest()
-        cipher = AES.new(key, AES.MODE_CBC, key)  # noqa: S5542
-        uuid = cipher.decrypt(encrypted_uuid).rstrip(b"\x00").decode("utf-8")
-    except ValueError:
-        return None
-    if not uuid:
-        return None
-    return TuyaBLEAdvertisementInfo(
-        product_id=(
-            product_id.decode("utf-8")
-            if product_id.isascii() and product_id.decode("ascii").isprintable()
-            else None
-        ),
-        uuid=uuid,
-        is_bound=(raw_manufacturer_data[0] & 0x80) != 0,
-        protocol_version=raw_manufacturer_data[1],
-    )
 
 
 @dataclass
@@ -267,15 +213,22 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             return
 
         if (
-            manufacturer_data := self._advertisement_data.manufacturer_data.get(
-                MANUFACTURER_DATA_ID
+            SERVICE_UUID_V4 not in self._advertisement_data.service_data
+            and (
+                manufacturer_data := self._advertisement_data.manufacturer_data.get(
+                    MANUFACTURER_DATA_ID
+                )
             )
-        ) and len(manufacturer_data) > 6:
+            and len(manufacturer_data) > 6
+            and manufacturer_data[1] in (2, 3)
+        ):
             self._is_bound = (manufacturer_data[0] & 0x80) != 0
             self._protocol_version = manufacturer_data[1]
 
         if advert := decode_tuya_ble_advertisement(self._advertisement_data):
             self._uuid = advert.uuid
+            self._is_bound = advert.is_bound
+            self._protocol_version = advert.protocol_version
 
     @property
     def address(self) -> str:
