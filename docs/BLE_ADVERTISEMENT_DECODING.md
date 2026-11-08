@@ -36,8 +36,11 @@ Manual discovery rebuilds eligibility from the current scanner snapshot, so
 vanished and configured addresses are not retained. Candidate identities resolve
 concurrently rather than waiting for each incomplete record in turn. Once a
 validated, unconfigured device is ready, the selector can appear; unfinished
-scans are cancelled and awaited. Deferred candidates can be checked on a later
-refresh. Cancelling the parent flow also cleans up its scanner tasks.
+scans are cancelled and awaited. Deferred v4 candidates remain selectable after
+ready entries, so a fast device cannot starve them across retries. Selecting a
+deferred address always requires a fresh, decoded identity before cloud
+credential lookup or entry creation. Configured addresses are still removed
+after cancellation cleanup. Cancelling the parent flow also cleans up its tasks.
 
 Compressed 20-character identities (manufacturer byte 3, bit 0) are also rejected
 until their pairing representation is supported. Truncated records, invalid

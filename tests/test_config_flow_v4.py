@@ -445,7 +445,10 @@ async def test_ready_device_does_not_wait_for_partial_scans(
     assert result["type"] == FlowResultType.FORM
     schema = cast(Any, result["data_schema"])
     assert schema({}) == {CONF_ADDRESS: ready.address}
-    assert set(schema.schema[CONF_ADDRESS].container) == {ready.address}
+    assert set(schema.schema[CONF_ADDRESS].container) == {
+        ready.address,
+        *(candidate.address for candidate in candidates),
+    }
 
 
 async def test_cancelled_discovery_cleans_up_all_scans(hass: HomeAssistant) -> None:
@@ -574,3 +577,100 @@ async def test_discovery_error_cleans_up_other_scans(hass: HomeAssistant) -> Non
             step.cancel()
             await asyncio.gather(step, return_exceptions=True)
     assert finished == started == {candidate.address for candidate in candidates}
+
+
+@pytest.mark.parametrize("selected_result", ["valid", "timeout", "unsupported"])
+async def test_deferred_device_is_selectable_but_requires_validated_setup(
+    hass: HomeAssistant, selected_result: str
+) -> None:
+    """A ready neighbour cannot starve a deferred device or bypass its scan gate."""
+    flow = build_flow(hass)
+    manager = FakeManager(make_credentials())
+    flow._manager = cast(Any, manager)
+    partial = partial_candidates(1)[0]
+    ready = discovery()
+    ready.address = "11:22:33:44:55:66"
+    complete = discovery()
+    complete.address = partial.address
+    unsupported = discovery(5)
+    unsupported.address = partial.address
+    blocked = asyncio.Event()
+    selection_pending = False
+    selected_scans: list[str] = []
+
+    async def scan(address: str) -> FakeDiscovery | None:
+        nonlocal selection_pending
+        if selection_pending:
+            selection_pending = False
+            selected_scans.append(address)
+            if selected_result == "timeout":
+                return None
+            return complete if selected_result == "valid" else unsupported
+        await blocked.wait()
+        return None
+
+    with (
+        patch(
+            "custom_components.tuya_ble.config_flow.async_discovered_service_info",
+            return_value=[partial, ready],
+        ),
+        patch.object(flow, "_async_current_ids", return_value=set()),
+        patch.object(flow, "_async_scan_device", side_effect=scan),
+    ):
+        form = await asyncio.wait_for(flow.async_step_device(), 0.5)
+        schema = cast(Any, form["data_schema"])
+        assert schema({}) == {CONF_ADDRESS: ready.address}
+        assert partial.address in schema.schema[CONF_ADDRESS].container
+        assert not manager.calls
+        selection_pending = True
+        result = await asyncio.wait_for(
+            flow.async_step_device({CONF_ADDRESS: partial.address}), 0.5
+        )
+    assert selected_scans == [partial.address]
+    if selected_result == "valid":
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        assert result["data"][CONF_ADDRESS] == partial.address
+        assert manager.calls == [("1234567890abcdef", False)]
+    else:
+        assert result["type"] == FlowResultType.FORM
+        assert result["errors"] == {
+            "base": "bluetooth_scan_failed"
+            if selected_result == "timeout"
+            else "identity_not_decoded"
+        }
+        assert not manager.calls
+
+
+async def test_deferred_candidate_survives_configuration_during_cleanup(
+    hass: HomeAssistant,
+) -> None:
+    """If the ready device becomes configured during cleanup, offer the deferred one."""
+    flow = build_flow(hass)
+    partial = partial_candidates(1)[0]
+    ready = discovery()
+    ready.address = "11:22:33:44:55:66"
+    blocked = asyncio.Event()
+    configured: set[str] = set()
+
+    def configured_ids() -> set[str]:
+        return set(configured)
+
+    async def scan(_address: str) -> None:
+        try:
+            await blocked.wait()
+        finally:
+            configured.add(ready.address)
+
+    with (
+        patch(
+            "custom_components.tuya_ble.config_flow.async_discovered_service_info",
+            return_value=[partial, ready],
+        ),
+        patch.object(flow, "_async_current_ids", side_effect=configured_ids),
+        patch.object(flow, "_async_scan_device", side_effect=scan),
+    ):
+        result = await asyncio.wait_for(flow.async_step_device(), 0.5)
+    assert result["type"] == FlowResultType.FORM
+    schema = cast(Any, result["data_schema"])
+    assert set(schema.schema[CONF_ADDRESS].container) == {partial.address}
+    assert schema({}) == {CONF_ADDRESS: partial.address}

@@ -463,7 +463,7 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             and discovery.service_data is not None
             and any(uuid in discovery.service_data for uuid in SERVICE_UUIDS)
         ]
-        resolved = await self._async_resolve_candidates(candidates)
+        resolved, deferred = await self._async_resolve_candidates(candidates)
         for discovery in candidates:
             complete_info = resolved.get(discovery.address)
             if complete_info is None:
@@ -476,6 +476,13 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
                 discovery.name,
                 len(self._discovered_devices),
             )
+        # Keep deferred v4 candidates selectable after ready entries. Setup always
+        # actively validates the selected address before requesting credentials.
+        for discovery in candidates:
+            if discovery.address in deferred:
+                self._discovered_devices[discovery.address] = deferred[
+                    discovery.address
+                ]
         # Another flow can finish configuration while an active scan is awaiting.
         for address in self._async_current_ids():
             if address is not None:
@@ -483,14 +490,15 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
 
     async def _async_resolve_candidates(
         self, candidates: list[BluetoothServiceInfoBleak]
-    ) -> dict[str, BluetoothServiceInfoBleak | None]:
+    ) -> tuple[
+        dict[str, BluetoothServiceInfoBleak | None],
+        dict[str, BluetoothServiceInfoBleak],
+    ]:
         """Resolve in parallel until eligible devices are ready for selection."""
         if not candidates:
-            return {}
+            return {}, {}
         tasks = {
-            asyncio.create_task(
-                self._async_resolve_discovery(discovery)
-            ): discovery.address
+            asyncio.create_task(self._async_resolve_discovery(discovery)): discovery
             for discovery in candidates
         }
         pending = set(tasks)
@@ -501,7 +509,7 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
                     pending, return_when=asyncio.FIRST_COMPLETED
                 )
                 for task in done:
-                    resolved[tasks[task]] = task.result()
+                    resolved[tasks[task].address] = task.result()
                 configured = self._async_current_ids()
                 if any(
                     discovery is not None and discovery.address not in configured
@@ -513,7 +521,12 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
                 if not task.done():
                     task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
-        return resolved
+        deferred = {
+            discovery.address: discovery
+            for task, discovery in tasks.items()
+            if task.cancelled()
+        }
+        return resolved, deferred
 
     async def _async_resolve_discovery(
         self, discovery: BluetoothServiceInfoBleak
