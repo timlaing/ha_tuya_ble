@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 import logging
 from typing import Any
@@ -52,6 +53,8 @@ from .const import (
 from .tuya_ble import (
     MANUFACTURER_DATA_ID,
     SERVICE_UUID,
+    SERVICE_UUID_V4,
+    SERVICE_UUIDS,
     decode_tuya_ble_advertisement,
 )
 
@@ -67,7 +70,11 @@ def _advertisement_hex(discovery_info: BluetoothServiceInfoBleak) -> str:
     service_data = advertisement.service_data or {}
     manufacturer_data = advertisement.manufacturer_data or {}
     return (
-        f"service_data[{SERVICE_UUID}]={service_data.get(SERVICE_UUID, b'').hex()} "
+        " ".join(
+            f"service_data[{uuid}]={service_data.get(uuid, b'').hex()}"
+            for uuid in SERVICE_UUIDS
+        )
+        + " "
         f"manufacturer_data[{MANUFACTURER_DATA_ID}]="
         f"{manufacturer_data.get(MANUFACTURER_DATA_ID, b'').hex()}"
     )
@@ -222,7 +229,10 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         )
         await self.async_set_unique_id(discovery_info.address)
         self._abort_if_unique_id_configured()
-        self.discovery_info = discovery_info
+        complete_info = await self._async_resolve_discovery(discovery_info)
+        if complete_info is None:
+            return self.async_abort(reason="unsupported_device")
+        self.discovery_info = complete_info
         return await self.async_step_user()
 
     async def async_step_user(
@@ -271,9 +281,17 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         if service_info.service_data is None or manufacturer_data is None:
             return False
         manufacturer_data_raw = manufacturer_data.get(MANUFACTURER_DATA_ID)
+        if manufacturer_data_raw is None:
+            return False
+        if SERVICE_UUID_V4 in service_info.service_data:
+            return (
+                len(service_info.service_data[SERVICE_UUID_V4]) >= 4
+                and len(manufacturer_data_raw) == 20
+                and decode_tuya_ble_advertisement(service_info.advertisement)
+                is not None
+            )
         return (
             SERVICE_UUID in service_info.service_data
-            and manufacturer_data_raw is not None
             and len(manufacturer_data_raw) > 6
             and (len(manufacturer_data_raw) - 6) % 16 == 0
         )
@@ -408,16 +426,14 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             if error is not None:
                 errors["base"] = error
 
-        self._refresh_discovered_devices()
+        await self._async_refresh_discovered_devices()
 
         if not self._discovered_devices:
             _LOGGER.debug("No unconfigured Tuya BLE devices discovered")
             return self.async_abort(reason="no_unconfigured_devices")
 
-        def_address: str
-        if user_input:
-            def_address = str(user_input.get(CONF_ADDRESS, ""))
-        else:
+        def_address = str(user_input.get(CONF_ADDRESS, "")) if user_input else ""
+        if def_address not in self._discovered_devices:
             def_address = next(iter(self._discovered_devices))
 
         return self.async_show_form(
@@ -436,17 +452,23 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             errors=errors,
         )
 
-    @callback
-    def _refresh_discovered_devices(self) -> None:
-        """Scan for newly discovered Tuya BLE devices."""
+    async def _async_refresh_discovered_devices(self) -> None:
+        """Collect discovered devices, actively completing partial v4 identities."""
+        self._discovered_devices.clear()
         current_addresses = self._async_current_ids()
-        for discovery in async_discovered_service_info(self.hass):
-            if (
-                discovery.address in current_addresses
-                or discovery.service_data is None
-                or SERVICE_UUID not in discovery.service_data
-            ):
+        candidates = [
+            discovery
+            for discovery in async_discovered_service_info(self.hass)
+            if discovery.address not in current_addresses
+            and discovery.service_data is not None
+            and any(uuid in discovery.service_data for uuid in SERVICE_UUIDS)
+        ]
+        resolved, deferred = await self._async_resolve_candidates(candidates)
+        for discovery in candidates:
+            complete_info = resolved.get(discovery.address)
+            if complete_info is None:
                 continue
+            discovery = complete_info
             self._discovered_devices[discovery.address] = discovery
             _LOGGER.debug(
                 "Discovered Tuya BLE device %s (name: %s, total: %d)",
@@ -454,6 +476,80 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
                 discovery.name,
                 len(self._discovered_devices),
             )
+        # Keep deferred v4 candidates selectable after ready entries. Setup always
+        # actively validates the selected address before requesting credentials.
+        for discovery in candidates:
+            if discovery.address in deferred:
+                self._discovered_devices[discovery.address] = deferred[
+                    discovery.address
+                ]
+        # Another flow can finish configuration while an active scan is awaiting.
+        for address in self._async_current_ids():
+            if address is not None:
+                self._discovered_devices.pop(address, None)
+
+    async def _async_resolve_candidates(
+        self, candidates: list[BluetoothServiceInfoBleak]
+    ) -> tuple[
+        dict[str, BluetoothServiceInfoBleak | None],
+        dict[str, BluetoothServiceInfoBleak],
+    ]:
+        """Resolve in parallel until eligible devices are ready for selection."""
+        if not candidates:
+            return {}, {}
+        tasks = {
+            asyncio.create_task(self._async_resolve_discovery(discovery)): discovery
+            for discovery in candidates
+        }
+        pending = set(tasks)
+        resolved: dict[str, BluetoothServiceInfoBleak | None] = {}
+        try:
+            while pending:
+                done, pending = await asyncio.wait(
+                    pending, return_when=asyncio.FIRST_COMPLETED
+                )
+                for task in done:
+                    resolved[tasks[task].address] = task.result()
+                configured = self._async_current_ids()
+                if any(
+                    discovery is not None and discovery.address not in configured
+                    for discovery in resolved.values()
+                ):
+                    break
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+        deferred = {
+            discovery.address: discovery
+            for task, discovery in tasks.items()
+            if task.cancelled()
+        }
+        return resolved, deferred
+
+    async def _async_resolve_discovery(
+        self, discovery: BluetoothServiceInfoBleak
+    ) -> BluetoothServiceInfoBleak | None:
+        """Reject unsupported records, scanning incomplete FD50 candidates first."""
+        if SERVICE_UUID_V4 not in (discovery.service_data or {}):
+            return discovery
+        if decode_tuya_ble_advertisement(discovery.advertisement) is not None:
+            return discovery
+        service = discovery.service_data[SERVICE_UUID_V4]
+        if not service or service[0] >> 4 != 4:
+            return None
+        manufacturer = (discovery.manufacturer_data or {}).get(
+            MANUFACTURER_DATA_ID, b""
+        )
+        if (
+            len(service) >= 4
+            and len(service) == 4 + service[3]
+            and len(manufacturer) == 20
+        ):
+            # A complete but undecodable record is not an incomplete scan response.
+            return None
+        return await self._async_scan_device(discovery.address)
 
     async def _async_qr_login_store_and_advance(
         self, login_info: dict[str, Any]
