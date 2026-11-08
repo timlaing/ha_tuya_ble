@@ -2,6 +2,7 @@
 
 # pylint: disable=protected-access
 
+import asyncio
 from typing import Any, cast
 from unittest.mock import patch
 
@@ -351,7 +352,9 @@ async def test_manual_discovery_purges_address_configured_during_scan(
             return_value=[partial],
         ),
         patch.object(
-            flow, "_async_current_ids", side_effect=[set(), {partial.address}]
+            flow,
+            "_async_current_ids",
+            side_effect=[set(), {partial.address}, {partial.address}],
         ),
         patch.object(flow, "_async_scan_device", return_value=complete) as scan,
     ):
@@ -359,3 +362,215 @@ async def test_manual_discovery_purges_address_configured_during_scan(
     scan.assert_awaited_once_with(partial.address)
     assert result["type"] == FlowResultType.ABORT
     assert result["reason"] == "no_unconfigured_devices"
+
+
+def partial_candidates(count: int) -> list[FakeDiscovery]:
+    """Build distinct partial FD50 records requiring an active scan."""
+    candidates = []
+    for index in range(count):
+        info = discovery()
+        info.address = f"AA:BB:CC:DD:EE:{index:02X}"
+        info.manufacturer_data = {}
+        info.advertisement.manufacturer_data = {}
+        candidates.append(info)
+    return candidates
+
+
+async def test_partial_candidates_are_resolved_concurrently(
+    hass: HomeAssistant,
+) -> None:
+    """Every scan can start before any timeout result is returned."""
+    flow = build_flow(hass)
+    candidates = partial_candidates(3)
+    started: set[str] = set()
+    all_started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def scan(address: str) -> None:
+        started.add(address)
+        if len(started) == len(candidates):
+            all_started.set()
+        await release.wait()
+
+    with (
+        patch(
+            "custom_components.tuya_ble.config_flow.async_discovered_service_info",
+            return_value=candidates,
+        ),
+        patch.object(flow, "_async_current_ids", return_value=set()),
+        patch.object(flow, "_async_scan_device", side_effect=scan),
+    ):
+        step = asyncio.create_task(flow.async_step_device())
+        try:
+            await asyncio.wait_for(all_started.wait(), 0.5)
+            release.set()
+            result = await asyncio.wait_for(step, 0.5)
+        finally:
+            step.cancel()
+            await asyncio.gather(step, return_exceptions=True)
+    assert started == {candidate.address for candidate in candidates}
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "no_unconfigured_devices"
+
+
+async def test_ready_device_does_not_wait_for_partial_scans(
+    hass: HomeAssistant,
+) -> None:
+    """Show ready devices promptly and cancel/await unrelated unfinished scans."""
+    flow = build_flow(hass)
+    candidates = partial_candidates(3)
+    ready = discovery()
+    ready.address = "11:22:33:44:55:66"
+    blocked = asyncio.Event()
+    started: set[str] = set()
+    cancelled: set[str] = set()
+
+    async def scan(address: str) -> None:
+        started.add(address)
+        try:
+            await blocked.wait()
+        finally:
+            cancelled.add(address)
+
+    with (
+        patch(
+            "custom_components.tuya_ble.config_flow.async_discovered_service_info",
+            return_value=[*candidates, ready],
+        ),
+        patch.object(flow, "_async_current_ids", return_value=set()),
+        patch.object(flow, "_async_scan_device", side_effect=scan),
+    ):
+        result = await asyncio.wait_for(flow.async_step_device(), 0.5)
+    assert started == cancelled == {candidate.address for candidate in candidates}
+    assert result["type"] == FlowResultType.FORM
+    schema = cast(Any, result["data_schema"])
+    assert schema({}) == {CONF_ADDRESS: ready.address}
+    assert set(schema.schema[CONF_ADDRESS].container) == {ready.address}
+
+
+async def test_cancelled_discovery_cleans_up_all_scans(hass: HomeAssistant) -> None:
+    """Cancelling the parent flow cannot leave registered scanner tasks behind."""
+    flow = build_flow(hass)
+    candidates = partial_candidates(2)
+    started: set[str] = set()
+    finished: set[str] = set()
+    all_started = asyncio.Event()
+    blocked = asyncio.Event()
+
+    async def scan(address: str) -> None:
+        started.add(address)
+        if len(started) == len(candidates):
+            all_started.set()
+        try:
+            await blocked.wait()
+        finally:
+            finished.add(address)
+
+    with (
+        patch(
+            "custom_components.tuya_ble.config_flow.async_discovered_service_info",
+            return_value=candidates,
+        ),
+        patch.object(flow, "_async_current_ids", return_value=set()),
+        patch.object(flow, "_async_scan_device", side_effect=scan),
+    ):
+        step = asyncio.create_task(flow.async_step_device())
+        try:
+            await asyncio.wait_for(all_started.wait(), 0.5)
+            step.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await step
+        finally:
+            step.cancel()
+            await asyncio.gather(step, return_exceptions=True)
+    assert finished == started == {candidate.address for candidate in candidates}
+
+
+@pytest.mark.parametrize("has_current_device", [True, False])
+async def test_selector_refresh_removes_absent_addresses(
+    hass: HomeAssistant, has_current_device: bool
+) -> None:
+    """Selector eligibility is rebuilt from the current discovery snapshot."""
+    flow = build_flow(hass)
+    absent = discovery()
+    flow._discovered_devices[absent.address] = cast(Any, absent)
+    current = discovery()
+    current.address = "11:22:33:44:55:66"
+    with (
+        patch(
+            "custom_components.tuya_ble.config_flow.async_discovered_service_info",
+            return_value=[current] if has_current_device else [],
+        ),
+        patch.object(flow, "_async_current_ids", return_value=set()),
+    ):
+        result = await flow.async_step_device()
+    if has_current_device:
+        assert result["type"] == FlowResultType.FORM
+        schema = cast(Any, result["data_schema"])
+        assert set(schema.schema[CONF_ADDRESS].container) == {current.address}
+        assert schema({}) == {CONF_ADDRESS: current.address}
+    else:
+        assert result["type"] == FlowResultType.ABORT
+        assert result["reason"] == "no_unconfigured_devices"
+
+
+async def test_selector_refresh_keeps_current_updated_record(
+    hass: HomeAssistant,
+) -> None:
+    """Still-discovered addresses remain eligible with their newest metadata."""
+    flow = build_flow(hass)
+    cached = discovery()
+    cached.name = "Old name"
+    flow._discovered_devices[cached.address] = cast(Any, cached)
+    current = discovery()
+    current.name = "Updated name"
+    with (
+        patch(
+            "custom_components.tuya_ble.config_flow.async_discovered_service_info",
+            return_value=[current],
+        ),
+        patch.object(flow, "_async_current_ids", return_value=set()),
+    ):
+        result = await flow.async_step_device()
+    assert result["type"] == FlowResultType.FORM
+    schema = cast(Any, result["data_schema"])
+    assert schema.schema[CONF_ADDRESS].container[current.address] == "Updated name"
+
+
+async def test_discovery_error_cleans_up_other_scans(hass: HomeAssistant) -> None:
+    """An unexpected scan failure cannot orphan the other candidate tasks."""
+    flow = build_flow(hass)
+    candidates = partial_candidates(2)
+    started: set[str] = set()
+    finished: set[str] = set()
+    all_started = asyncio.Event()
+    blocked = asyncio.Event()
+
+    async def scan(address: str) -> None:
+        started.add(address)
+        if len(started) == len(candidates):
+            all_started.set()
+        try:
+            await all_started.wait()
+            if address == candidates[0].address:
+                raise RuntimeError("Test scan failure")
+            await blocked.wait()
+        finally:
+            finished.add(address)
+
+    with (
+        patch(
+            "custom_components.tuya_ble.config_flow.async_discovered_service_info",
+            return_value=candidates,
+        ),
+        patch.object(flow, "_async_current_ids", return_value=set()),
+        patch.object(flow, "_async_scan_device", side_effect=scan),
+    ):
+        step = asyncio.create_task(flow.async_step_device())
+        try:
+            with pytest.raises(RuntimeError, match="Test scan failure"):
+                await step
+        finally:
+            step.cancel()
+            await asyncio.gather(step, return_exceptions=True)
+    assert finished == started == {candidate.address for candidate in candidates}

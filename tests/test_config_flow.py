@@ -461,7 +461,7 @@ async def test_async_step_device_no_credentials(hass: HomeAssistant) -> None:
     with (
         patch(
             "custom_components.tuya_ble.config_flow.async_discovered_service_info",
-            return_value=[],
+            return_value=[d],
         ),
         patch.object(flow, "_async_current_ids", return_value=set()),
         patch.object(flow, "_async_scan_device", return_value=d),
@@ -502,7 +502,7 @@ async def test_async_step_device_form(hass: HomeAssistant) -> None:
     with (
         patch(
             "custom_components.tuya_ble.config_flow.async_discovered_service_info",
-            return_value=[],
+            return_value=[d],
         ),
         patch.object(flow, "_async_current_ids", return_value=set()),
     ):

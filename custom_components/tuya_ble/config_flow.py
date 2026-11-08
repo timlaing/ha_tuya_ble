@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 import logging
 from typing import Any
@@ -453,17 +454,19 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
 
     async def _async_refresh_discovered_devices(self) -> None:
         """Collect discovered devices, actively completing partial v4 identities."""
+        self._discovered_devices.clear()
         current_addresses = self._async_current_ids()
-        for discovery in async_discovered_service_info(self.hass):
-            if (
-                discovery.address in current_addresses
-                or discovery.service_data is None
-                or not any(uuid in discovery.service_data for uuid in SERVICE_UUIDS)
-            ):
-                continue
-            complete_info = await self._async_resolve_discovery(discovery)
+        candidates = [
+            discovery
+            for discovery in async_discovered_service_info(self.hass)
+            if discovery.address not in current_addresses
+            and discovery.service_data is not None
+            and any(uuid in discovery.service_data for uuid in SERVICE_UUIDS)
+        ]
+        resolved = await self._async_resolve_candidates(candidates)
+        for discovery in candidates:
+            complete_info = resolved.get(discovery.address)
             if complete_info is None:
-                self._discovered_devices.pop(discovery.address, None)
                 continue
             discovery = complete_info
             self._discovered_devices[discovery.address] = discovery
@@ -477,6 +480,40 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         for address in self._async_current_ids():
             if address is not None:
                 self._discovered_devices.pop(address, None)
+
+    async def _async_resolve_candidates(
+        self, candidates: list[BluetoothServiceInfoBleak]
+    ) -> dict[str, BluetoothServiceInfoBleak | None]:
+        """Resolve in parallel until eligible devices are ready for selection."""
+        if not candidates:
+            return {}
+        tasks = {
+            asyncio.create_task(
+                self._async_resolve_discovery(discovery)
+            ): discovery.address
+            for discovery in candidates
+        }
+        pending = set(tasks)
+        resolved: dict[str, BluetoothServiceInfoBleak | None] = {}
+        try:
+            while pending:
+                done, pending = await asyncio.wait(
+                    pending, return_when=asyncio.FIRST_COMPLETED
+                )
+                for task in done:
+                    resolved[tasks[task]] = task.result()
+                configured = self._async_current_ids()
+                if any(
+                    discovery is not None and discovery.address not in configured
+                    for discovery in resolved.values()
+                ):
+                    break
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+        return resolved
 
     async def _async_resolve_discovery(
         self, discovery: BluetoothServiceInfoBleak

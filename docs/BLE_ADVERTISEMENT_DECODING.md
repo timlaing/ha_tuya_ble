@@ -32,6 +32,13 @@ Fresh FD50 connections also require a decoded identity so their initial handshak
 never uses the legacy default protocol version. An established session remains
 usable when a later advertisement is only a beacon.
 
+Manual discovery rebuilds eligibility from the current scanner snapshot, so
+vanished and configured addresses are not retained. Candidate identities resolve
+concurrently rather than waiting for each incomplete record in turn. Once a
+validated, unconfigured device is ready, the selector can appear; unfinished
+scans are cancelled and awaited. Deferred candidates can be checked on a later
+refresh. Cancelling the parent flow also cleans up its scanner tasks.
+
 Compressed 20-character identities (manufacturer byte 3, bit 0) are also rejected
 until their pairing representation is supported. Truncated records, invalid
 lengths/types and undecodable or non-printable plaintext fail closed. There is no alternate-key
