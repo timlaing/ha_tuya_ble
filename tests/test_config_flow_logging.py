@@ -297,7 +297,7 @@ async def test_discovered_device_added_is_logged(
         patch.object(flow, "_async_current_ids", return_value=set()),
         caplog.at_level(logging.DEBUG),
     ):
-        flow._refresh_discovered_devices()
+        await flow._async_refresh_discovered_devices()
     assert "Discovered Tuya BLE device AA:BB:CC:DD:EE:FF" in caplog.text
     assert "name: Device1, total: 1" in caplog.text
 

@@ -433,16 +433,14 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             if error is not None:
                 errors["base"] = error
 
-        self._refresh_discovered_devices()
+        await self._async_refresh_discovered_devices()
 
         if not self._discovered_devices:
             _LOGGER.debug("No unconfigured Tuya BLE devices discovered")
             return self.async_abort(reason="no_unconfigured_devices")
 
-        def_address: str
-        if user_input:
-            def_address = str(user_input.get(CONF_ADDRESS, ""))
-        else:
+        def_address = str(user_input.get(CONF_ADDRESS, "")) if user_input else ""
+        if def_address not in self._discovered_devices:
             def_address = next(iter(self._discovered_devices))
 
         return self.async_show_form(
@@ -461,9 +459,8 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             errors=errors,
         )
 
-    @callback
-    def _refresh_discovered_devices(self) -> None:
-        """Scan for newly discovered Tuya BLE devices."""
+    async def _async_refresh_discovered_devices(self) -> None:
+        """Collect discovered devices, actively completing partial v4 identities."""
         current_addresses = self._async_current_ids()
         for discovery in async_discovered_service_info(self.hass):
             if (
@@ -472,11 +469,11 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
                 or not any(uuid in discovery.service_data for uuid in SERVICE_UUIDS)
             ):
                 continue
-            if (
-                SERVICE_UUID_V4 in discovery.service_data
-                and decode_tuya_ble_advertisement(discovery.advertisement) is None
-            ):
+            complete_info = await self._async_resolve_discovery(discovery)
+            if complete_info is None:
+                self._discovered_devices.pop(discovery.address, None)
                 continue
+            discovery = complete_info
             self._discovered_devices[discovery.address] = discovery
             _LOGGER.debug(
                 "Discovered Tuya BLE device %s (name: %s, total: %d)",
@@ -484,6 +481,29 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
                 discovery.name,
                 len(self._discovered_devices),
             )
+
+    async def _async_resolve_discovery(
+        self, discovery: BluetoothServiceInfoBleak
+    ) -> BluetoothServiceInfoBleak | None:
+        """Reject unsupported records, scanning incomplete FD50 candidates first."""
+        if SERVICE_UUID_V4 not in discovery.service_data:
+            return discovery
+        if decode_tuya_ble_advertisement(discovery.advertisement) is not None:
+            return discovery
+        service = discovery.service_data[SERVICE_UUID_V4]
+        if not service or service[0] >> 4 != 4:
+            return None
+        manufacturer = (discovery.manufacturer_data or {}).get(
+            MANUFACTURER_DATA_ID, b""
+        )
+        if (
+            len(service) >= 4
+            and len(service) == 4 + service[3]
+            and len(manufacturer) == 20
+        ):
+            # A complete but undecodable record is not an incomplete scan response.
+            return None
+        return await self._async_scan_device(discovery.address)
 
     async def _async_qr_login_store_and_advance(
         self, login_info: dict[str, Any]
