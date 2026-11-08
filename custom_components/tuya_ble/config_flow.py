@@ -228,18 +228,10 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         )
         await self.async_set_unique_id(discovery_info.address)
         self._abort_if_unique_id_configured()
-        if (
-            SERVICE_UUID_V4 in (discovery_info.service_data or {})
-            and decode_tuya_ble_advertisement(discovery_info.advertisement) is None
-        ):
-            service = discovery_info.service_data[SERVICE_UUID_V4]
-            if not service or service[0] >> 4 != 4:
-                return self.async_abort(reason="unsupported_device")
-            complete_info = await self._async_scan_device(discovery_info.address)
-            if complete_info is None:
-                return self.async_abort(reason="unsupported_device")
-            discovery_info = complete_info
-        self.discovery_info = discovery_info
+        complete_info = await self._async_resolve_discovery(discovery_info)
+        if complete_info is None:
+            return self.async_abort(reason="unsupported_device")
+        self.discovery_info = complete_info
         return await self.async_step_user()
 
     async def async_step_user(
@@ -481,12 +473,16 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
                 discovery.name,
                 len(self._discovered_devices),
             )
+        # Another flow can finish configuration while an active scan is awaiting.
+        for address in self._async_current_ids():
+            if address is not None:
+                self._discovered_devices.pop(address, None)
 
     async def _async_resolve_discovery(
         self, discovery: BluetoothServiceInfoBleak
     ) -> BluetoothServiceInfoBleak | None:
         """Reject unsupported records, scanning incomplete FD50 candidates first."""
-        if SERVICE_UUID_V4 not in discovery.service_data:
+        if SERVICE_UUID_V4 not in (discovery.service_data or {}):
             return discovery
         if decode_tuya_ble_advertisement(discovery.advertisement) is not None:
             return discovery

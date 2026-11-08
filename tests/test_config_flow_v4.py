@@ -145,6 +145,41 @@ async def test_fd50_empty_bluetooth_discovery(hass: HomeAssistant) -> None:
     assert result["reason"] == "unsupported_device"
 
 
+@pytest.mark.parametrize("invalid", ["ciphertext", "beacon", "compressed"])
+async def test_fd50_complete_invalid_bluetooth_discovery(
+    hass: HomeAssistant, invalid: str
+) -> None:
+    """Complete undecodable FD50 records do not wait through an active scan."""
+    flow = build_flow(hass)
+    info = discovery()
+    if invalid == "ciphertext":
+        adv = v4_advertisement(plaintext=bytes(16))
+    elif invalid == "beacon":
+        adv = v4_advertisement(b"\x48\x00\x00\x08abcdefgh")
+    else:
+        adv = v4_advertisement(flags=1)
+    info.service_data = adv.service_data
+    info.manufacturer_data = adv.manufacturer_data
+    info.advertisement = cast(Any, adv)
+    with patch.object(flow, "_async_scan_device") as scan:
+        result = await flow.async_step_bluetooth(cast(Any, info))
+    scan.assert_not_awaited()
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "unsupported_device"
+    assert flow.discovery_info is None
+
+
+async def test_classic_bluetooth_discovery_without_cached_service(
+    hass: HomeAssistant,
+) -> None:
+    """The shared resolver does not impose FD50 validation on legacy discovery."""
+    flow = build_flow(hass)
+    info = FakeDiscovery(with_service=False)
+    result = await flow.async_step_bluetooth(cast(Any, info))
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "user"
+
+
 async def test_fd50_unsupported_manual_discovery(hass: HomeAssistant) -> None:
     """Unsupported FD50 formats do not appear in the manual device selector."""
     flow = build_flow(hass)
@@ -265,3 +300,62 @@ async def test_fd50_retry_removes_stale_selector_entry(
     else:
         assert result["type"] == FlowResultType.ABORT
         assert result["reason"] == "no_unconfigured_devices"
+
+
+@pytest.mark.parametrize("record_in_history", [True, False])
+@pytest.mark.parametrize("has_remaining_device", [True, False])
+async def test_manual_discovery_purges_configured_cached_address(
+    hass: HomeAssistant, record_in_history: bool, has_remaining_device: bool
+) -> None:
+    """Configured cached devices disappear even when scanner history omits them."""
+    flow = build_flow(hass)
+    configured = discovery()
+    flow._discovered_devices[configured.address] = cast(Any, configured)
+    remaining = discovery()
+    remaining.address = "11:22:33:44:55:66"
+    records = [configured] if record_in_history else []
+    if has_remaining_device:
+        records.append(remaining)
+    with (
+        patch(
+            "custom_components.tuya_ble.config_flow.async_discovered_service_info",
+            return_value=records,
+        ),
+        patch.object(
+            flow, "_async_current_ids", return_value={configured.address, None}
+        ),
+    ):
+        result = await flow.async_step_device()
+    if has_remaining_device:
+        assert result["type"] == FlowResultType.FORM
+        schema = cast(Any, result["data_schema"])
+        assert configured.address not in schema.schema[CONF_ADDRESS].container
+        assert schema({}) == {CONF_ADDRESS: remaining.address}
+    else:
+        assert result["type"] == FlowResultType.ABORT
+        assert result["reason"] == "no_unconfigured_devices"
+
+
+async def test_manual_discovery_purges_address_configured_during_scan(
+    hass: HomeAssistant,
+) -> None:
+    """Recheck configured IDs after awaited scans before constructing the form."""
+    flow = build_flow(hass)
+    partial = discovery()
+    partial.manufacturer_data = {}
+    partial.advertisement.manufacturer_data = {}
+    complete = discovery()
+    with (
+        patch(
+            "custom_components.tuya_ble.config_flow.async_discovered_service_info",
+            return_value=[partial],
+        ),
+        patch.object(
+            flow, "_async_current_ids", side_effect=[set(), {partial.address}]
+        ),
+        patch.object(flow, "_async_scan_device", return_value=complete) as scan,
+    ):
+        result = await flow.async_step_device()
+    scan.assert_awaited_once_with(partial.address)
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "no_unconfigured_devices"
