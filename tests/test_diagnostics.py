@@ -15,6 +15,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.tuya_ble.const import (
     CONF_CATEGORY,
     CONF_CLOUD_INFO,
+    CONF_CLOUD_UUID,
     CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
     CONF_ENDPOINT,
@@ -184,6 +185,27 @@ async def test_config_entry_diagnostics_shape(hass: HomeAssistant) -> None:
     assert payload["identity"]["uuid"] == "1234567890abcdef"
     assert payload["descriptor"]["resolved"] is True
     assert payload["home_assistant"]["devices"] == []
+
+
+async def test_mismatched_cloud_uuid_refresh_is_private(hass: HomeAssistant) -> None:
+    """Refresh using cloud identity, export BLE identity but redact cloud UUID."""
+    data = _entry_data()
+    data[CONF_CLOUD_UUID] = "cloud-identity"
+    entry = _add_entry(
+        hass,
+        data=data,
+        options={CONF_TOKEN_INFO: {"access_token": "synthetic"}},
+    )
+    with patch(
+        "custom_components.tuya_ble.diagnostics.HASSTuyaBLEDeviceManager"
+    ) as factory:
+        factory.return_value.get_cloud_device_by_uuid = AsyncMock(return_value=None)
+        payload = await async_get_config_entry_diagnostics(hass, entry)
+    factory.return_value.get_cloud_device_by_uuid.assert_awaited_once_with(
+        "cloud-identity", force_update=True
+    )
+    assert payload["identity"]["uuid"] == data[CONF_UUID]
+    assert payload["identity"][CONF_CLOUD_UUID] != "cloud-identity"
 
 
 async def test_diagnostics_export_full_unfiltered_strategy(hass: HomeAssistant) -> None:

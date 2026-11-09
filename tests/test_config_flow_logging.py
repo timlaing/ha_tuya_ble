@@ -212,10 +212,10 @@ async def test_setup_address_undecodable_identity_is_logged(
     assert "manufacturer_data" in caplog.text
 
 
-async def test_setup_address_unregistered_device_is_warned(
+async def test_setup_address_unregistered_device_uses_safe_error(
     hass: HomeAssistant, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A device missing from the cloud account is a warning, with the force flag."""
+    """An unmatched account gets a safe error after the refresh and fallback."""
     flow = build_flow(hass)
     flow._manager = FakeManager(credentials=None)  # type: ignore[assignment]
     discovery = captured_irrigation_discovery()
@@ -225,12 +225,8 @@ async def test_setup_address_unregistered_device_is_warned(
     ):
         _result, error = await flow._async_setup_address(discovery.address)
     assert error == "device_not_registered"
-    assert any(
-        "DC:23:4D:CD:E0:34: device_not_registered" in message
-        and "0237f144b99142e6" in message
-        and "force_update: False" in message
-        for message in _warnings(caplog)
-    )
+    assert "local_key" not in caplog.text
+    assert "access_token" not in caplog.text
 
 
 async def test_setup_address_entry_created_is_logged(

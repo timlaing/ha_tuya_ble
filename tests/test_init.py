@@ -165,6 +165,21 @@ async def test_async_setup_entry_success(hass: HomeAssistant) -> None:
     await hass.async_stop()
 
 
+async def test_setup_releases_probe_claim(hass: HomeAssistant) -> None:
+    """Installed entries replace the flow's temporary cloud-ID reservation."""
+    entry = MockConfigEntry(domain=DOMAIN, title="Device", data=_make_entry_data())
+    entry.add_to_hass(hass)
+    claims = {"device123": ("AA:BB:CC:DD:EE:FF", 999999999.0)}
+    hass.data[f"{DOMAIN}_probe_state"] = {"claims": claims}
+    deps = _patch_deps(hass, product_info=MagicMock())
+    with ExitStack() as stack:
+        for patcher in deps["patches"]:
+            stack.enter_context(patcher)
+        assert await async_setup_entry(hass, entry)
+    assert not claims
+    _close_background_tasks(deps)
+
+
 async def test_async_setup_entry_loads_registry_before_product_lookup(
     hass: HomeAssistant,
 ) -> None:

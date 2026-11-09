@@ -12,10 +12,12 @@ from homeassistant.util import dt as dt_util
 from tuya_sharing import CustomerDevice, Manager, SharingTokenListener
 
 from .const import (
+    CONF_DEVICE_ID,
     CONF_ENDPOINT,
     CONF_TERMINAL_ID,
     CONF_TOKEN_INFO,
     CONF_USER_CODE,
+    DOMAIN,
     TUYA_CLIENT_ID,
 )
 from .tuya_ble import TuyaBLEDeviceCredentials
@@ -100,6 +102,39 @@ class HASSTuyaBLEDeviceManager:
 
         _LOGGER.debug("Retrieved credentials for Tuya UUID %s", uuid)
         return _build_credentials(device)
+
+    async def get_probe_candidates(
+        self, advertised_uuid: str, product_id: str | None
+    ) -> list[TuyaBLEDeviceCredentials]:
+        """List complete, unconfigured cloud records in deterministic order."""
+        if self._manager is None:
+            await self.initialize()
+        if self._manager is None:
+            raise ConfigEntryNotReady("Failed to initialize Tuya cloud manager")
+        configured = {
+            entry.data.get(CONF_DEVICE_ID)
+            for entry in self._hass.config_entries.async_entries(DOMAIN)
+        }
+        candidates = [
+            device
+            for device in self._manager.device_map.values()
+            if getattr(device, "uuid", None) != advertised_uuid
+            and getattr(device, "id", None) not in configured
+            and all(
+                isinstance(getattr(device, field, None), str) and getattr(device, field)
+                for field in ("uuid", "local_key", "id", "category", "product_id")
+            )
+            and len(device.local_key) >= 6
+            and len(device.uuid) <= 16
+            and len(device.id) <= 20
+        ]
+        return [
+            _build_credentials(device)
+            for device in sorted(
+                candidates,
+                key=lambda device: (device.product_id != product_id, device.id),
+            )
+        ]
 
     @property
     def data(self) -> dict[str, Any]:

@@ -5,7 +5,8 @@
       "unsupported_device": "The Bluetooth advertisement does not contain a supported device identity."
     },
     "error": {
-      "device_not_registered": "Device is not registered in Tuya cloud",
+      "device_not_registered": "No device in this Tuya account could be verified against the Bluetooth device.",
+      "bluetooth_probe_failed": "Bluetooth communication failed before the cloud credentials could be verified. Move the device closer and try again.",
       "bluetooth_scan_failed": "The complete Bluetooth advertisement was not received. Move the device closer and try again.",
       "identity_not_decoded": "The identity in the Bluetooth advertisement could not be decoded.",
       "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",

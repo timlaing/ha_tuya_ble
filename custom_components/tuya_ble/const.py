@@ -44,6 +44,8 @@ DEVICE_DEF_MANUFACTURER: Final = "tuya"
 SET_DISCONNECTED_DELAY = 10 * 60
 
 CONF_UUID: Final = "uuid"
+CONF_CLOUD_UUID: Final = "cloud_uuid"
+CONF_ADVERTISED_UUID: Final = "advertised_uuid"
 CONF_LOCAL_KEY: Final = "local_key"
 CONF_DEVICE_ID: Final = "device_id"
 CONF_CATEGORY: Final = "category"

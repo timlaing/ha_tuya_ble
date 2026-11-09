@@ -96,6 +96,12 @@ class FakeManager:
         self.calls.append((uuid, force_update))
         return self.credentials
 
+    async def get_probe_candidates(
+        self, advertised_uuid: str, product_id: str | None
+    ) -> list[TuyaBLEDeviceCredentials]:
+        """An unmatched test account has no fallback candidates by default."""
+        return []
+
 
 class FakeDiscovery:
     """Fake Bluetooth service info standing in for a real device."""

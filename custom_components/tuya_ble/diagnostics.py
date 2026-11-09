@@ -29,8 +29,10 @@ from .cloud import (
     filter_cloud_info,
 )
 from .const import (
+    CONF_ADVERTISED_UUID,
     CONF_CATEGORY,
     CONF_CLOUD_INFO,
+    CONF_CLOUD_UUID,
     CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
     CONF_ENDPOINT,
@@ -64,6 +66,7 @@ _LOGGER = logging.getLogger(__name__)
 # `cloud_info`; they stay redacted across the whole payload even though the
 # capture is allowlisted now.
 _TO_REDACT = frozenset({
+    CONF_CLOUD_UUID,
     CONF_ENDPOINT,
     CONF_LOCAL_KEY,
     CONF_TERMINAL_ID,
@@ -244,9 +247,9 @@ async def _async_diagnostics(
 
     category = entry.data[CONF_CATEGORY]
     product_id = entry.data[CONF_PRODUCT_ID]
-    uuid = entry.data[CONF_UUID]
+    cloud_uuid = entry.data.get(CONF_CLOUD_UUID, entry.data[CONF_UUID])
 
-    cloud_device = await _async_refresh_cloud_device(hass, entry, uuid)
+    cloud_device = await _async_refresh_cloud_device(hass, entry, cloud_uuid)
     schema, schema_source = _select_schema(cloud_device, entry)
     # Fresh captures are already allowlisted; stored snapshots may predate it,
     # so they are filtered down on export as well.
@@ -295,7 +298,9 @@ async def _async_diagnostics(
         "descriptor": _descriptor_section(category, product_id),
         "identity": {
             "address": entry.data.get(CONF_ADDRESS),
-            "uuid": uuid,
+            "uuid": entry.data[CONF_UUID],
+            CONF_ADVERTISED_UUID: entry.data.get(CONF_ADVERTISED_UUID),
+            CONF_CLOUD_UUID: entry.data.get(CONF_CLOUD_UUID),
             "device_id": entry.data.get(CONF_DEVICE_ID),
             "category": category,
             "product_id": product_id,
