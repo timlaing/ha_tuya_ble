@@ -398,7 +398,7 @@ async def test_refresh_discovered_devices(hass: HomeAssistant) -> None:
         ),
         patch.object(flow, "_async_current_ids", return_value=set()),
     ):
-        flow._refresh_discovered_devices()
+        await flow._async_refresh_discovered_devices()
     assert (
         flow._discovered_devices[d1.address]  # type: ignore[comparison-overlap]
         is d1
@@ -419,7 +419,7 @@ async def test_refresh_discovered_devices_already_configured(
         ),
         patch.object(flow, "_async_current_ids", return_value={d1.address}),
     ):
-        flow._refresh_discovered_devices()
+        await flow._async_refresh_discovered_devices()
     assert d1.address not in flow._discovered_devices
 
 
@@ -461,7 +461,7 @@ async def test_async_step_device_no_credentials(hass: HomeAssistant) -> None:
     with (
         patch(
             "custom_components.tuya_ble.config_flow.async_discovered_service_info",
-            return_value=[],
+            return_value=[d],
         ),
         patch.object(flow, "_async_current_ids", return_value=set()),
         patch.object(flow, "_async_scan_device", return_value=d),
@@ -502,7 +502,7 @@ async def test_async_step_device_form(hass: HomeAssistant) -> None:
     with (
         patch(
             "custom_components.tuya_ble.config_flow.async_discovered_service_info",
-            return_value=[],
+            return_value=[d],
         ),
         patch.object(flow, "_async_current_ids", return_value=set()),
     ):
