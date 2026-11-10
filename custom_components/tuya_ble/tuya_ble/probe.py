@@ -99,6 +99,12 @@ class _ProbeDevice(TuyaBLEDevice):
         """Only accept status datapoints after pair authentication succeeds."""
         return self._is_paired
 
+    def _failed_pair_outcome(self) -> ProbeOutcome:
+        """Classify only an explicit PAIR refusal as conclusive."""
+        if self.pair_rejected:
+            return ProbeOutcome.REJECTED
+        return ProbeOutcome.INCONCLUSIVE
+
     async def _try_establish_connection(self) -> BleakClientWithServiceCache | None:
         """Connect without the regular retry logger exposing exception details."""
         async with global_connect_lock:
@@ -163,19 +169,11 @@ class _ProbeDevice(TuyaBLEDevice):
             ):
                 return ProbeOutcome.INCONCLUSIVE
         except TuyaBLEDeviceError:
-            return (
-                ProbeOutcome.REJECTED
-                if self.pair_rejected
-                else ProbeOutcome.INCONCLUSIVE
-            )
+            return self._failed_pair_outcome()
         finally:
             self._awaiting_pair = False
         if not self._is_paired:
-            return (
-                ProbeOutcome.REJECTED
-                if self.pair_rejected
-                else ProbeOutcome.INCONCLUSIVE
-            )
+            return self._failed_pair_outcome()
         enable_status()
         if (
             not await self._send_packet_while_connected(
@@ -216,7 +214,7 @@ async def async_probe_authenticated_status(
     try:
         # This is a detached copy. Never mutate the SDK's cached cloud record.
         device.prepare(credentials, pairing_uuid)
-    except TuyaBLEDeviceError, ValueError, UnicodeError:
+    except TuyaBLEDeviceError, ValueError:
         return ProbeOutcome.INCONCLUSIVE
 
     loop = asyncio.get_running_loop()

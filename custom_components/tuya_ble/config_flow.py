@@ -520,28 +520,40 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             for credentials in candidates:
                 if credentials.device_id in claims:
                     continue
-                expected = get_mapped_dp_ids(
-                    credentials.category, credentials.product_id
+                outcome, pairing_uuid = await self._async_probe_cloud_candidate(
+                    discovery_info, advertisement, credentials
                 )
-                if not expected:
-                    continue
-                for uuid in (advertisement.uuid, credentials.uuid):
-                    outcome = await async_probe_authenticated_status(
-                        discovery_info.device,
-                        discovery_info.advertisement,
-                        credentials,
-                        uuid,
-                        expected,
+                if outcome == ProbeOutcome.MATCHED and pairing_uuid is not None:
+                    claims[credentials.device_id] = (
+                        discovery_info.address,
+                        time.monotonic() + PROBE_CLAIM_TTL,
                     )
-                    if outcome == ProbeOutcome.MATCHED:
-                        claims[credentials.device_id] = (
-                            discovery_info.address,
-                            time.monotonic() + PROBE_CLAIM_TTL,
-                        )
-                        return credentials, uuid, ""
-                    if outcome == ProbeOutcome.INCONCLUSIVE:
-                        return None, None, "bluetooth_probe_failed"
+                    return credentials, pairing_uuid, ""
+                if outcome == ProbeOutcome.INCONCLUSIVE:
+                    return None, None, "bluetooth_probe_failed"
             return None, None, "device_not_registered"
+
+    @staticmethod
+    async def _async_probe_cloud_candidate(
+        discovery_info: BluetoothServiceInfoBleak,
+        advertisement: TuyaBLEAdvertisementInfo,
+        credentials: TuyaBLEDeviceCredentials,
+    ) -> tuple[ProbeOutcome | None, str | None]:
+        """Try the cloud UUID only after a conclusive advertised-UUID rejection."""
+        expected = get_mapped_dp_ids(credentials.category, credentials.product_id)
+        if not expected:
+            return None, None
+        for uuid in (advertisement.uuid, credentials.uuid):
+            outcome = await async_probe_authenticated_status(
+                discovery_info.device,
+                discovery_info.advertisement,
+                credentials,
+                uuid,
+                expected,
+            )
+            if outcome != ProbeOutcome.REJECTED:
+                return outcome, uuid
+        return ProbeOutcome.REJECTED, None
 
     async def async_step_discovered_device(
         self, user_input: dict[str, Any] | None = None

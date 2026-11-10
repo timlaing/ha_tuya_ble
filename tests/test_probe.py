@@ -79,6 +79,7 @@ async def test_probe_without_expected_dp_or_binding(bound: bool) -> None:
         ("info", ProbeOutcome.INCONCLUSIVE),
         ("unbound_info", ProbeOutcome.INCONCLUSIVE),
         ("pair", ProbeOutcome.REJECTED),
+        ("pair_uncorrelated", ProbeOutcome.INCONCLUSIVE),
         ("pair_timeout", ProbeOutcome.INCONCLUSIVE),
         ("status", ProbeOutcome.INCONCLUSIVE),
         ("unexpected_dp", ProbeOutcome.INCONCLUSIVE),
@@ -115,7 +116,9 @@ async def test_probe_stages(
             pairing.append(data)
             if failure == "pair_timeout":
                 return False
-            device._handle_pair_response(b"\x01" if failure == "pair" else b"\x02")
+            device._handle_pair_response(
+                b"\x01" if failure in ("pair", "pair_uncorrelated") else b"\x02"
+            )
             if failure == "pair":
                 device.pair_rejected = True
         elif code == TuyaBLECode.FUN_SENDER_DEVICE_STATUS:

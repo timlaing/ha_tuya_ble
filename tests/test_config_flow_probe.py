@@ -51,7 +51,11 @@ def _flow(
     return flow, discovery
 
 
-async def _setup(flow: TuyaBLEConfigFlow, discovery: FakeDiscovery) -> tuple[Any, Any]:
+async def _setup(
+    flow: TuyaBLEConfigFlow,
+    discovery: FakeDiscovery,
+    mapped_dp_ids: frozenset[int] = frozenset({1, 2, 3}),
+) -> tuple[Any, Any]:
     with (
         patch.object(flow, "_async_scan_device", return_value=discovery),
         patch(
@@ -60,7 +64,7 @@ async def _setup(flow: TuyaBLEConfigFlow, discovery: FakeDiscovery) -> tuple[Any
         ),
         patch(
             "custom_components.tuya_ble.config_flow.get_mapped_dp_ids",
-            return_value=frozenset({1, 2, 3}),
+            return_value=mapped_dp_ids,
         ),
         patch.object(flow, "_async_refresh_discovered_devices", new_callable=AsyncMock),
     ):
@@ -132,7 +136,21 @@ async def test_unbound_skips_probe(hass: HomeAssistant) -> None:
         new_callable=AsyncMock,
     ) as probe:
         result, error = await _setup(flow, discovery)
-    assert result is None and error == "device_not_registered"
+    assert result is None
+    assert error == "device_not_registered"
+    probe.assert_not_awaited()
+
+
+async def test_unmapped_candidate_skips_ble_authentication(hass: HomeAssistant) -> None:
+    """Without a known status DP, an authentication response is insufficient."""
+    flow, discovery = _flow(hass, [make_credentials(uuid="cloud-uuid")])
+    with patch(
+        "custom_components.tuya_ble.config_flow.async_probe_authenticated_status",
+        new_callable=AsyncMock,
+    ) as probe:
+        result, error = await _setup(flow, discovery, frozenset())
+    assert result is None
+    assert error == "device_not_registered"
     probe.assert_not_awaited()
 
 
@@ -150,7 +168,8 @@ async def test_candidate_cap_and_exact_match(hass: HomeAssistant) -> None:
         new_callable=AsyncMock,
     ) as probe:
         result, error = await _setup(flow, discovery)
-    assert result is None and error == "device_not_registered"
+    assert result is None
+    assert error == "device_not_registered"
     probe.assert_not_awaited()
 
     flow._manager = cast(Any, FakeManager(make_credentials()))
@@ -204,17 +223,20 @@ async def test_probe_reservation_and_expiration(hass: HomeAssistant) -> None:
         return_value=ProbeOutcome.MATCHED,
     ) as probe:
         result, error = await _setup(first, discovery)
-        assert error is None and result["type"] == FlowResultType.CREATE_ENTRY
+        assert error is None
+        assert result["type"] == FlowResultType.CREATE_ENTRY
         second, _ = _flow(hass, [candidate])
         result, error = await _setup(second, discovery)
-        assert result is None and error == "device_not_registered"
+        assert result is None
+        assert error == "device_not_registered"
         assert probe.await_count == 1
         _probe_state(hass)[1][candidate.device_id] = (
             discovery.address,
             time.monotonic() - 1,
         )
         result, error = await _setup(second, discovery)
-        assert error is None and result["type"] == FlowResultType.CREATE_ENTRY
+        assert error is None
+        assert result["type"] == FlowResultType.CREATE_ENTRY
     assert probe.await_count == 2
 
 
@@ -351,7 +373,8 @@ async def test_progress_exception_has_no_secret_in_error(
         caplog.at_level(logging.DEBUG),
     ):
         progress, _ = await flow._async_setup_address(discovery.address)
-        assert progress is not None and progress["type"] == FlowResultType.SHOW_PROGRESS
+        assert progress is not None
+        assert progress["type"] == FlowResultType.SHOW_PROGRESS
         assert flow._probe_task is not None
         with pytest.raises(RuntimeError):
             await flow._probe_task
