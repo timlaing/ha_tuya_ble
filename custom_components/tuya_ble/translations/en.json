@@ -13,6 +13,9 @@
       "login_error": "Login error ({code}): {msg}"
     },
     "flow_title": "{name}",
+    "progress": {
+      "verify_device": "Checking cloud credentials against the Bluetooth device..."
+    },
     "step": {
       "user": {
         "data": {

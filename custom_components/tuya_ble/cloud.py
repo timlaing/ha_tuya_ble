@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 import logging
 from typing import Any
 
@@ -23,6 +23,29 @@ from .const import (
 from .tuya_ble import TuyaBLEDeviceCredentials
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _is_probe_candidate(
+    device: CustomerDevice, advertised_uuid: str, configured: set[str | None]
+) -> bool:
+    """Allow only complete, unclaimed BLE cloud records with frame-safe IDs.
+
+    A product/name resemblance is never proof: filtering only bounds the set
+    that the encrypted read-only authentication probe may attempt.
+    """
+    if getattr(device, "uuid", None) == advertised_uuid:
+        return False
+    if getattr(device, "id", None) in configured:
+        return False
+    fields = ("uuid", "local_key", "id", "category", "product_id")
+    if not all(
+        isinstance(getattr(device, field, None), str) and getattr(device, field)
+        for field in fields
+    ):
+        return False
+    return (
+        len(device.local_key) >= 6 and len(device.uuid) <= 16 and len(device.id) <= 20
+    )
 
 
 class TokenRefreshListener(SharingTokenListener):  # type: ignore[misc]
@@ -105,8 +128,12 @@ class HASSTuyaBLEDeviceManager:
 
     async def get_probe_candidates(
         self, advertised_uuid: str, product_id: str | None
-    ) -> list[TuyaBLEDeviceCredentials]:
-        """List complete, unconfigured cloud records in deterministic order."""
+    ) -> tuple[int, Iterator[TuyaBLEDeviceCredentials]]:
+        """Count eligible records and lazily build credentials in sorted order.
+
+        The caller checks the count against its safety cap before consuming the
+        iterator, so an oversized cloud account builds no probe credentials.
+        """
         if self._manager is None:
             await self.initialize()
         if self._manager is None:
@@ -115,26 +142,15 @@ class HASSTuyaBLEDeviceManager:
             entry.data.get(CONF_DEVICE_ID)
             for entry in self._hass.config_entries.async_entries(DOMAIN)
         }
-        candidates = [
-            device
-            for device in self._manager.device_map.values()
-            if getattr(device, "uuid", None) != advertised_uuid
-            and getattr(device, "id", None) not in configured
-            and all(
-                isinstance(getattr(device, field, None), str) and getattr(device, field)
-                for field in ("uuid", "local_key", "id", "category", "product_id")
-            )
-            and len(device.local_key) >= 6
-            and len(device.uuid) <= 16
-            and len(device.id) <= 20
-        ]
-        return [
-            _build_credentials(device)
-            for device in sorted(
-                candidates,
-                key=lambda device: (device.product_id != product_id, device.id),
-            )
-        ]
+        candidates = sorted(
+            (
+                device
+                for device in self._manager.device_map.values()
+                if _is_probe_candidate(device, advertised_uuid, configured)
+            ),
+            key=lambda device: (device.product_id != product_id, device.id),
+        )
+        return len(candidates), (_build_credentials(device) for device in candidates)
 
     @property
     def data(self) -> dict[str, Any]:

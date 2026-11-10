@@ -8,10 +8,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
-from unittest.mock import patch
+from typing import Any, cast
+from unittest.mock import AsyncMock, patch
 
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 import pytest
 
 from custom_components.tuya_ble.const import CONF_USER_CODE
@@ -219,12 +220,21 @@ async def test_setup_address_unregistered_device_uses_safe_error(
     flow = build_flow(hass)
     flow._manager = FakeManager(credentials=None)  # type: ignore[assignment]
     discovery = captured_irrigation_discovery()
+    flow.discovery_info = cast(Any, discovery)
     with (
         patch.object(flow, "_async_scan_device", return_value=discovery),
+        patch.object(flow, "_async_refresh_discovered_devices", new_callable=AsyncMock),
         caplog.at_level(logging.DEBUG),
     ):
-        _result, error = await flow._async_setup_address(discovery.address)
-    assert error == "device_not_registered"
+        result, _error = await flow._async_setup_address(discovery.address)
+        assert result is not None
+        assert result["type"] == FlowResultType.SHOW_PROGRESS
+        assert flow._probe_task is not None
+        await flow._probe_task
+        await flow.async_step_probe()
+        result = await flow.async_step_probe_finish()
+    assert result["errors"] is not None
+    assert result["errors"]["base"] == "device_not_registered"
     assert "local_key" not in caplog.text
     assert "access_token" not in caplog.text
 

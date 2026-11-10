@@ -112,10 +112,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Tuya BLE from a config entry."""
     address: str = entry.data[CONF_ADDRESS].upper()
     credentials = _build_credentials_from_entry(entry)
-    # The flow's short-lived claim protects the gap between a successful probe
-    # and HA installing the config entry. At setup the entry owns the ID.
-    claims = hass.data.get(f"{DOMAIN}_probe_state", {}).get("claims", {})
-    claims.pop(credentials.device_id, None)
 
     # Never wait on a BLE scan here. Everything needed to build the entity tree
     # (category, product id, device id) comes from the stored credentials, so an

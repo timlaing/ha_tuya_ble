@@ -5,11 +5,15 @@
 from __future__ import annotations
 
 from typing import Any, cast
+from unittest.mock import patch
 
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.tuya_ble.cloud import HASSTuyaBLEDeviceManager
+from custom_components.tuya_ble.cloud import (
+    HASSTuyaBLEDeviceManager,
+    _build_credentials,
+)
 from custom_components.tuya_ble.const import CONF_DEVICE_ID, DOMAIN
 from tests.test_cloud import make_device
 
@@ -47,8 +51,16 @@ async def test_probe_candidates_filter_and_order(hass: HomeAssistant) -> None:
             },
         )(),
     )
-    candidates = await manager.get_probe_candidates("ble-uuid", "target")
-    assert [d.device_id for d in candidates] == ["standard", "other"]
+    with patch(
+        "custom_components.tuya_ble.cloud._build_credentials",
+        wraps=_build_credentials,
+    ) as build:
+        count, candidates = await manager.get_probe_candidates("ble-uuid", "target")
+        assert count == 2
+        build.assert_not_called()
+        assert next(candidates).device_id == "standard"
+        assert build.call_count == 1
+        assert [d.device_id for d in candidates] == ["other"]
 
 
 async def test_probe_candidates_options_claim(hass: HomeAssistant) -> None:
@@ -73,6 +85,6 @@ async def test_probe_candidates_options_claim(hass: HomeAssistant) -> None:
             },
         )(),
     )
-    assert [c.device_id for c in await manager.get_probe_candidates("ble", None)] == [
-        "current"
-    ]
+    count, candidates = await manager.get_probe_candidates("ble", None)
+    assert count == 1
+    assert [c.device_id for c in candidates] == ["current"]
