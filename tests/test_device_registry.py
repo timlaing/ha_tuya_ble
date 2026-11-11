@@ -612,10 +612,10 @@ def test_get_mapped_dp_ids_includes_handler_only_specs() -> None:
     assert {8, 15, 17, 121} <= dr.get_mapped_dp_ids("szjqr", "riecov42")
 
 
-# The four ``kg`` Fingerbot Plus products, and the data points upstream's
+# The ``kg`` Fingerbot Plus products, and the data points upstream's
 # mapping declares for them. Held here so a future edit that renumbers a data
 # point is caught rather than silently reaching for the wrong one on-device.
-_KG_FINGERBOT_PLUS = ("6jcvqwh0", "bs3ubslo", "mknd4lci", "riecov42")
+_KG_FINGERBOT_PLUS = ("6jcvqwh0", "mknd4lci", "riecov42")
 
 _KG_FINGERBOT_PLUS_MAPPING: dict[str, list[tuple[int, str, str | None]]] = {
     "button": [(108, "push", "fingerbot.mode.in_push_mode")],
@@ -631,6 +631,21 @@ _KG_FINGERBOT_PLUS_MAPPING: dict[str, list[tuple[int, str, str | None]]] = {
 }
 
 _KG_DOWN_POSITION_FLOOR = 50
+
+
+def test_fingerbot_touch_exposes_two_independent_switches() -> None:
+    """Map the touch pads to their own data points without a mode gate."""
+    product = get_registry().get("kg", "bs3ubslo")
+    assert product is not None
+    assert product.device_name == "Fingerbot Touch"
+    assert product.entities.keys() == {"switch"}
+    switches = product.get("switch")
+    assert [(desc.dp_id, desc.translation_key) for desc in switches] == [
+        (1, "switch"),
+        (2, "switch_2"),
+    ]
+    assert all(desc.resolved_handler("when") is None for desc in switches)
+    assert dr.get_mapped_dp_ids("kg", "bs3ubslo") == frozenset({1, 2})
 
 
 @pytest.mark.parametrize("product_id", _KG_FINGERBOT_PLUS)
