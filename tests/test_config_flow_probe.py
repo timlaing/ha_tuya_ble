@@ -157,7 +157,10 @@ async def test_unmapped_candidate_skips_ble_authentication(hass: HomeAssistant) 
     probe.assert_not_awaited()
 
 
-async def test_candidate_cap_and_exact_match(hass: HomeAssistant) -> None:
+@pytest.mark.parametrize("refresh_failed", [False, True])
+async def test_candidate_cap_and_exact_match(
+    hass: HomeAssistant, refresh_failed: bool
+) -> None:
     """An exact match never probes, and the candidate limit prevents I/O."""
     flow, discovery = _flow(
         hass,
@@ -166,13 +169,24 @@ async def test_candidate_cap_and_exact_match(hass: HomeAssistant) -> None:
             for i in range(5)
         ],
     )
-    with patch(
-        "custom_components.tuya_ble.config_flow.async_probe_authenticated_status",
-        new_callable=AsyncMock,
-    ) as probe:
+    manager = flow._manager
+    assert manager is not None
+    with (
+        patch(
+            "custom_components.tuya_ble.config_flow.async_probe_authenticated_status",
+            new_callable=AsyncMock,
+        ) as probe,
+        patch.object(
+            manager,
+            "get_device_credentials_by_uuid",
+            new_callable=AsyncMock,
+            return_value=None,
+            side_effect=OSError("cloud unavailable") if refresh_failed else None,
+        ),
+    ):
         result, error = await _setup(flow, discovery)
     assert result is None
-    assert error == "device_not_registered"
+    assert error == "too_many_candidates"
     probe.assert_not_awaited()
 
     flow._manager = cast(Any, FakeManager(make_credentials()))
@@ -673,3 +687,38 @@ async def test_overlapping_device_selections_keep_probed_unique_id(
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"]["address"] == discovery.address
     assert flow.unique_id == discovery.address
+
+
+async def test_verified_flow_finishes_while_other_probe_holds_lock(
+    hass: HomeAssistant,
+) -> None:
+    """An unrelated probe cannot delay successful claim validation past its TTL."""
+    candidate = make_credentials(uuid="cloud-uuid", product_id="prod")
+    flow, discovery = _flow(hass, [candidate])
+    flow.discovery_info = cast(Any, discovery)
+    with (
+        patch.object(flow, "_async_scan_device", return_value=discovery),
+        patch(
+            "custom_components.tuya_ble.config_flow.async_setup_registry",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "custom_components.tuya_ble.config_flow.get_mapped_dp_ids",
+            return_value=frozenset({1}),
+        ),
+        patch(
+            "custom_components.tuya_ble.config_flow.async_probe_authenticated_status",
+            new_callable=AsyncMock,
+            return_value=ProbeOutcome.MATCHED,
+        ),
+    ):
+        progress = await flow.async_step_discovered_device({})
+        assert progress["type"] == FlowResultType.SHOW_PROGRESS
+        assert flow._probe_task is not None
+        await flow._probe_task
+        lock = _probe_state(hass)[0]
+        async with lock:
+            result = await asyncio.wait_for(flow.async_step_probe_finish(), 0.1)
+            assert lock.locked()
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_DEVICE_ID] == candidate.device_id

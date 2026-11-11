@@ -534,7 +534,7 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
                 _LOGGER.debug("Cloud credential verification failed")
                 credentials, pairing_uuid, error = None, None, "probe_setup_failed"
         if credentials is not None and pairing_uuid is not None:
-            result = await self._async_create_verified_entry(
+            result = self._create_verified_entry(
                 discovery, advertisement, credentials, pairing_uuid
             )
             if result is not None:
@@ -547,33 +547,34 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             return await self.async_step_discovered_device()
         return await self.async_step_device()
 
-    async def _async_create_verified_entry(
+    def _create_verified_entry(
         self,
         discovery: BluetoothServiceInfoBleak,
         advertisement: TuyaBLEAdvertisementInfo,
         credentials: TuyaBLEDeviceCredentials,
         pairing_uuid: str,
     ) -> ConfigFlowResult | None:
-        """Reject expired, reassigned, or already-configured cloud claims."""
-        lock, claims = _probe_state(self.hass)
-        async with lock:
-            claim = claims.get(credentials.device_id)
-            still_owned = (
-                claim is not None
-                and claim[0] is self._probe_claim_owner
-                and claim[1] == discovery.address
-                and claim[2] > time.monotonic()
-                and not any(
-                    entry.data.get(CONF_DEVICE_ID) == credentials.device_id
-                    for entry in self.hass.config_entries.async_entries(DOMAIN)
-                )
+        """Atomically validate ownership and create an entry on the event loop."""
+        # No awaits: claim validation and entry creation cannot interleave with
+        # another flow, and need not wait behind an unrelated Bluetooth probe.
+        claims = _probe_state(self.hass)[1]
+        claim = claims.get(credentials.device_id)
+        still_owned = (
+            claim is not None
+            and claim[0] is self._probe_claim_owner
+            and claim[1] == discovery.address
+            and claim[2] > time.monotonic()
+            and not any(
+                entry.data.get(CONF_DEVICE_ID) == credentials.device_id
+                for entry in self.hass.config_entries.async_entries(DOMAIN)
             )
-            if still_owned:
-                return self._create_device_entry(
-                    discovery, advertisement, credentials, pairing_uuid
-                )
-            if claim is not None and claim[0] is self._probe_claim_owner:
-                claims.pop(credentials.device_id, None)
+        )
+        if still_owned:
+            return self._create_device_entry(
+                discovery, advertisement, credentials, pairing_uuid
+            )
+        if claim is not None and claim[0] is self._probe_claim_owner:
+            claims.pop(credentials.device_id, None)
         return None
 
     async def _async_probe_fallback(
@@ -597,7 +598,7 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
                 if expires < time.monotonic():
                     claims.pop(device_id, None)
             if count > PROBE_MAX_CANDIDATES:
-                return None, None, "device_not_registered"
+                return None, None, "too_many_candidates"
             for credentials in candidates:
                 if credentials.device_id in claims:
                     continue

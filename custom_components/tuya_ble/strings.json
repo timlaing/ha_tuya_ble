@@ -6,6 +6,7 @@
     },
     "error": {
       "device_not_registered": "No device in this Tuya account could be verified against the Bluetooth device.",
+      "too_many_candidates": "More than four eligible devices were found in this Tuya account, so Bluetooth verification was not attempted. Remove unused devices of this type from the account and try again.",
       "bluetooth_probe_failed": "Bluetooth communication failed before the cloud credentials could be verified. Move the device closer and try again.",
       "cloud_refresh_failed": "Could not refresh the Tuya cloud device list. Try again later.",
       "probe_setup_failed": "Could not prepare device verification. Try again later.",
