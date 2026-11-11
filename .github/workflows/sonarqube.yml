@@ -23,6 +23,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.event.workflow_run.head_sha }}
+          # Fork PR heads must be checked out for SonarQube PR analysis. No step
+          # executes the checked-out code and sonar-project.properties is removed
+          # below before the scan, so the pwn-request risk is mitigated.
+          allow-unsafe-pr-checkout: true
 
       - name: Require SonarQube credentials
         if: env.SONAR_TOKEN == ''
@@ -44,7 +48,8 @@ jobs:
         run: |
           set -euo pipefail
           test -f .coverage/coverage.xml || { echo "Coverage report missing"; exit 1; }
-          python3 -c "import sys, xml.etree.ElementTree as ET; ET.parse(sys.argv[1])" .coverage/coverage.xml
+          # -I: never import from the (fork-controlled) checkout with SONAR_TOKEN in env
+          python3 -I -c "import sys, xml.etree.ElementTree as ET; ET.parse(sys.argv[1])" .coverage/coverage.xml
 
       - name: Validate run metadata
         id: validate
