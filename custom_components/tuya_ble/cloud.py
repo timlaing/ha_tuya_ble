@@ -52,6 +52,7 @@ class TokenRefreshListener(SharingTokenListener):  # type: ignore[misc]
     """Persist refreshed tokens back to config entry data."""
 
     def __init__(self, hass: HomeAssistant, data: dict[str, Any]) -> None:
+        """Retain the Home Assistant instance and mutable token storage."""
         self._hass = hass
         self._data = data
 
@@ -65,6 +66,7 @@ class HASSTuyaBLEDeviceManager:
     """Cloud connected manager of the Tuya BLE devices credentials."""
 
     def __init__(self, hass: HomeAssistant, data: dict[str, Any]) -> None:
+        """Store cloud login data without starting an SDK connection."""
         if hass is None:
             raise ValueError("hass must not be None")
         self._hass = hass

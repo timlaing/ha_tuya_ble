@@ -16,7 +16,11 @@ from homeassistant.data_entry_flow import FlowResultType
 import pytest
 
 from custom_components.tuya_ble.const import CONF_USER_CODE
-from custom_components.tuya_ble.tuya_ble import SERVICE_UUID, TuyaBLEDeviceCredentials
+from custom_components.tuya_ble.tuya_ble import (
+    SERVICE_UUID,
+    ProbeOutcome,
+    TuyaBLEDeviceCredentials,
+)
 from custom_components.tuya_ble.tuya_ble.const import MANUFACTURER_DATA_ID
 from tests.conftest import FakeAdvertisementData
 from tests.test_config_flow import (
@@ -213,17 +217,44 @@ async def test_setup_address_undecodable_identity_is_logged(
     assert "manufacturer_data" in caplog.text
 
 
-async def test_setup_address_unregistered_device_uses_safe_error(
+async def test_setup_address_inconclusive_probe_uses_safe_error(
     hass: HomeAssistant, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """An unmatched account gets a safe error after the refresh and fallback."""
+    """An inconclusive probe returns a safe error without logging credentials."""
     flow = build_flow(hass)
-    flow._manager = FakeManager(credentials=None)  # type: ignore[assignment]
+    credentials = TuyaBLEDeviceCredentials(
+        uuid="cloud-uuid",
+        local_key="secret-local-key-0123456789",
+        device_id="device-id-secret",
+        category="wk",
+        product_id="prod",
+        product_model="Model",
+        product_name="Product",
+        device_name="Device",
+    )
+    manager = FakeManager(credentials=credentials)
+    flow._manager = manager  # type: ignore[assignment]
+    manager.get_device_credentials_by_uuid = AsyncMock(  # type: ignore[method-assign]
+        return_value=None
+    )
+    manager.get_probe_candidates = AsyncMock(  # type: ignore[method-assign]
+        return_value=(1, iter([credentials]))
+    )
     discovery = captured_irrigation_discovery()
+    discovery.device = object()  # type: ignore[attr-defined]
     flow.discovery_info = cast(Any, discovery)
     with (
         patch.object(flow, "_async_scan_device", return_value=discovery),
         patch.object(flow, "_async_refresh_discovered_devices", new_callable=AsyncMock),
+        patch(
+            "custom_components.tuya_ble.config_flow.async_probe_authenticated_status",
+            new_callable=AsyncMock,
+            return_value=ProbeOutcome.INCONCLUSIVE,
+        ) as probe,
+        patch(
+            "custom_components.tuya_ble.config_flow.get_mapped_dp_ids",
+            return_value=frozenset({1}),
+        ),
         caplog.at_level(logging.DEBUG),
     ):
         result, _error = await flow._async_setup_address(discovery.address)
@@ -233,10 +264,13 @@ async def test_setup_address_unregistered_device_uses_safe_error(
         await flow._probe_task
         await flow.async_step_probe()
         result = await flow.async_step_probe_finish()
+    probe.assert_awaited_once()
+    assert probe.await_args is not None
+    assert probe.await_args.args[2] is credentials
     assert result["errors"] is not None
-    assert result["errors"]["base"] == "device_not_registered"
-    assert "local_key" not in caplog.text
-    assert "access_token" not in caplog.text
+    assert result["errors"]["base"] == "bluetooth_probe_failed"
+    assert "secret-local-key-0123456789" not in caplog.text
+    assert "device-id-secret" not in caplog.text
 
 
 async def test_setup_address_entry_created_is_logged(

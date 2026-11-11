@@ -140,7 +140,7 @@ async def test_probe_stages(
     if failure == "notifications":
         client.start_notify = AsyncMock(side_effect=OSError("transport"))  # type: ignore[method-assign]
     monkeypatch.setattr("custom_components.tuya_ble.tuya_ble.probe.PROBE_TIMEOUT", 0.01)
-    credentials = make_credentials()
+    credentials = make_credentials(uuid="cloud-identity-uuid")
     result = await async_probe_authenticated_status(
         ble, adv, credentials, "1234567890abcdef", frozenset({1})
     )
@@ -161,7 +161,7 @@ async def test_probe_stages(
         assert pairing[0].startswith(
             b"1234567890abcdefabcdef" + credentials.device_id.encode()
         )
-    assert credentials.uuid == "1234567890abcdef"
+    assert credentials.uuid == "cloud-identity-uuid"
 
 
 async def test_invalid_pairing_frame_stops_before_connect() -> None:

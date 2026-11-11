@@ -128,6 +128,7 @@ class _QRCodeLoginMixin:
     async def _async_qr_login_store_and_advance(
         self, login_info: dict[str, Any]
     ) -> ConfigFlowResult:
+        """Require subclasses to persist login data and choose the next step."""
         raise NotImplementedError
 
     def _qr_code_form(

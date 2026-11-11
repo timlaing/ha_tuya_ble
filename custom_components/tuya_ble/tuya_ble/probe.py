@@ -42,6 +42,7 @@ class _ProbeDevice(TuyaBLEDevice):
     """Never reconnect or send unsolicited protocol replies during a probe."""
 
     def __init__(self, ble_device: BLEDevice, advertisement: AdvertisementData) -> None:
+        """Create an isolated device with no accepted authentication or status."""
         super().__init__(None, ble_device, advertisement)  # type: ignore[arg-type]
         self.status_accepted = False
         self.pair_rejected = False
@@ -67,6 +68,7 @@ class _ProbeDevice(TuyaBLEDevice):
         return super()._decrypt_input()
 
     def _handle_device_status_response(self, data: bytes) -> int:
+        """Record whether the authenticated status request was accepted."""
         result = super()._handle_device_status_response(data)
         self.status_accepted = result == 0
         return result
@@ -229,6 +231,7 @@ async def async_probe_authenticated_status(
     status_requested = False
 
     def on_datapoints(updates: list[TuyaBLEDataPoint]) -> None:
+        """Accept expected datapoints only after authenticated status is requested."""
         if (
             status_requested
             and device.paired_for_probe
@@ -238,6 +241,7 @@ async def async_probe_authenticated_status(
             received.set_result(None)
 
     def enable_status() -> None:
+        """Allow subsequent authenticated datapoints to confirm the candidate."""
         nonlocal status_requested
         status_requested = True
 
