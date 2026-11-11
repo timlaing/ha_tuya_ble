@@ -23,6 +23,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.event.workflow_run.head_sha }}
+          # Fork PR heads must be checked out for SonarQube PR analysis. No step
+          # executes the checked-out code and sonar-project.properties is removed
+          # below before the scan, so the pwn-request risk is mitigated.
+          allow-unsafe-pr-checkout: true
 
       - name: Require SonarQube credentials
         if: env.SONAR_TOKEN == ''
