@@ -14,12 +14,15 @@ from unittest.mock import AsyncMock, patch
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.tuya_ble.config_flow import TuyaBLEConfigFlow, _probe_state
 from custom_components.tuya_ble.const import (
     CONF_ADVERTISED_UUID,
     CONF_CLOUD_UUID,
+    CONF_DEVICE_ID,
     CONF_UUID,
+    DOMAIN,
 )
 from custom_components.tuya_ble.tuya_ble import TuyaBLEDeviceCredentials
 from custom_components.tuya_ble.tuya_ble.probe import ProbeOutcome
@@ -231,6 +234,7 @@ async def test_probe_reservation_and_expiration(hass: HomeAssistant) -> None:
         assert error == "device_not_registered"
         assert probe.await_count == 1
         _probe_state(hass)[1][candidate.device_id] = (
+            first._probe_claim_owner,
             discovery.address,
             time.monotonic() - 1,
         )
@@ -381,5 +385,130 @@ async def test_progress_exception_has_no_secret_in_error(
         await flow.async_step_probe()
         form = await flow.async_step_probe_finish()
     assert form["errors"] is not None
-    assert form["errors"]["base"] == "bluetooth_probe_failed"
+    assert form["errors"]["base"] == "probe_setup_failed"
     assert "secret-from-cloud" not in caplog.text
+
+
+async def test_forced_cloud_refresh_failure_uses_cached_verified_candidate(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A failed refresh does not discard a candidate proven by authenticated BLE."""
+    candidate = make_credentials(uuid="cloud-uuid", product_id="prod")
+    flow, discovery = _flow(hass, [candidate])
+    manager = flow._manager
+    assert manager is not None
+    with (
+        patch.object(
+            manager,
+            "get_device_credentials_by_uuid",
+            new_callable=AsyncMock,
+            side_effect=[None, OSError("private-cloud-error")],
+        ) as lookup,
+        patch(
+            "custom_components.tuya_ble.config_flow.async_probe_authenticated_status",
+            new_callable=AsyncMock,
+            return_value=ProbeOutcome.MATCHED,
+        ),
+        caplog.at_level(logging.DEBUG),
+    ):
+        result, error = await _setup(flow, discovery)
+    assert error is None
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert lookup.await_count == 2
+    assert "private-cloud-error" not in caplog.text
+
+
+async def test_refresh_failure_without_verifiable_candidate_is_retryable(
+    hass: HomeAssistant,
+) -> None:
+    """A failed refresh cannot prove the account has no cloud record."""
+    flow, discovery = _flow(hass, [])
+    manager = flow._manager
+    assert manager is not None
+    with patch.object(
+        manager,
+        "get_device_credentials_by_uuid",
+        new_callable=AsyncMock,
+        side_effect=[None, OSError("cloud unavailable")],
+    ):
+        result, error = await _setup(flow, discovery)
+    assert result is None
+    assert error == "cloud_refresh_failed"
+
+
+async def test_registry_failure_is_not_reported_as_bluetooth_failure(
+    hass: HomeAssistant,
+) -> None:
+    """A registry initialization error cannot be fixed by moving closer to BLE."""
+    flow, discovery = _flow(hass, [make_credentials(uuid="cloud-uuid")])
+    with (
+        patch.object(flow, "_async_scan_device", return_value=discovery),
+        patch.object(flow, "_async_refresh_discovered_devices", new_callable=AsyncMock),
+        patch(
+            "custom_components.tuya_ble.config_flow.async_setup_registry",
+            new_callable=AsyncMock,
+            side_effect=OSError("unreadable descriptors"),
+        ),
+    ):
+        progress, _ = await flow._async_setup_address(discovery.address)
+        assert progress is not None
+        assert progress["type"] == FlowResultType.SHOW_PROGRESS
+        assert flow._probe_task is not None
+        with pytest.raises(OSError):
+            await flow._probe_task
+        await flow.async_step_probe()
+        form = await flow.async_step_probe_finish()
+    assert form["errors"] is not None
+    assert form["errors"]["base"] == "probe_setup_failed"
+
+
+@pytest.mark.parametrize("stale_reason", ["expired", "reclaimed", "configured"])
+async def test_stale_claim_does_not_create_an_entry(
+    hass: HomeAssistant, stale_reason: str
+) -> None:
+    """Expiry, reassignment, or another entry invalidate a progress result."""
+    candidate = make_credentials(uuid="cloud-uuid", product_id="prod")
+    flow, discovery = _flow(hass, [candidate])
+    with (
+        patch.object(flow, "_async_scan_device", return_value=discovery),
+        patch.object(flow, "_async_refresh_discovered_devices", new_callable=AsyncMock),
+        patch(
+            "custom_components.tuya_ble.config_flow.async_setup_registry",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "custom_components.tuya_ble.config_flow.get_mapped_dp_ids",
+            return_value=frozenset({1}),
+        ),
+        patch(
+            "custom_components.tuya_ble.config_flow.async_probe_authenticated_status",
+            new_callable=AsyncMock,
+            return_value=ProbeOutcome.MATCHED,
+        ),
+        patch.object(flow, "async_create_entry") as create_entry,
+    ):
+        progress, _ = await flow._async_setup_address(discovery.address)
+        assert progress is not None
+        assert progress["type"] == FlowResultType.SHOW_PROGRESS
+        assert flow._probe_task is not None
+        await flow._probe_task
+        claims = _probe_state(hass)[1]
+        owner, address, _ = claims[candidate.device_id]
+        if stale_reason == "configured":
+            MockConfigEntry(
+                domain=DOMAIN, data={CONF_DEVICE_ID: candidate.device_id}
+            ).add_to_hass(hass)
+        else:
+            claims[candidate.device_id] = (
+                object() if stale_reason == "reclaimed" else owner,
+                address,
+                time.monotonic() + 120
+                if stale_reason == "reclaimed"
+                else time.monotonic() - 1,
+            )
+        await flow.async_step_probe()
+        form = await flow.async_step_probe_finish()
+        create_entry.assert_not_called()
+    assert form["errors"] is not None
+    assert form["errors"]["base"] == "device_verification_expired"
+    assert (candidate.device_id in claims) is (stale_reason == "reclaimed")

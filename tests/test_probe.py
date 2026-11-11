@@ -428,6 +428,70 @@ async def test_failed_disconnect_cannot_confirm_match(
     )
 
 
+async def test_stalled_cleanup_has_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An unresponsive disconnect does not hold the shared probe lock forever."""
+    ble, adv = _input()
+    cancelled = asyncio.Event()
+
+    async def authenticated_read(
+        device: _ProbeDevice, received: asyncio.Future[None], enable_status: Any
+    ) -> ProbeOutcome:
+        return ProbeOutcome.MATCHED
+
+    async def hanging_cleanup(device: _ProbeDevice) -> None:
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    monkeypatch.setattr(_ProbeDevice, "authenticated_read", authenticated_read)
+    monkeypatch.setattr(_ProbeDevice, "close_probe", hanging_cleanup)
+    monkeypatch.setattr(
+        "custom_components.tuya_ble.tuya_ble.probe.PROBE_CLEANUP_TIMEOUT", 0.01
+    )
+    assert (
+        await async_probe_authenticated_status(
+            ble, adv, make_credentials(), "1234567890abcdef", frozenset({1})
+        )
+        == ProbeOutcome.INCONCLUSIVE
+    )
+    await cancelled.wait()
+
+
+async def test_cancelling_cleanup_cancels_disconnect_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Closing a flow mid-disconnect cannot retain its cleanup task."""
+    ble, adv = _input()
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def authenticated_read(
+        device: _ProbeDevice, received: asyncio.Future[None], enable_status: Any
+    ) -> ProbeOutcome:
+        return ProbeOutcome.INCONCLUSIVE
+
+    async def hanging_cleanup(device: _ProbeDevice) -> None:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    monkeypatch.setattr(_ProbeDevice, "authenticated_read", authenticated_read)
+    monkeypatch.setattr(_ProbeDevice, "close_probe", hanging_cleanup)
+    task = asyncio.create_task(
+        async_probe_authenticated_status(
+            ble, adv, make_credentials(), "1234567890abcdef", frozenset({1})
+        )
+    )
+    await started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await cancelled.wait()
+
+
 async def test_unsolicited_dp_is_not_proof(monkeypatch: pytest.MonkeyPatch) -> None:
     """A datapoint emitted before a status request cannot authenticate mapping."""
     ble, adv = _input()

@@ -7,6 +7,9 @@
     "error": {
       "device_not_registered": "No device in this Tuya account could be verified against the Bluetooth device.",
       "bluetooth_probe_failed": "Bluetooth communication failed before the cloud credentials could be verified. Move the device closer and try again.",
+      "cloud_refresh_failed": "Could not refresh the Tuya cloud device list. Try again later.",
+      "probe_setup_failed": "Could not prepare device verification. Try again later.",
+      "device_verification_expired": "Device verification expired or was claimed by another setup. Please retry.",
       "bluetooth_scan_failed": "The complete Bluetooth advertisement was not received. Move the device closer and try again.",
       "identity_not_decoded": "The identity in the Bluetooth advertisement could not be decoded.",
       "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",

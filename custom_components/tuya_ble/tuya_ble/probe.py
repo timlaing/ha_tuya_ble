@@ -21,6 +21,13 @@ from .manager import TuyaBLEDeviceCredentials
 
 _LOGGER = logging.getLogger(__name__)
 PROBE_TIMEOUT = 12
+PROBE_CLEANUP_TIMEOUT = 5
+
+
+def _consume_cleanup_result(task: asyncio.Task[None]) -> None:
+    """Observe a late cleanup failure without logging transport exceptions."""
+    if not task.cancelled():
+        task.exception()
 
 
 class ProbeOutcome(StrEnum):
@@ -247,9 +254,17 @@ async def async_probe_authenticated_status(
     finally:
         unregister()
         received.cancel()
+        cleanup_task = asyncio.create_task(device.close_probe())
+        cleanup_task.add_done_callback(_consume_cleanup_result)
         try:
-            await device.close_probe()
+            # Shield prevents a cancellation-resistant disconnect from holding
+            # the config-flow's shared probe lock past the cleanup deadline.
+            await asyncio.wait_for(asyncio.shield(cleanup_task), PROBE_CLEANUP_TIMEOUT)
+        except asyncio.CancelledError:
+            cleanup_task.cancel()
+            raise
         except Exception:  # pylint: disable=broad-exception-caught
+            cleanup_task.cancel()
             _LOGGER.debug("BLE probe disconnect failed")
             outcome = ProbeOutcome.INCONCLUSIVE
     return outcome

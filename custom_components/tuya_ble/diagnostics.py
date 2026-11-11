@@ -59,14 +59,13 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 # The BLE local key is the only secret needed to talk to the device, and the
-# token set is enough to act on the user's cloud account. `uuid` and `device_id`
-# stay in the clear: they identify the device but cannot reach it, and without
-# them a diagnostics download cannot be matched to a report. The network and
-# owner identifiers are the fields the raw cloud payload used to leak through
+# token set is enough to act on the user's cloud account. Both BLE and cloud
+# UUIDs and `device_id` stay in the clear: they identify the device but cannot
+# reach it, and without them diagnostics cannot be matched to a report. The
+# network and owner identifiers are the fields the raw cloud payload leaked through
 # `cloud_info`; they stay redacted across the whole payload even though the
 # capture is allowlisted now.
 _TO_REDACT = frozenset({
-    CONF_CLOUD_UUID,
     CONF_ENDPOINT,
     CONF_LOCAL_KEY,
     CONF_TERMINAL_ID,

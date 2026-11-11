@@ -72,14 +72,15 @@ ACTIVE_SCAN_TIMEOUT = 60
 PROBE_MAX_CANDIDATES = 4
 PROBE_CLAIM_TTL = 120
 _PROBE_STATE = f"{DOMAIN}_probe_state"
+ProbeClaim = tuple[object, str, float]
 
 _LOGGER = logging.getLogger(__name__)
 
 
 def _probe_state(
     hass: HomeAssistant,
-) -> tuple[asyncio.Lock, dict[str, tuple[str, float]]]:
-    """Serialise probes and reserve matched cloud IDs until entry setup."""
+) -> tuple[asyncio.Lock, dict[str, ProbeClaim]]:
+    """Serialise probes and reserve matched cloud IDs until entry creation or TTL."""
     state = hass.data.setdefault(_PROBE_STATE, {"lock": asyncio.Lock(), "claims": {}})
     return state["lock"], state["claims"]
 
@@ -224,6 +225,8 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         self._data: dict[str, Any] = {}
         self._manager: HASSTuyaBLEDeviceManager | None = None
         self._get_device_info_error = False
+        self._probe_refresh_failed = False
+        self._probe_claim_owner = object()
         self._probe_task: (
             asyncio.Task[tuple[TuyaBLEDeviceCredentials | None, str | None, str]] | None
         ) = None
@@ -371,17 +374,26 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             )
             return None, "identity_not_decoded"
 
-        credentials = await self._manager.get_device_credentials_by_uuid(
-            advertisement.uuid,
-            force_update=self._get_device_info_error,
-        )
-        if credentials is None and not self._get_device_info_error:
+        refresh_failed = False
+        try:
             credentials = await self._manager.get_device_credentials_by_uuid(
-                advertisement.uuid, force_update=True
+                advertisement.uuid,
+                force_update=self._get_device_info_error,
             )
+            if credentials is None and not self._get_device_info_error:
+                credentials = await self._manager.get_device_credentials_by_uuid(
+                    advertisement.uuid, force_update=True
+                )
+        except Exception:  # pylint: disable=broad-exception-caught
+            # A cached candidate may still pass a genuine authenticated read.
+            # Do not log SDK exceptions: they can contain cloud credentials.
+            _LOGGER.warning("%s: Tuya cloud refresh failed", address)
+            credentials = None
+            refresh_failed = True
         pairing_uuid: str | None = None
         if credentials is None:
             self._get_device_info_error = True
+            self._probe_refresh_failed = refresh_failed
             self._probe_discovery = discovery_info
             self._probe_advertisement = advertisement
             self._probe_source_step = (
@@ -444,7 +456,10 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             )
         except Exception:
             if pairing_uuid is not None:
-                _probe_state(self.hass)[1].pop(credentials.device_id, None)
+                claims = _probe_state(self.hass)[1]
+                claim = claims.get(credentials.device_id)
+                if claim is not None and claim[0] is self._probe_claim_owner:
+                    claims.pop(credentials.device_id, None)
             raise
         return result
 
@@ -485,15 +500,49 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
                 credentials, pairing_uuid, error = task.result()
             except Exception:  # pylint: disable=broad-exception-caught
                 _LOGGER.debug("Cloud credential verification failed")
-                credentials, pairing_uuid, error = None, None, "bluetooth_probe_failed"
-        if credentials is not None:
-            return self._create_device_entry(
+                credentials, pairing_uuid, error = None, None, "probe_setup_failed"
+        if credentials is not None and pairing_uuid is not None:
+            result = await self._async_create_verified_entry(
                 discovery, advertisement, credentials, pairing_uuid
             )
+            if result is not None:
+                return result
+            error = "device_verification_expired"
+        elif error == "device_not_registered" and self._probe_refresh_failed:
+            error = "cloud_refresh_failed"
         self._probe_error = error
         if self._probe_source_step == "discovered_device":
             return await self.async_step_discovered_device()
         return await self.async_step_device()
+
+    async def _async_create_verified_entry(
+        self,
+        discovery: BluetoothServiceInfoBleak,
+        advertisement: TuyaBLEAdvertisementInfo,
+        credentials: TuyaBLEDeviceCredentials,
+        pairing_uuid: str,
+    ) -> ConfigFlowResult | None:
+        """Reject expired, reassigned, or already-configured cloud claims."""
+        lock, claims = _probe_state(self.hass)
+        async with lock:
+            claim = claims.get(credentials.device_id)
+            still_owned = (
+                claim is not None
+                and claim[0] is self._probe_claim_owner
+                and claim[1] == discovery.address
+                and claim[2] > time.monotonic()
+                and not any(
+                    entry.data.get(CONF_DEVICE_ID) == credentials.device_id
+                    for entry in self.hass.config_entries.async_entries(DOMAIN)
+                )
+            )
+            if still_owned:
+                return self._create_device_entry(
+                    discovery, advertisement, credentials, pairing_uuid
+                )
+            if claim is not None and claim[0] is self._probe_claim_owner:
+                claims.pop(credentials.device_id, None)
+        return None
 
     async def _async_probe_fallback(
         self,
@@ -512,7 +561,7 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             count, candidates = await manager.get_probe_candidates(
                 advertisement.uuid, advertisement.product_id
             )
-            for device_id, (_, expires) in tuple(claims.items()):
+            for device_id, (_, _, expires) in tuple(claims.items()):
                 if expires < time.monotonic():
                     claims.pop(device_id, None)
             if count > PROBE_MAX_CANDIDATES:
@@ -525,6 +574,7 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
                 )
                 if outcome == ProbeOutcome.MATCHED and pairing_uuid is not None:
                     claims[credentials.device_id] = (
+                        self._probe_claim_owner,
                         discovery_info.address,
                         time.monotonic() + PROBE_CLAIM_TTL,
                     )

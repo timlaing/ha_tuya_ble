@@ -187,8 +187,8 @@ async def test_config_entry_diagnostics_shape(hass: HomeAssistant) -> None:
     assert payload["home_assistant"]["devices"] == []
 
 
-async def test_mismatched_cloud_uuid_refresh_is_private(hass: HomeAssistant) -> None:
-    """Refresh using cloud identity, export BLE identity but redact cloud UUID."""
+async def test_mismatched_cloud_uuid_refresh_is_visible(hass: HomeAssistant) -> None:
+    """Refresh using cloud identity and export both non-secret UUIDs."""
     data = _entry_data()
     data[CONF_CLOUD_UUID] = "cloud-identity"
     entry = _add_entry(
@@ -205,7 +205,19 @@ async def test_mismatched_cloud_uuid_refresh_is_private(hass: HomeAssistant) -> 
         "cloud-identity", force_update=True
     )
     assert payload["identity"]["uuid"] == data[CONF_UUID]
-    assert payload["identity"][CONF_CLOUD_UUID] != "cloud-identity"
+    assert payload["identity"][CONF_CLOUD_UUID] == "cloud-identity"
+
+
+async def test_exact_cloud_uuid_matches_exported_pairing_uuid(
+    hass: HomeAssistant,
+) -> None:
+    """Diagnostic identity uses the same visibility policy for equal UUIDs."""
+    data = _entry_data()
+    data[CONF_CLOUD_UUID] = data[CONF_UUID]
+    entry = _add_entry(hass, data=data)
+    payload = await async_get_config_entry_diagnostics(hass, entry)
+    assert payload["identity"][CONF_CLOUD_UUID] == data[CONF_UUID]
+    assert payload["identity"]["uuid"] == data[CONF_UUID]
 
 
 async def test_diagnostics_export_full_unfiltered_strategy(hass: HomeAssistant) -> None:
