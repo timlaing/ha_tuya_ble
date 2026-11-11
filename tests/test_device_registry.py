@@ -633,19 +633,24 @@ _KG_FINGERBOT_PLUS_MAPPING: dict[str, list[tuple[int, str, str | None]]] = {
 _KG_DOWN_POSITION_FLOOR = 50
 
 
-def test_fingerbot_touch_exposes_two_independent_switches() -> None:
-    """Map the touch pads to their own data points without a mode gate."""
+def test_fingerbot_touch_exposes_two_switches_and_battery() -> None:
+    """Map both touch pads without a mode gate and report battery percentage."""
     product = get_registry().get("kg", "bs3ubslo")
     assert product is not None
     assert product.device_name == "Fingerbot Touch"
-    assert product.entities.keys() == {"switch"}
+    assert product.entities.keys() == {"sensor", "switch"}
     switches = product.get("switch")
     assert [(desc.dp_id, desc.translation_key) for desc in switches] == [
         (1, "switch"),
         (2, "switch_2"),
     ]
     assert all(desc.resolved_handler("when") is None for desc in switches)
-    assert dr.get_mapped_dp_ids("kg", "bs3ubslo") == frozenset({1, 2})
+    (battery,) = product.get("sensor")
+    assert battery.dp_id == 115
+    assert battery.translation_key == "battery"
+    assert battery.device_class == "battery"
+    assert battery.unit == "%"
+    assert dr.get_mapped_dp_ids("kg", "bs3ubslo") == frozenset({1, 2, 115})
 
 
 @pytest.mark.parametrize("product_id", _KG_FINGERBOT_PLUS)

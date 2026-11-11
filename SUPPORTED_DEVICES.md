@@ -13,7 +13,7 @@ Programming (series of actions) is implemented for Fingerbot Plus. Exposed entit
 ## Fingerbot Plus / Switch Robot (category_id `kg`)
 
 - **Fingerbot Plus** (product_ids `mknd4lci`, `riecov42`, `6jcvqwh0`): uses kg DP IDs.
-- **Fingerbot Touch** (product_id `bs3ubslo`): two independent capacitive touch channels. Each switch write triggers one touch on that channel.
+- **Fingerbot Touch** (product_id `bs3ubslo`): two independent capacitive touch channels and a battery percentage sensor. Each switch write triggers one touch on that channel.
 - **Switch Robot** (product_id `4ctjfrzq`).
 
 ## Temperature and humidity sensors (category_id `wsdcg`)

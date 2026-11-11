@@ -3,6 +3,13 @@ product_id: bs3ubslo
 device_name: Fingerbot Touch
 model_name: bs3ubslo
 entities:
+  sensor:
+    - dp_id: 115
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
   switch:
     # Either Boolean value triggers a touch. Keep the existing channel 1 key.
     - dp_id: 1
