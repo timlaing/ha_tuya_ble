@@ -108,6 +108,43 @@ def _remove_legacy_sensor_entities(hass: HomeAssistant, entry: ConfigEntry) -> N
             registry.async_remove(entity.entity_id)
 
 
+@callback
+def _remove_retired_fingerbot_touch_entities(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> None:
+    """Remove only controls from the former Fingerbot Plus mapping for Touch."""
+    if entry.data[CONF_CATEGORY] != "kg" or entry.data[CONF_PRODUCT_ID] != "bs3ubslo":
+        return
+
+    # Exact domain/key pairs from the retired descriptor; retain the DP 1 switch
+    # and its registry customizations, along with all unrelated entities.
+    retired_controls = {
+        (Platform.BUTTON, "push"),
+        (Platform.NUMBER, "down_position"),
+        (Platform.NUMBER, "hold_time"),
+        (Platform.NUMBER, "up_position"),
+        (Platform.NUMBER, "program_repeats_count"),
+        (Platform.NUMBER, "program_idle_position"),
+        (Platform.SELECT, "fingerbot_mode"),
+        (Platform.SWITCH, "reverse_positions"),
+        (Platform.SWITCH, "manual_control"),
+        (Platform.SWITCH, "program"),
+        (Platform.SWITCH, "program_repeat_forever"),
+        (Platform.TEXT, "program"),
+    }
+    retired_ids = {
+        (domain, f"{entry.data[CONF_DEVICE_ID]}-{key}")
+        for domain, key in retired_controls
+    }
+    registry = er.async_get(hass)
+    for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if (
+            entity.platform == DOMAIN
+            and (entity.domain, entity.unique_id) in retired_ids
+        ):
+            registry.async_remove(entity.entity_id)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Tuya BLE from a config entry."""
     address: str = entry.data[CONF_ADDRESS].upper()
@@ -197,6 +234,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Remove known legacy-domain duplicates before platforms can load them.
     # Keep the second pass for an entry's first setup with the corrected domains,
     # when replacement registry entries do not exist until forwarding completes.
+    _remove_retired_fingerbot_touch_entities(hass, entry)
     _remove_legacy_sensor_entities(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _remove_legacy_sensor_entities(hass, entry)
