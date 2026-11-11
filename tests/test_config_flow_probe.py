@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterator
+import gc
 import logging
 import time
 from typing import Any, cast
@@ -71,10 +72,9 @@ async def _setup(
         ),
         patch.object(flow, "_async_refresh_discovered_devices", new_callable=AsyncMock),
     ):
-        result, error = await flow._async_setup_address(discovery.address)
-        assert result is not None
+        result = await flow.async_step_device({"address": discovery.address})
         if result["type"] == FlowResultType.CREATE_ENTRY:
-            return result, error
+            return result, None
         assert result["type"] == FlowResultType.SHOW_PROGRESS
         assert flow._probe_task is not None
         await flow._probe_task
@@ -84,7 +84,7 @@ async def _setup(
         if result["type"] == FlowResultType.FORM:
             assert result["errors"] is not None
             return None, result["errors"]["base"]
-        return result, error
+        return result, None
 
 
 @pytest.mark.parametrize(
@@ -512,3 +512,164 @@ async def test_stale_claim_does_not_create_an_entry(
     assert form["errors"] is not None
     assert form["errors"]["base"] == "device_verification_expired"
     assert (candidate.device_id in claims) is (stale_reason == "reclaimed")
+
+
+async def test_removing_verified_flow_releases_only_owned_claims(
+    hass: HomeAssistant,
+) -> None:
+    """Cancelling after verification immediately frees this flow's reservations."""
+    candidate = make_credentials(uuid="cloud-uuid", product_id="prod")
+    flow, discovery = _flow(hass, [candidate])
+    flow.discovery_info = cast(Any, discovery)
+    with (
+        patch.object(flow, "_async_scan_device", return_value=discovery),
+        patch(
+            "custom_components.tuya_ble.config_flow.async_setup_registry",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "custom_components.tuya_ble.config_flow.get_mapped_dp_ids",
+            return_value=frozenset({1}),
+        ),
+        patch(
+            "custom_components.tuya_ble.config_flow.async_probe_authenticated_status",
+            new_callable=AsyncMock,
+            return_value=ProbeOutcome.MATCHED,
+        ),
+    ):
+        progress = await flow.async_step_discovered_device({})
+        assert progress["type"] == FlowResultType.SHOW_PROGRESS
+        assert flow._probe_task is not None
+        await flow._probe_task
+    claims = _probe_state(hass)[1]
+    other_claim = (object(), "another-address", time.monotonic() + 120)
+    claims["other-device"] = other_claim
+    assert candidate.device_id in claims
+    flow.async_remove()
+    assert claims == {"other-device": other_claim}
+    # Removal is also safe without any task or owned claim.
+    empty_flow, _ = _flow(hass, [])
+    empty_flow.async_remove()
+    assert claims == {"other-device": other_claim}
+
+
+async def test_removing_flow_cancels_pending_probe(hass: HomeAssistant) -> None:
+    """An unfinished probe cannot reserve a device after its flow is removed."""
+    flow, discovery = _flow(hass, [make_credentials(uuid="cloud-uuid")])
+    flow.discovery_info = cast(Any, discovery)
+    started = asyncio.Event()
+
+    async def wait_for_registry(_hass: HomeAssistant) -> None:
+        """Hold registry initialization until setup is cancelled."""
+        started.set()
+        await asyncio.Event().wait()
+
+    with (
+        patch.object(flow, "_async_scan_device", return_value=discovery),
+        patch(
+            "custom_components.tuya_ble.config_flow.async_setup_registry",
+            side_effect=wait_for_registry,
+        ),
+    ):
+        await flow.async_step_discovered_device({})
+        await started.wait()
+        task = flow._probe_task
+        assert task is not None
+        flow.async_remove()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        await hass.async_block_till_done()
+    assert _probe_state(hass)[1] == {}
+
+
+async def test_failed_probe_is_observed_without_finish_step(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Discarding a failed flow cannot expose its unobserved exception text."""
+    flow, discovery = _flow(hass, [make_credentials(uuid="cloud-uuid")])
+    flow.discovery_info = cast(Any, discovery)
+    loop = asyncio.get_running_loop()
+    with (
+        patch.object(flow, "_async_scan_device", return_value=discovery),
+        patch(
+            "custom_components.tuya_ble.config_flow.async_setup_registry",
+            new_callable=AsyncMock,
+            side_effect=OSError("private-probe-failure"),
+        ),
+        patch.object(loop, "call_exception_handler") as exception_handler,
+        caplog.at_level(logging.DEBUG),
+    ):
+        progress = await flow.async_step_discovered_device({})
+        assert progress["type"] == FlowResultType.SHOW_PROGRESS
+        # Do not await the failed task or request its result: the callback must
+        # observe its exception even when the finish step is never entered.
+        await hass.async_block_till_done()
+        assert flow._probe_task is not None
+        assert flow._probe_task.done()
+        flow.async_remove()
+        del progress, flow
+        gc.collect()
+        exception_handler.assert_not_called()
+    assert "private-probe-failure" not in caplog.text
+
+
+async def test_overlapping_device_selections_keep_probed_unique_id(
+    hass: HomeAssistant,
+) -> None:
+    """An overlapping submission cannot replace the active probe's address."""
+    candidate = make_credentials(uuid="cloud-uuid", product_id="prod")
+    flow, discovery = _flow(hass, [candidate])
+    scan_started = asyncio.Event()
+    finish_scan = asyncio.Event()
+    second_started = asyncio.Event()
+
+    async def scan(address: str) -> FakeDiscovery:
+        """Hold the first scan so another selection arrives before probing."""
+        assert address == discovery.address
+        scan_started.set()
+        await finish_scan.wait()
+        return discovery
+
+    async def select_second() -> Any:
+        """Submit a different address while the first scan is awaiting data."""
+        second_started.set()
+        return await flow.async_step_device({"address": "11:22:33:44:55:66"})
+
+    with (
+        patch.object(flow, "_async_scan_device", side_effect=scan) as scan_mock,
+        patch(
+            "custom_components.tuya_ble.config_flow.async_setup_registry",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "custom_components.tuya_ble.config_flow.get_mapped_dp_ids",
+            return_value=frozenset({1}),
+        ),
+        patch(
+            "custom_components.tuya_ble.config_flow.async_probe_authenticated_status",
+            new_callable=AsyncMock,
+            return_value=ProbeOutcome.MATCHED,
+        ),
+    ):
+        first = asyncio.create_task(
+            flow.async_step_device({"address": discovery.address})
+        )
+        await scan_started.wait()
+        second = asyncio.create_task(select_second())
+        await second_started.wait()
+        assert flow.unique_id == discovery.address
+        finish_scan.set()
+        results = await asyncio.gather(first, second)
+        assert all(
+            result["type"]
+            in (FlowResultType.SHOW_PROGRESS, FlowResultType.SHOW_PROGRESS_DONE)
+            for result in results
+        )
+        scan_mock.assert_awaited_once_with(discovery.address)
+        assert flow.unique_id == discovery.address
+        assert flow._probe_task is not None
+        await flow._probe_task
+        result = await flow.async_step_probe_finish()
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"]["address"] == discovery.address
+    assert flow.unique_id == discovery.address

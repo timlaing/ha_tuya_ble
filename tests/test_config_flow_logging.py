@@ -257,8 +257,7 @@ async def test_setup_address_inconclusive_probe_uses_safe_error(
         ),
         caplog.at_level(logging.DEBUG),
     ):
-        result, _error = await flow._async_setup_address(discovery.address)
-        assert result is not None
+        result = await flow.async_step_discovered_device({})
         assert result["type"] == FlowResultType.SHOW_PROGRESS
         assert flow._probe_task is not None
         await flow._probe_task

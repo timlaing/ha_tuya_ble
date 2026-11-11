@@ -77,6 +77,12 @@ ProbeClaim = tuple[object, str, float]
 _LOGGER = logging.getLogger(__name__)
 
 
+def _consume_probe_result(task: asyncio.Task[Any]) -> None:
+    """Observe probe failures without logging exception text after flow removal."""
+    if not task.cancelled():
+        task.exception()
+
+
 def _probe_state(
     hass: HomeAssistant,
 ) -> tuple[asyncio.Lock, dict[str, ProbeClaim]]:
@@ -228,6 +234,7 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         self._get_device_info_error = False
         self._probe_refresh_failed = False
         self._probe_claim_owner = object()
+        self._setup_lock = asyncio.Lock()
         self._probe_task: (
             asyncio.Task[tuple[TuyaBLEDeviceCredentials | None, str | None, str]] | None
         ) = None
@@ -238,6 +245,17 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         self._qr_user_code: str = ""
         self._qr_code: str = ""
         self._qr_login_control = LoginControl()
+
+    @callback
+    def async_remove(self) -> None:
+        """Cancel pending verification and release only this flow's device claims."""
+        if self._probe_task is not None and not self._probe_task.done():
+            self._probe_task.cancel()
+        claims = _probe_state(self.hass)[1]
+        for device_id, claim in tuple(claims.items()):
+            if claim[0] is self._probe_claim_owner:
+                claims.pop(device_id, None)
+        super().async_remove()
 
     def is_matching(self, other_flow: ConfigFlow) -> bool:
         """Return True if other_flow is matching this flow."""
@@ -351,10 +369,17 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         self, address: str
     ) -> tuple[ConfigFlowResult | None, str | None]:
         """Scan, decode, and create an entry for one BLE address."""
-        await self.async_set_unique_id(address, raise_on_progress=False)
-        self._abort_if_unique_id_configured()
+        async with self._setup_lock:
+            return await self._async_setup_address_locked(address)
+
+    async def _async_setup_address_locked(
+        self, address: str
+    ) -> tuple[ConfigFlowResult | None, str | None]:
+        """Keep the flow identity stable while setup submissions overlap."""
         if self._probe_task is not None:
             return await self.async_step_probe(), None
+        await self.async_set_unique_id(address, raise_on_progress=False)
+        self._abort_if_unique_id_configured()
         if self._manager is None:
             _LOGGER.warning(
                 "%s: cannot set up device, cloud manager is not initialised", address
@@ -406,6 +431,7 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             self._probe_task = self.hass.async_create_task(
                 self._async_probe_fallback(discovery_info, advertisement)
             )
+            self._probe_task.add_done_callback(_consume_probe_result)
             return self.async_show_progress(
                 step_id="probe",
                 progress_action="verify_device",
@@ -481,6 +507,11 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Finish entry creation, or return to the originating device form."""
+        async with self._setup_lock:
+            return await self._async_finish_probe()
+
+    async def _async_finish_probe(self) -> ConfigFlowResult:
+        """Complete verification without permitting a concurrent identity change."""
         task = self._probe_task
         discovery = self._probe_discovery
         advertisement = self._probe_advertisement
