@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog],
 and this project adheres to [Semantic Versioning].
 
+## [2.10.0-beta.1] - 2026-11-12
+
+> **Beta — for testing only.** This pre-release exists so the fix for the "unable to match cloud UUID" failures reported in #39 can be validated on real hardware before 2.10.0 ships. Install it from HACS with pre-releases enabled, test, and report back on #39.
+
+### Added
+
+- **Authenticated cloud-credential fallback when the BLE and cloud UUIDs differ** (#136): when a bound device's advertised UUID matches no cloud record, the config flow now ranks at most four complete, unused cloud candidates and probes them with a bounded, cancellable authenticated read — requiring an encrypted `DEVICE_INFO` response, an accepted PAIR, a status acknowledgement and a mapped datapoint decrypted with the session key, while refusing control, write, reset, unbind and OTA commands. Exact UUID matching remains the preferred path.
+- **Protocol 4 / FD50 Tuya BLE identity advertisement decoding** (#134): identity advertisements are decoded and used during discovery, with unsupported or malformed records (empty or non-printable UUIDs, unverified protocol 5, compressed identities) rejected instead of falling back to an alternate key, and manual discovery completing before candidate filtering.
+- **MaXpeedingRods MXR4000GT generator descriptor (`qt` / `jlblyn8z`)** (#135) and a **Battery BLE Roller descriptor (`jetlwvfm`)** (#129).
+
+### Fixed
+
+- **Discovery and setup validation for FD50 devices**: established sessions are preserved, vanished selector candidates are purged, concurrent candidate resolution no longer races setup, and deferred FD50 choices are kept without bypassing validation.
+
 ## [2.9.0] - 2026-10-30
 
 ### Added
