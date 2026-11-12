@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -21,6 +21,10 @@ from custom_components.tuya_ble.devices import (
 from custom_components.tuya_ble.tuya_ble import (
     TuyaBLEDataPointType,
     TuyaBLEDevice,
+)
+from custom_components.tuya_ble.tuya_ble.const import (
+    CHARACTERISTIC_NOTIFY,
+    CHARACTERISTIC_WRITE,
 )
 from custom_components.tuya_ble.tuya_ble.datapoints import (
     TuyaBLEDataPoints,
@@ -66,13 +70,33 @@ class FakeAdvertisementData:
             setattr(self, key, value)
 
 
+class FakeGATTServices:
+    """Stands in for bleak's BleakGATTServiceCollection characteristic lookup."""
+
+    def __init__(self, characteristics: Iterable[str]) -> None:
+        self.characteristics = {uuid.lower() for uuid in characteristics}
+        self.lookups: list[str] = []
+
+    def get_characteristic(self, specifier: str) -> object | None:
+        """Return a placeholder characteristic when the UUID is offered."""
+        self.lookups.append(specifier)
+        return object() if specifier.lower() in self.characteristics else None
+
+
 class FakeBleakClient:
     """Fake of BleakClientWithServiceCache that records writes and handlers."""
 
-    def __init__(self, is_connected: bool = True) -> None:
+    def __init__(
+        self,
+        is_connected: bool = True,
+        characteristics: Iterable[str] = (CHARACTERISTIC_NOTIFY, CHARACTERISTIC_WRITE),
+    ) -> None:
         self._is_connected = is_connected
+        self.services = FakeGATTServices(characteristics)
         self.writes: list[bytes] = []
+        self.write_targets: list[str] = []
         self.notify_handler: Callable[[str, bytearray], None] | None = None
+        self.notify_char: str | None = None
         self._notify_started = False
         self.stopped: list[str] = []
 
@@ -86,6 +110,7 @@ class FakeBleakClient:
     ) -> None:
         """Start notifications on the given characteristic."""
         self.notify_handler = handler
+        self.notify_char = gatt_char
         self._notify_started = True
 
     async def stop_notify(self, gatt_char: str) -> None:
@@ -103,6 +128,7 @@ class FakeBleakClient:
         """Write data to a GATT characteristic."""
         if self._is_connected:
             self.writes.append(bytes(data))
+            self.write_targets.append(gatt_char)
         else:
             raise OSError("not connected")
 

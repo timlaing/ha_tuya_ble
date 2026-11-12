@@ -29,6 +29,20 @@ _LOGGER = logging.getLogger(__name__)
 # (dp_id, dp_type, value length), which bounds both to this value.
 MAX_BYTE = 255
 
+# A protocol-4 DP report (0x8006/0x8007) starts with version (1), report
+# sequence number (4, big-endian), type (1) and mode (1). The timed variant
+# follows it with a timestamp, then both carry the datapoint list.
+V4_REPORT_HEADER_LENGTH = 7
+V4_REPORT_VERSION = 0
+V4_REPORT_TYPE_POS = 5
+# Bit 7 of the type byte: the device does not want the report acknowledged.
+V4_REPORT_NO_RESPONSE = 0x80
+V4_REPORT_ACK_SUCCESS = 0
+# Each v4 datapoint is dp_id (1), dp_type (1) and a 2-byte big-endian length.
+V4_DATAPOINT_HEADER_LENGTH = 4
+
+type DataPointValue = bytes | bool | int | str
+
 
 class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
     """Mixin providing packet decryption, parsing and dispatch."""
@@ -79,6 +93,57 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
         )
         return (timestamp, end_pos)
 
+    @staticmethod
+    def _datapoint_type(raw_type: int) -> TuyaBLEDataPointType:
+        """Return the datapoint type for a wire type byte, rejecting unknown ones."""
+        if raw_type > TuyaBLEDataPointType.DT_BITMAP.value:
+            raise TuyaBLEDataFormatError()
+        return TuyaBLEDataPointType(raw_type)
+
+    @staticmethod
+    def _decode_datapoint_value(
+        dp_type: TuyaBLEDataPointType, raw_value: bytes
+    ) -> DataPointValue:
+        """Decode a datapoint's raw bytes according to its type."""
+        match dp_type:
+            case TuyaBLEDataPointType.DT_RAW | TuyaBLEDataPointType.DT_BITMAP:
+                return raw_value
+            case TuyaBLEDataPointType.DT_BOOL:
+                return int.from_bytes(raw_value, "big") != 0
+            case TuyaBLEDataPointType.DT_VALUE | TuyaBLEDataPointType.DT_ENUM:
+                return int.from_bytes(raw_value, "big", signed=True)
+            case TuyaBLEDataPointType.DT_STRING:
+                return raw_value.decode()
+            case _:
+                # Defensive: _datapoint_type rejects any value larger than
+                # DT_BITMAP, so this only triggers if a new enum member is
+                # added without a matching branch here.
+                raise TuyaBLEDataFormatError()
+
+    def _update_datapoint(
+        self,
+        timestamp: float,
+        flags: int,
+        dp_id: int,
+        dp_type: TuyaBLEDataPointType,
+        raw_value: bytes,
+        value: DataPointValue,
+    ) -> TuyaBLEDataPoint:
+        """Log a received datapoint and store it."""
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            _LOGGER.debug(
+                "%s: Received DP id=%s type=%s flags=0x%02x raw=%s decoded=%s",
+                self.address,
+                dp_id,
+                dp_type.name,
+                flags,
+                raw_value.hex(),
+                value,
+            )
+        return self._datapoints.update_from_device(
+            dp_id, timestamp, flags, dp_type, value, raw_value
+        )
+
     def _parse_datapoints_v3(
         self, timestamp: float, flags: int, data: bytes, start_pos: int
     ) -> None:
@@ -89,10 +154,7 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
         while len(data) - pos >= 4:
             dp_id: int = data[pos]
             pos += 1
-            raw_type: int = data[pos]
-            if raw_type > TuyaBLEDataPointType.DT_BITMAP.value:
-                raise TuyaBLEDataFormatError()
-            dp_type: TuyaBLEDataPointType = TuyaBLEDataPointType(raw_type)
+            dp_type = self._datapoint_type(data[pos])
             pos += 1
             data_len: int = data[pos]
             pos += 1
@@ -100,40 +162,48 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
             if next_pos > len(data):
                 raise TuyaBLEDataLengthError()
             raw_value = data[pos:next_pos]
-            value: bytes | bool | int | str
-            match dp_type:
-                case TuyaBLEDataPointType.DT_RAW | TuyaBLEDataPointType.DT_BITMAP:
-                    value = raw_value
-                case TuyaBLEDataPointType.DT_BOOL:
-                    value = int.from_bytes(raw_value, "big") != 0
-                case TuyaBLEDataPointType.DT_VALUE | TuyaBLEDataPointType.DT_ENUM:
-                    value = int.from_bytes(raw_value, "big", signed=True)
-                case TuyaBLEDataPointType.DT_STRING:
-                    value = raw_value.decode()
-                case _:
-                    # Defensive: the raw_type bound above rejects any value
-                    # larger than DT_BITMAP, so this only triggers if a new
-                    # enum member is added without a matching branch here.
-                    raise TuyaBLEDataFormatError()
-
-            if _LOGGER.isEnabledFor(logging.DEBUG):
-                _LOGGER.debug(
-                    "%s: Received DP id=%s type=%s flags=0x%02x raw=%s decoded=%s",
-                    self.address,
-                    dp_id,
-                    dp_type.name,
-                    flags,
-                    raw_value.hex(),
-                    value,
-                )
+            value = self._decode_datapoint_value(dp_type, raw_value)
             datapoints.append(
-                self._datapoints.update_from_device(
-                    dp_id, timestamp, flags, dp_type, value, raw_value
+                self._update_datapoint(
+                    timestamp, flags, dp_id, dp_type, raw_value, value
                 )
             )
             pos = next_pos
 
         self._fire_callbacks(datapoints)
+
+    def _parse_datapoints_v4(
+        self, timestamp: float, data: bytes, start_pos: int
+    ) -> None:
+        """Parse a protocol-4 datapoint list and fire callbacks.
+
+        Each entry carries a 2-byte length. The list must hold at least one
+        entry and end exactly on an entry boundary. Every entry is decoded
+        before any datapoint is stored, so a malformed report changes nothing.
+        """
+        entries: list[tuple[int, TuyaBLEDataPointType, bytes, DataPointValue]] = []
+        pos = start_pos
+        while pos < len(data):
+            if len(data) - pos < V4_DATAPOINT_HEADER_LENGTH:
+                raise TuyaBLEDataLengthError()
+            dp_id = data[pos]
+            dp_type = self._datapoint_type(data[pos + 1])
+            data_len = int.from_bytes(data[pos + 2 : pos + 4], "big")
+            pos += V4_DATAPOINT_HEADER_LENGTH
+            next_pos = pos + data_len
+            if next_pos > len(data):
+                raise TuyaBLEDataLengthError()
+            raw_value = data[pos:next_pos]
+            value = self._decode_datapoint_value(dp_type, raw_value)
+            entries.append((dp_id, dp_type, raw_value, value))
+            pos = next_pos
+        if not entries:
+            raise TuyaBLEDataLengthError()
+
+        self._fire_callbacks([
+            self._update_datapoint(timestamp, 0, dp_id, dp_type, raw, value)
+            for dp_id, dp_type, raw, value in entries
+        ])
 
     def _handle_command_or_response(
         self, seq_num: int, response_to: int, code: TuyaBLECode, data: bytes
@@ -164,6 +234,10 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
                 self._handle_receive_time_dp(seq_num, data)
             case TuyaBLECode.FUN_RECEIVE_SIGN_TIME_DP:
                 self._handle_receive_sign_time_dp(seq_num, data)
+            case TuyaBLECode.FUN_RECEIVE_DP_V4:
+                self._handle_receive_dp_v4(seq_num, data)
+            case TuyaBLECode.FUN_RECEIVE_TIME_DP_V4:
+                self._handle_receive_time_dp_v4(seq_num, data)
         return result
 
     def _handle_device_info_response(self, data: bytes) -> None:
@@ -186,6 +260,16 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
             self._local_key + srand, usedforsecurity=False
         ).digest()
         self._auth_key = data[14:46]
+        _LOGGER.debug(
+            "%s: Device info: firmware %s, protocol %s, hardware %s,"
+            " flags 0x%02x, bound %s",
+            self.address,
+            self._device_version,
+            self._protocol_version_str,
+            self._hardware_version,
+            self._flags,
+            self._is_bound,
+        )
 
     def _handle_pair_response(self, data: bytes) -> int:
         """Handle FUN_SENDER_PAIR response: parse pairing status."""
@@ -290,6 +374,49 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
                 )
             )
         )
+
+    def _read_v4_report_header(self, code: TuyaBLECode, data: bytes) -> bytes:
+        """Log a protocol-4 DP report and return its validated header."""
+        _LOGGER.debug(
+            "%s: Received %s payload: %s", self.address, code.name, data.hex()
+        )
+        if len(data) < V4_REPORT_HEADER_LENGTH:
+            raise TuyaBLEDataLengthError()
+        if data[0] != V4_REPORT_VERSION:
+            raise TuyaBLEDataFormatError()
+        return data[:V4_REPORT_HEADER_LENGTH]
+
+    def _ack_v4_report(self, code: TuyaBLECode, header: bytes, seq_num: int) -> None:
+        """Acknowledge a protocol-4 DP report unless the device opted out.
+
+        The acknowledgement echoes the report header (version, sequence number,
+        type and mode) followed by a status byte; firmware ignores any other
+        length.
+        """
+        if header[V4_REPORT_TYPE_POS] & V4_REPORT_NO_RESPONSE:
+            _LOGGER.debug(
+                "%s: %s #%s needs no acknowledgement", self.address, code.name, seq_num
+            )
+            return
+        response = header + bytes((V4_REPORT_ACK_SUCCESS,))
+        self._track_send_response_task(
+            asyncio.create_task(self._send_response(code, response, seq_num))
+        )
+
+    def _handle_receive_dp_v4(self, seq_num: int, data: bytes) -> None:
+        """Handle FUN_RECEIVE_DP_V4: parse datapoints and send ack."""
+        code = TuyaBLECode.FUN_RECEIVE_DP_V4
+        header = self._read_v4_report_header(code, data)
+        self._parse_datapoints_v4(time.time(), data, V4_REPORT_HEADER_LENGTH)
+        self._ack_v4_report(code, header, seq_num)
+
+    def _handle_receive_time_dp_v4(self, seq_num: int, data: bytes) -> None:
+        """Handle FUN_RECEIVE_TIME_DP_V4: parse timestamped datapoints and ack."""
+        code = TuyaBLECode.FUN_RECEIVE_TIME_DP_V4
+        header = self._read_v4_report_header(code, data)
+        ts, dp_pos = self._parse_timestamp(data, V4_REPORT_HEADER_LENGTH)
+        self._parse_datapoints_v4(ts, data, dp_pos)
+        self._ack_v4_report(code, header, seq_num)
 
     def _resolve_expected_response(self, response_to: int, result: int) -> None:
         """Resolve or reject a pending response future."""

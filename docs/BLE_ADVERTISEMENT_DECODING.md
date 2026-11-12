@@ -59,5 +59,9 @@ guessing or fallback from FD50 to a possibly stale classic service record.
   protocol 4, not protocol 5.
 
 Tests include the supplied captured protocol-3 advertisement and synthetic
-protocol-4 vectors constructed using the firmware format. Real protocol-4
-hardware/cloud matching remains to be verified.
+protocol-4 vectors constructed using the firmware format. Discovery and cloud
+matching on real protocol-4 hardware have since been verified on one SRB-PM01;
+see [PROTOCOL_4.md](PROTOCOL_4.md#hardware-status).
+
+The connection handshake and datapoint reports that follow discovery are
+described in [PROTOCOL_4.md](PROTOCOL_4.md).

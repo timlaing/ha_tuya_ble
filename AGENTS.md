@@ -54,6 +54,7 @@ If a file falls below the threshold, add tests until it passes before committing
 | `tests/test_datapoints.py`                                                 | `TuyaBLEDataPoint`/`TuyaBLEDataPoints`                                                             |
 | `tests/test_manager.py`, `tests/test_const.py`, `tests/test_exceptions.py` | manager, consts, exceptions                                                                        |
 | `tests/test_protocol.py`                                                   | `protocol_mixin` packet/AES logic                                                                  |
+| `tests/test_protocol_v4.py`                                                | protocol 4 (FD50) handshake, characteristic choice, `0x8006`/`0x8007` reports, SDK firmware double |
 | `tests/test_base.py`                                                       | `base.IntegerTypeData`/`EnumTypeData`                                                              |
 | `tests/test_device.py`                                                     | `TuyaBLEDevice` connection/state (mocked connect flow)                                             |
 | `tests/test_connection.py`                                                 | BLE connection lifecycle, error paths, protocol edge cases                                         |

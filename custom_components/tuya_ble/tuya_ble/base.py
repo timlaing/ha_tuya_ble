@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 import hashlib
 import json
 import logging
+from struct import pack
 import time
 from typing import Any
 
@@ -24,9 +25,14 @@ from bleak_retry_connector import (
 from .advertisement import decode_tuya_ble_advertisement
 from .const import (
     CHARACTERISTIC_NOTIFY,
+    CHARACTERISTIC_NOTIFY_V4,
+    CHARACTERISTIC_WRITE,
+    CHARACTERISTIC_WRITE_V4,
+    GATT_MTU,
     INPUT_REASSEMBLY_TIMEOUT,
     MANUFACTURER_DATA_ID,
     PAIRING_REQUEST_LENGTH,
+    PROTOCOL_VERSION_V4,
     SERVICE_UUID_V4,
     DPType,
     TuyaBLECode,
@@ -90,6 +96,8 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         self._operation_lock = asyncio.Lock()
         self._connect_lock = asyncio.Lock()
         self._client: BleakClientWithServiceCache | None = None
+        self._notify_char = CHARACTERISTIC_NOTIFY
+        self._write_char = CHARACTERISTIC_WRITE
         self._expected_disconnect = False
         self._connected_callbacks: list[Callable[[], None]] = []
         self._callbacks: list[Callable[[list[TuyaBLEDataPoint]], None]] = []
@@ -514,7 +522,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             else:
                 self._client = None
                 if client and client.is_connected:
-                    await client.stop_notify(CHARACTERISTIC_NOTIFY)
+                    await client.stop_notify(self._notify_char)
                     await client.disconnect()
         async with self._seq_num_lock:
             self._current_seq_num = 1
@@ -614,6 +622,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         if client is None:
             return False
         self._client = client
+        self._refresh_fd50_identity()
         if not self._is_fingerbot_touch:
             return await self._configure_client()
         self._clean_input()
@@ -695,6 +704,60 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             return client
         return None
 
+    def _refresh_fd50_identity(self) -> None:
+        """Pick up an FD50 identity that arrived after the connect loop started.
+
+        Setup builds the device before any advertisement may have been seen,
+        and new advertisements are stored without being decoded. Without this,
+        every attempt of a connect loop that started early would run the
+        protocol-2 handshake against a protocol-4 device. Classic
+        advertisements are left alone, so protocol 2/3 behaviour is unchanged.
+        """
+        if (
+            self._advertisement_data
+            and SERVICE_UUID_V4 in self._advertisement_data.service_data
+        ):
+            self._decode_advertisement_data()
+
+    def _select_characteristics(self, client: BleakClientWithServiceCache) -> None:
+        """Choose the notify/write characteristic pair for this connection.
+
+        Protocol 2/3 devices always use the classic pair. A protocol-4 device
+        uses the SDK's FD50 pair when its GATT services offer both
+        characteristics, and the classic pair otherwise.
+        """
+        self._notify_char = CHARACTERISTIC_NOTIFY
+        self._write_char = CHARACTERISTIC_WRITE
+        if self._protocol_version != PROTOCOL_VERSION_V4:
+            return
+        services = client.services
+        if (
+            services.get_characteristic(CHARACTERISTIC_NOTIFY_V4) is not None
+            and services.get_characteristic(CHARACTERISTIC_WRITE_V4) is not None
+        ):
+            self._notify_char = CHARACTERISTIC_NOTIFY_V4
+            self._write_char = CHARACTERISTIC_WRITE_V4
+        _LOGGER.debug(
+            "%s: Using notify %s and write %s for protocol %s",
+            self.address,
+            self._notify_char,
+            self._write_char,
+            self._protocol_version,
+        )
+
+    def _build_device_info_request(self) -> bytes:
+        """Return the device info request payload for the current protocol.
+
+        The version comes from the decoded advertisement, or from byte 2 of the
+        previous device info response, which overwrites it. Protocol 4 firmware
+        disconnects unless the request carries exactly two bytes: the app's
+        preferred data length, which the device then uses to size its own
+        fragments. Earlier protocols take an empty request.
+        """
+        if self._protocol_version == PROTOCOL_VERSION_V4:
+            return pack(">H", GATT_MTU)
+        return b""
+
     async def _try_start_notifications(self) -> bool:
         """Start GATT notifications. Returns True on success."""
         client = self._client
@@ -724,12 +787,13 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             self._safe_notification_handler(sender, data)
 
         try:
+            self._select_characteristics(client)
             handler = (
                 handle_notification
                 if self._is_fingerbot_touch
                 else self._safe_notification_handler
             )
-            await client.start_notify(CHARACTERISTIC_NOTIFY, handler)
+            await client.start_notify(self._notify_char, handler)
             return True
         except BLE_CONNECTION_EXCEPTIONS as err:
             self._client = None
@@ -748,7 +812,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         try:
             if not await self._send_packet_while_connected(
                 TuyaBLECode.FUN_SENDER_DEVICE_INFO,
-                bytes(0),
+                self._build_device_info_request(),
                 0,
                 True,
             ):
