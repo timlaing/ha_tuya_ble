@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 import logging
 from typing import Any
 
@@ -13,8 +14,9 @@ from homeassistant.components.switch import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_call_later
 
 from .const import DOMAIN
 from .device_registry import EntityDescriptor, get_registry
@@ -32,6 +34,7 @@ TuyaBLESwitchIsAvailable = Callable[["TuyaBLESwitch", TuyaBLEProductInfo], bool]
 
 
 TuyaBLESwitchSetter = Callable[["TuyaBLESwitch", TuyaBLEProductInfo, bool], None] | None
+TuyaBLESwitchPulse = Callable[[TuyaBLEEntity, int], float | None]
 
 
 @dataclass
@@ -46,6 +49,7 @@ class TuyaBLESwitchMapping:
     is_available: TuyaBLESwitchIsAvailable = None
     getter: TuyaBLESwitchGetter = None
     setter: TuyaBLESwitchSetter = None
+    pulse_duration: TuyaBLESwitchPulse | None = None
 
 
 @dataclass
@@ -86,6 +90,8 @@ def _build_switch_mapping(desc: EntityDescriptor) -> TuyaBLESwitchMapping:
         kwargs["getter"] = getter
     if (setter := desc.resolved_handler("write")) is not None:
         kwargs["setter"] = setter
+    if (pulse_duration := desc.resolved_handler("pulse")) is not None:
+        kwargs["pulse_duration"] = pulse_duration
     if desc.dp_type is not None:
         kwargs["dp_type"] = TuyaBLEDataPointType(desc.dp_type)
     return TuyaBLESwitchMapping(**kwargs)
@@ -259,6 +265,95 @@ class TuyaBLESwitch(TuyaBLEEntity, SwitchEntity):
         return result
 
 
+class TuyaBLEPulseSwitch(TuyaBLESwitch):
+    """Control a channel with either a persistent switch or a timed press."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        coordinator: TuyaBLECoordinator,
+        device: TuyaBLEDevice,
+        product: TuyaBLEProductInfo,
+        switch_mapping: TuyaBLESwitchMapping,
+    ) -> None:
+        super().__init__(hass, coordinator, device, product, switch_mapping)
+        self._pulse_pending = False
+        self._cancel_reset: Callable[[], None] | None = None
+
+    def _pulse_duration(self) -> float | None:
+        pulse_duration = self._mapping.pulse_duration
+        assert pulse_duration is not None
+        return pulse_duration(self, self._mapping.dp_id)
+
+    @property
+    def is_on(self) -> bool:
+        """Read the reported switch state or the active press timer."""
+        if self._pulse_duration() is not None:
+            return self._cancel_reset is not None
+        return super().is_on
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Set the channel on or send one press and start its display timer."""
+        if not self.available:
+            return
+        duration = self._pulse_duration()
+        if duration is not None and (self._pulse_pending or self.is_on):
+            return
+        datapoint = self.device.datapoints.get_or_create(
+            self._mapping.dp_id, TuyaBLEDataPointType.DT_BOOL, False
+        )
+        if duration is None:
+            await datapoint.set_value(True)
+            return
+
+        self._pulse_pending = True
+        try:
+            # The device treats a change in either direction as a press.
+            await datapoint.set_value(not bool(datapoint.value))
+            if (
+                self._pulse_pending
+                and self.available
+                and self._pulse_duration() is not None
+            ):
+                self._cancel_reset = async_call_later(
+                    self.hass, duration, self._reset_pulse
+                )
+                self.async_write_ha_state()
+        finally:
+            self._pulse_pending = False
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn off a persistent switch. A press runs for its set duration."""
+        if self.available and self._pulse_duration() is None:
+            datapoint = self.device.datapoints.get_or_create(
+                self._mapping.dp_id, TuyaBLEDataPointType.DT_BOOL, False
+            )
+            await datapoint.set_value(False)
+
+    @callback
+    def _reset_pulse(self, _now: datetime) -> None:
+        self._cancel_reset = None
+        self.async_write_ha_state()
+
+    @callback
+    def _clear_pulse(self) -> None:
+        if self._cancel_reset is not None:
+            self._cancel_reset()
+            self._cancel_reset = None
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        if not self.available or self._pulse_duration() is None:
+            self._clear_pulse()
+        super()._handle_coordinator_update()
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Cancel the local reset when the entity is unloaded."""
+        self._pulse_pending = False
+        self._clear_pulse()
+        await super().async_will_remove_from_hass()
+
+
 async def async_setup_entry(  # noqa: S7503
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -272,8 +367,11 @@ async def async_setup_entry(  # noqa: S7503
         if switch_mapping.force_add or data.device.datapoints.has_id(
             switch_mapping.dp_id, switch_mapping.dp_type
         ):
+            entity_class = (
+                TuyaBLEPulseSwitch if switch_mapping.pulse_duration else TuyaBLESwitch
+            )
             entities.append(
-                TuyaBLESwitch(
+                entity_class(
                     hass,
                     data.coordinator,
                     data.device,

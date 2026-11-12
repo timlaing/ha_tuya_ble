@@ -29,7 +29,7 @@ from .device_descriptors.handlers import resolve_handler
 _DEVICES_DIR = Path(device_descriptors.__file__).parent
 _SKIPPED_FILES = {"_schema.yaml"}
 _CATEGORY_PREFIX = "_category_"
-_HANDLER_ROLES = {"read", "write", "when"}
+_HANDLER_ROLES = {"read", "write", "when", "pulse"}
 _SINGLE_ENTITY_PLATFORMS = {"climate", "cover", "light"}
 _INIT_LOCK_KEY = f"{DOMAIN}_registry_init_lock"
 
@@ -83,7 +83,7 @@ class EntityDescriptor:
             ) from exc
 
     def resolved_handler(self, role: str) -> Any | None:
-        """Resolve a handler role (read/write/when) to its callable."""
+        """Resolve a handler role to its callable."""
         path = self.handlers.get(role)
         if path is None:
             return None

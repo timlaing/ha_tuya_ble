@@ -89,6 +89,18 @@ class TuyaBLEProtocolSendMixin:
     def _disconnected(self, client: Any) -> None:
         """Handle disconnection."""
 
+    @property
+    def _is_fingerbot_touch(self) -> bool:
+        """Return whether Fingerbot Touch reconnect handling is enabled."""
+        return False
+
+    async def _handle_write_failure(self, client: Any) -> None:
+        """Handle a failed GATT write reported for `client`.
+
+        The default hook does nothing; devices that must release or reset the
+        failed connection override it.
+        """
+
     def _fire_callbacks(self, datapoints: list[TuyaBLEDataPoint]) -> None:
         """Notify registered callbacks of data point updates, isolating each."""
         for callback in self._callbacks:
@@ -446,21 +458,41 @@ class TuyaBLEProtocolSendMixin:
                     result = False
         finally:
             if future is not None:
-                self._input_expected_responses.pop(seq_num, None)
+                self._release_expected_response(seq_num, future)
 
         return result
+
+    def _release_expected_response(
+        self, seq_num: int, future: asyncio.Future[int]
+    ) -> None:
+        """Release an awaited response slot without losing a rejection.
+
+        A disconnect can reject the response while the write itself is still
+        in progress; retrieve that rejection even when the write raises, so
+        the future never finishes unretrieved.
+        """
+        if not self._is_fingerbot_touch:
+            self._input_expected_responses.pop(seq_num, None)
+            return
+        if self._input_expected_responses.get(seq_num) is future:
+            self._input_expected_responses.pop(seq_num)
+        if future.done() and not future.cancelled():
+            future.exception()
 
     async def _int_send_packet_while_connected(
         self,
         packets: list[bytes],
     ) -> None:
         """Send packets over GATT, retrying on transient BLE errors."""
+        client = self._client
         if self._operation_lock.locked():
             _LOGGER.warning(
                 "%s: Operation already in progress, waiting for it to complete",
                 self.address,
             )
         async with self._operation_lock:
+            if self._is_fingerbot_touch and self._client is not client:
+                raise BleakError("Connection changed before writing the packet")
             try:
                 await self._send_packets_locked(packets)
             except BleakNotFoundError:
@@ -493,6 +525,8 @@ class TuyaBLEProtocolSendMixin:
         try:
             await self._int_send_packets_locked(packets)
         except BleakDBusError as ex:
+            if self._is_fingerbot_touch:
+                raise
             # Disconnect so we can reset state and try again
             await asyncio.sleep(BLEAK_BACKOFF_TIME)
             _LOGGER.debug(
@@ -508,6 +542,8 @@ class TuyaBLEProtocolSendMixin:
                 self._schedule_reconnect()
             raise BleakError from ex
         except BleakError as ex:
+            if self._is_fingerbot_touch:
+                raise
             # Disconnect so we can reset state and try again
             _LOGGER.debug(
                 "%s: RSSI: %s; Disconnecting due to error: %s",
@@ -523,10 +559,14 @@ class TuyaBLEProtocolSendMixin:
 
     async def _int_send_packets_locked(self, packets: list[bytes]) -> None:
         """Write each packet to the GATT characteristic; raise on failure."""
+        fingerbot_touch = self._is_fingerbot_touch
+        client = self._client
         for packet in packets:
-            if self._client:
+            if not fingerbot_touch:
+                client = self._client
+            if client and client is self._client:
                 try:
-                    await self._client.write_gatt_char(
+                    await client.write_gatt_char(
                         CHARACTERISTIC_WRITE,
                         packet,
                         False,
@@ -537,8 +577,7 @@ class TuyaBLEProtocolSendMixin:
                         self.address,
                         exc_info=True,
                     )
-                    if self._client and self._client.is_connected:
-                        self._disconnected(self._client)
+                    await self._handle_write_failure(client)
                     raise BleakError() from None
             else:
                 _LOGGER.error(

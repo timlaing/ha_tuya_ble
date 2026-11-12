@@ -236,6 +236,81 @@ def test_remove_legacy_sensor_entities(hass: HomeAssistant) -> None:
     assert registry.async_get(valid_sensor.entity_id) is not None
 
 
+@pytest.mark.parametrize(
+    ("category", "product_id", "remove_retired"),
+    [("kg", "bs3ubslo", True), ("kg", "6jcvqwh0", False), ("szjqr", "bs3ubslo", False)],
+)
+async def test_setup_removes_only_retired_fingerbot_touch_controls(
+    hass: HomeAssistant, category: str, product_id: str, remove_retired: bool
+) -> None:
+    """Upgrade removes exact Touch control IDs without changing retained entries."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data()
+        | {CONF_CATEGORY: category, CONF_PRODUCT_ID: product_id},
+    )
+    entry.add_to_hass(hass)
+    other_entry = MockConfigEntry(
+        domain=DOMAIN, data=_make_entry_data("00:11:22:33:44:55")
+    )
+    other_entry.add_to_hass(hass)
+    registry = er.async_get(hass)
+    retired_keys = [
+        ("button", "push"),
+        ("number", "down_position"),
+        ("number", "hold_time"),
+        ("number", "up_position"),
+        ("number", "program_repeats_count"),
+        ("number", "program_idle_position"),
+        ("select", "fingerbot_mode"),
+        ("switch", "reverse_positions"),
+        ("switch", "manual_control"),
+        ("switch", "program"),
+        ("switch", "program_repeat_forever"),
+        ("text", "program"),
+    ]
+    retired = [
+        registry.async_get_or_create(
+            domain, DOMAIN, f"device123-{key}", config_entry=entry
+        )
+        for domain, key in retired_keys
+    ]
+    preserved = [
+        registry.async_get_or_create(domain, platform, uid, config_entry=config)
+        for domain, platform, uid, config in [
+            ("switch", DOMAIN, "device123-switch", entry),
+            ("switch", DOMAIN, "device123-switch_2", entry),
+            ("sensor", DOMAIN, "device123-battery", entry),
+            ("binary_sensor", DOMAIN, "device123-program", entry),
+            ("number", "other_integration", "device123-hold_time", entry),
+            ("number", DOMAIN, "other-device-hold_time", entry),
+            ("number", DOMAIN, "device123-unrelated", entry),
+            ("number", DOMAIN, "other-entry-hold_time", other_entry),
+        ]
+    ]
+    customized_switch = registry.async_update_entity(
+        preserved[0].entity_id,
+        name="My touch channel",
+        disabled_by=er.RegistryEntryDisabler.USER,
+    )
+    deps = _patch_deps(hass, product_info=MagicMock())
+    try:
+        with ExitStack() as stack:
+            for dependency in deps["patches"]:
+                stack.enter_context(dependency)
+            assert await async_setup_entry(hass, entry)
+            # Reloading is idempotent, including when all retired entries are gone.
+            assert await async_setup_entry(hass, entry)
+        for entity in retired:
+            assert (registry.async_get(entity.entity_id) is None) is remove_retired
+        for entity in preserved:
+            assert registry.async_get(entity.entity_id) is not None
+        assert registry.async_get(customized_switch.entity_id) == customized_switch
+    finally:
+        _close_background_tasks(deps)
+        await hass.async_stop()
+
+
 def test_unique_id_adopt_legacy(hass: HomeAssistant) -> None:
     """Entity adopts an existing legacy unique_id when one is found in the registry."""
     data = _make_entry_data()
