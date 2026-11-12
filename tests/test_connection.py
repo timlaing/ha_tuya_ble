@@ -8,6 +8,7 @@ from contextlib import suppress
 import gc
 import logging
 from struct import pack
+from typing import cast
 from unittest.mock import AsyncMock, patch
 
 from bleak.exc import BleakDBusError, BleakError
@@ -1162,7 +1163,7 @@ async def test_status_recovers_when_old_client_repeats_notification_fragments(
 
     async def send_packet(code: TuyaBLECode, *_args: object) -> bool:
         if code is TuyaBLECode.FUN_SENDER_DEVICE_INFO:
-            if dev._client is failed_client:
+            if cast(object, dev._client) is failed_client:
                 return False
             assert not failed_client.is_connected
             assert failed_client.notify_handler is not None
@@ -1305,7 +1306,7 @@ async def test_fingerbot_touch_write_failure_keeps_new_client(
             del write
             gc.collect()
             assert not errors
-            assert dev._client is new_client
+            assert cast(object, dev._client) is new_client
             assert dev._is_ready()
             assert not new_client.writes
             reconnect.assert_called_once_with()
@@ -1433,5 +1434,5 @@ async def test_waiting_write_handles_client_replacement_by_product(
         await write
         assert replacement_client.writes == [packet]
     assert not previous_client.writes
-    assert dev._client is replacement_client
+    assert cast(object, dev._client) is replacement_client
     assert replacement_client.is_connected

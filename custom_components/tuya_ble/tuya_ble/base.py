@@ -704,15 +704,16 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             if self._client is not client or self._expected_disconnect:
                 return
             now = time.monotonic()
+            notification = bytes(data)
             # A packet 0 outside reassembly may be a complete message that needs an ACK.
             if (
                 data
                 and (data[0] != 0 or self._input_expected_packet_num > 0)
-                and data == last_notification
+                and notification == last_notification
                 and now - last_notification_at <= INPUT_REASSEMBLY_TIMEOUT
             ):
                 return
-            last_notification = bytes(data)
+            last_notification = notification
             last_notification_at = now
             self._safe_notification_handler(sender, data)
 

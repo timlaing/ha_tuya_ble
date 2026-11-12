@@ -5,12 +5,17 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
+from unittest.mock import AsyncMock, Mock, patch
 
 from homeassistant.components.switch import SwitchEntityDescription
 from homeassistant.core import HomeAssistant
+import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.tuya_ble import switch
+from custom_components.tuya_ble.const import DOMAIN
 from custom_components.tuya_ble.device_descriptors.handlers.fingerbot.mode import (
     in_program_mode as is_fingerbot_in_program_mode,
 )
@@ -29,6 +34,7 @@ from custom_components.tuya_ble.device_descriptors.handlers.water_valve import (
 )
 from custom_components.tuya_ble.devices import (
     TuyaBLECoordinator,
+    TuyaBLEData,
     TuyaBLEProductInfo,
 )
 from custom_components.tuya_ble.switch import TuyaBLESwitch
@@ -139,6 +145,172 @@ async def test_turn_off_bool(hass: HomeAssistant) -> None:
     dp = device.datapoints[1]
     assert dp is not None
     assert dp.value is False
+
+
+@pytest.fixture(name="touch_switches")
+async def fixture_touch_switches(
+    hass: HomeAssistant,
+) -> list[switch.TuyaBLEPulseSwitch]:
+    """Build both channel switches through the normal platform setup path."""
+    device, coordinator, product = build_context(hass)
+    device._device_info = make_credentials(category="kg", product_id="bs3ubslo")
+    entry = MockConfigEntry(domain=DOMAIN)
+    hass.data[DOMAIN] = {
+        entry.entry_id: TuyaBLEData("Touch", device, product, Mock(), coordinator)
+    }
+    add_entities = Mock()
+    await switch.async_setup_entry(hass, entry, add_entities)
+    channels = [
+        entity
+        for entity in add_entities.call_args.args[0]
+        if isinstance(entity, switch.TuyaBLEPulseSwitch)
+    ]
+    assert len(channels) == 2
+    for channel in channels:
+        channel.hass = hass
+    await connect(coordinator)
+    return channels
+
+
+@pytest.mark.parametrize(("channel", "duration_ms"), [(1, 300), (2, 2000)])
+async def test_touch_push_sends_once_then_resets_only_ha(
+    touch_switches: list[switch.TuyaBLEPulseSwitch], channel: int, duration_ms: int
+) -> None:
+    """A press changes one datapoint once, including when a request is repeated."""
+    entity = touch_switches[channel - 1]
+    device = entity.device
+    add_dp(device, 100 + channel, TuyaBLEDataPointType.DT_ENUM, 0)
+    add_dp(device, 102 + channel, TuyaBLEDataPointType.DT_VALUE, duration_ms)
+    add_dp(device, channel, TuyaBLEDataPointType.DT_BOOL, True)
+    datapoint = device.datapoints[channel]
+    assert datapoint is not None
+    assert entity.available
+    assert not entity.is_on
+    with (
+        patch.object(device, "send_datapoints", new_callable=AsyncMock) as send,
+        patch.object(entity, "async_write_ha_state") as write_state,
+        patch.object(switch, "async_call_later") as schedule,
+    ):
+        await entity.async_turn_on()
+        assert entity.is_on
+        assert not touch_switches[2 - channel].is_on
+        entity._handle_coordinator_update()
+        assert entity.is_on
+        assert datapoint.value is False
+        send.assert_awaited_once_with([channel])
+        schedule.assert_called_once_with(
+            entity.hass, duration_ms / 1000, entity._reset_pulse
+        )
+        await entity.async_turn_on()
+        await entity.async_turn_off()
+        assert entity.is_on
+        schedule.call_args.args[2](None)
+        assert not entity.is_on
+        assert datapoint.value is False
+        send.assert_awaited_once_with([channel])
+        assert write_state.call_count == 3
+
+        await entity.async_turn_on()
+        assert datapoint.value is True
+        assert send.await_count == 2
+        await entity.async_will_remove_from_hass()
+        schedule.return_value.assert_called_once()
+
+
+async def test_touch_switch_uses_reported_state_and_blocks_program(
+    touch_switches: list[switch.TuyaBLEPulseSwitch],
+) -> None:
+    """Switch mode writes physical ON and OFF; Program gates both actions."""
+    entity = touch_switches[0]
+    device = entity.device
+    add_dp(device, 101, TuyaBLEDataPointType.DT_ENUM, 1)
+    with patch.object(device, "send_datapoints", new_callable=AsyncMock) as send:
+        await entity.async_turn_on()
+        assert entity.is_on
+        await entity.async_turn_off()
+        assert not entity.is_on
+        assert send.await_count == 2
+
+        add_dp(device, 101, TuyaBLEDataPointType.DT_ENUM, 2)
+        assert not entity.available
+        await entity.async_turn_on()
+        await entity.async_turn_off()
+        assert send.await_count == 2
+
+
+async def test_touch_push_retry_after_failed_send(
+    hass: HomeAssistant, touch_switches: list[switch.TuyaBLEPulseSwitch]
+) -> None:
+    """A failed or pending write cannot start another press or leave HA on."""
+    entity = touch_switches[0]
+    device = entity.device
+    add_dp(device, 101, TuyaBLEDataPointType.DT_ENUM, 0)
+    started = asyncio.Event()
+    finish = asyncio.Event()
+
+    async def fail_send(_datapoints: list[int]) -> None:
+        started.set()
+        await finish.wait()
+        raise ValueError("write failed")
+
+    with (
+        patch.object(device, "send_datapoints", side_effect=fail_send) as send,
+        patch.object(entity, "async_write_ha_state"),
+        patch.object(switch, "async_call_later") as schedule,
+    ):
+        first = hass.async_create_task(entity.async_turn_on())
+        await started.wait()
+        await entity.async_turn_on()
+        finish.set()
+        with pytest.raises(ValueError, match="write failed"):
+            await first
+        send.assert_awaited_once()
+        assert not entity.is_on
+        schedule.assert_not_called()
+
+        send.side_effect = None
+        await entity.async_turn_on()
+        assert entity.is_on
+        schedule.assert_called_once_with(hass, 0.1, entity._reset_pulse)
+
+        add_dp(device, 101, TuyaBLEDataPointType.DT_ENUM, 1)
+        entity._handle_coordinator_update()
+        schedule.return_value.assert_called_once()
+        assert entity.is_on  # Switch mode reads the last reported DP value.
+
+
+@pytest.mark.parametrize("change_mode", [False, True])
+async def test_touch_push_does_not_start_timer_after_unload_or_mode_change(
+    hass: HomeAssistant,
+    touch_switches: list[switch.TuyaBLEPulseSwitch],
+    change_mode: bool,
+) -> None:
+    """A press finishing after a mode change or unload cannot start a timer."""
+    entity = touch_switches[0]
+    device = entity.device
+    add_dp(device, 101, TuyaBLEDataPointType.DT_ENUM, 0)
+    started = asyncio.Event()
+    finish = asyncio.Event()
+
+    async def send_press(_datapoints: list[int]) -> None:
+        started.set()
+        await finish.wait()
+
+    with (
+        patch.object(device, "send_datapoints", side_effect=send_press),
+        patch.object(entity, "async_write_ha_state"),
+        patch.object(switch, "async_call_later") as schedule,
+    ):
+        task = hass.async_create_task(entity.async_turn_on())
+        await started.wait()
+        if change_mode:
+            add_dp(device, 101, TuyaBLEDataPointType.DT_ENUM, 1)
+            entity._handle_coordinator_update()
+        else:
+            await entity.async_will_remove_from_hass()
+        finish.set()
+        await task
+        schedule.assert_not_called()
 
 
 async def test_turn_on_setter(hass: HomeAssistant) -> None:

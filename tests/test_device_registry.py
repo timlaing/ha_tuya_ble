@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -633,24 +634,121 @@ _KG_FINGERBOT_PLUS_MAPPING: dict[str, list[tuple[int, str, str | None]]] = {
 _KG_DOWN_POSITION_FLOOR = 50
 
 
-def test_fingerbot_touch_exposes_two_switches_and_battery() -> None:
-    """Map both touch pads without a mode gate and report battery percentage."""
+def test_fingerbot_touch_exposes_channels_settings_and_battery() -> None:
+    """Map both channels, their settings, and the battery percentage."""
     product = get_registry().get("kg", "bs3ubslo")
     assert product is not None
     assert product.device_name == "Fingerbot Touch"
-    assert product.entities.keys() == {"sensor", "switch"}
+    assert product.entities.keys() == {"number", "select", "sensor", "switch"}
+    assert not product.get("button")
+    modes = product.get("select")
+    assert [(desc.dp_id, desc.translation_key) for desc in modes] == [
+        (101, "fingerbot_mode_1"),
+        (102, "fingerbot_mode_2"),
+    ]
+    assert all(desc.options == ["Push", "Switch", "Program"] for desc in modes)
+    assert all(desc.entity_category == "config" for desc in modes)
     switches = product.get("switch")
     assert [(desc.dp_id, desc.translation_key) for desc in switches] == [
         (1, "switch"),
         (2, "switch_2"),
+        (105, "touch_switch_1"),
+        (106, "touch_switch_2"),
+        (107, "switch_invert_1"),
+        (108, "switch_invert_2"),
     ]
-    assert all(desc.resolved_handler("when") is None for desc in switches)
+    assert all(desc.resolved_handler("when") is None for desc in switches[2:])
+    assert all(desc.entity_category == "config" for desc in switches[2:])
+    assert all(desc.icon == "mdi:gesture-tap" for desc in switches[:2])
+    numbers = product.get("number")
+    assert [(desc.dp_id, desc.translation_key) for desc in numbers] == [
+        (103, "touch_duration_1"),
+        (104, "touch_duration_2"),
+        (117, "touch_off_duration_1"),
+        (118, "touch_off_duration_2"),
+        (119, "double_tap_interval_1"),
+        (120, "double_tap_interval_2"),
+    ]
+    assert all(desc.entity_category == "config" for desc in numbers)
+    config_entities = [*modes, *switches[2:], *numbers]
+    assert [
+        desc.translation_key
+        for desc in sorted(config_entities, key=lambda desc: desc.name or "")
+    ] == [
+        f"{key}_{channel}"
+        for channel in (1, 2)
+        for key in (
+            "fingerbot_mode",
+            "double_tap_interval",
+            "switch_invert",
+            "touch_duration",
+            "touch_off_duration",
+            "touch_switch",
+        )
+    ]
+    for duration in numbers[:4]:
+        assert duration.unit == "s"
+        assert duration.coefficient == 1000.0
+        assert (duration.min_value, duration.max_value, duration.step) == (0.1, 10, 0.1)
+    for interval in numbers[4:]:
+        assert interval.unit == "ms"
+        assert interval.coefficient == 1.0
+        assert (interval.min_value, interval.max_value, interval.step) == (0, 100, 1)
     (battery,) = product.get("sensor")
     assert battery.dp_id == 115
     assert battery.translation_key == "battery"
     assert battery.device_class == "battery"
     assert battery.unit == "%"
-    assert dr.get_mapped_dp_ids("kg", "bs3ubslo") == frozenset({1, 2, 115})
+    assert dr.get_mapped_dp_ids("kg", "bs3ubslo") == frozenset({
+        1,
+        2,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        115,
+        117,
+        118,
+        119,
+        120,
+    })
+
+
+@pytest.mark.parametrize(
+    "modes",
+    [(0, 1), (1, 0), (2, 0), (None, 2)],
+)
+def test_fingerbot_touch_actions_and_off_duration_follow_channel_mode(
+    modes: tuple[int | None, int | None],
+) -> None:
+    """Check Push and Switch availability independently for both channels."""
+    product = get_registry().get("kg", "bs3ubslo")
+    assert product is not None
+    datapoints = {
+        dp_id: SimpleNamespace(value=value) if value is not None else None
+        for dp_id, value in zip((101, 102, 103, 104), (*modes, 300, 2000), strict=True)
+    }
+    entity = SimpleNamespace(device=SimpleNamespace(datapoints=datapoints))
+    switches = product.get("switch")[:2]
+    off_durations = product.get("number")[2:4]
+    for switch_desc, duration_desc, mode, seconds in zip(
+        switches, off_durations, modes, (0.3, 2.0), strict=True
+    ):
+        switch_available = switch_desc.resolved_handler("when")
+        off_duration_available = duration_desc.resolved_handler("when")
+        pulse_duration = switch_desc.resolved_handler("pulse")
+        assert switch_available is not None
+        assert off_duration_available is not None
+        assert pulse_duration is not None
+        assert switch_available(entity, product) is (mode in (0, 1))
+        assert off_duration_available(entity, product) is (mode == 1)
+        assert pulse_duration(entity, switch_desc.dp_id) == (
+            seconds if mode == 0 else None
+        )
 
 
 @pytest.mark.parametrize("product_id", _KG_FINGERBOT_PLUS)

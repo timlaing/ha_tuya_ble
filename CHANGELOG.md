@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog],
 and this project adheres to [Semantic Versioning].
 
+## [Unreleased]
+
+### Fixed
+
+- **Fingerbot Touch (`kg` / `bs3ubslo`)** (#137, fixes #132). Expose both channels and battery percentage, and clean up obsolete Fingerbot Plus controls for this product. Each channel has one switch that sends ON/OFF in Switch mode or triggers one press in Push mode. In Push mode, Home Assistant returns the switch to OFF after the configured touch duration. Per-channel settings include mode, touch duration, double-tap interval, touch input, inversion, and a separate OFF duration in Switch mode. The integration preserves existing channel switch IDs and improves BLE reconnect handling for this model.
+
 ## [2.9.0] - 2026-10-30
 
 ### Added

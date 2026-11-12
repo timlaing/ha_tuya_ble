@@ -13,7 +13,7 @@ Programming (series of actions) is implemented for Fingerbot Plus. Exposed entit
 ## Fingerbot Plus / Switch Robot (category_id `kg`)
 
 - **Fingerbot Plus** (product_ids `mknd4lci`, `riecov42`, `6jcvqwh0`): uses kg DP IDs.
-- **Fingerbot Touch** (product_id `bs3ubslo`): two independent capacitive touch channels and a battery percentage sensor. Each switch write triggers one touch on that channel.
+- **Fingerbot Touch** (product_id `bs3ubslo`): two independent capacitive touch channels, each controlled by one switch. In **Switch** mode, the switch sends ON and OFF to the device. In **Push** mode, ON sends one press and Home Assistant returns the switch to OFF after the configured touch duration. Each channel has its own mode, touch duration, double-tap interval, touch input, and switch inversion settings. OFF touch duration is available in Switch mode. The device reports battery percentage.
 - **Switch Robot** (product_id `4ctjfrzq`).
 
 ## Temperature and humidity sensors (category_id `wsdcg`)
