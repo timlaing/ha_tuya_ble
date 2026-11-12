@@ -40,6 +40,7 @@ from .protocol_mixin import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+_FINGERBOT_TOUCH_DISCONNECT_TIMEOUT = 5.0
 
 global_connect_lock = asyncio.Lock()
 
@@ -466,8 +467,15 @@ class TuyaBLEDevice(TuyaBLEProtocol):
 
     def _disconnected(self, client: BleakClientWithServiceCache) -> None:
         """Handle BLE disconnection: fire callbacks and reconnect."""
+        fingerbot_touch = self._is_fingerbot_touch
+        if fingerbot_touch and self._client is not client:
+            return
         was_paired = self._is_paired
         self._is_paired = False
+        if fingerbot_touch:
+            self._client = None
+            self._clean_input()
+            self._cancel_pending_responses()
         self._fire_disconnected_callbacks()
         if self._expected_disconnect:
             _LOGGER.debug(
@@ -496,12 +504,57 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         self._cancel_pending_responses()
         async with self._connect_lock:
             client = self._client
-            self._client = None
-            if client and client.is_connected:
-                await client.stop_notify(CHARACTERISTIC_NOTIFY)
-                await client.disconnect()
+            if self._is_fingerbot_touch and client is not None:
+                try:
+                    await self._close_fingerbot_touch_client(client)
+                finally:
+                    self._disconnected(client)
+            else:
+                self._client = None
+                if client and client.is_connected:
+                    await client.stop_notify(CHARACTERISTIC_NOTIFY)
+                    await client.disconnect()
         async with self._seq_num_lock:
             self._current_seq_num = 1
+
+    @property
+    def _is_fingerbot_touch(self) -> bool:
+        """Return whether this device needs the Fingerbot Touch reconnect fix."""
+        return self.category == "kg" and self.product_id == "bs3ubslo"
+
+    async def _close_fingerbot_touch_client(
+        self, client: BleakClientWithServiceCache
+    ) -> None:
+        """Release the client and its notifications even if the caller is cancelled."""
+        if not client.is_connected:
+            return
+
+        async def disconnect() -> None:
+            try:
+                # Bleak stops notifications when the connection is closed.
+                async with asyncio.timeout(_FINGERBOT_TOUCH_DISCONNECT_TIMEOUT):
+                    await client.disconnect()
+            except (TimeoutError, *BLE_CONNECTION_EXCEPTIONS):
+                _LOGGER.debug(
+                    "%s: BLE client cleanup failed", self.address, exc_info=True
+                )
+
+        task = asyncio.create_task(disconnect())
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            await asyncio.shield(task)
+            raise
+
+    async def _handle_write_failure(self, client: BleakClientWithServiceCache) -> None:
+        """For Fingerbot Touch, close only the client whose write failed."""
+        if not self._is_fingerbot_touch:
+            await super()._handle_write_failure(client)
+        elif self._client is client:
+            try:
+                await self._close_fingerbot_touch_client(client)
+            finally:
+                self._disconnected(client)
 
     def _cancel_pending_responses(self) -> None:
         """Fail every awaited response so no sender waits for its full timeout."""
@@ -553,6 +606,30 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         if client is None:
             return False
         self._client = client
+        if not self._is_fingerbot_touch:
+            return await self._configure_client()
+        self._clean_input()
+        configured = False
+        try:
+            configured = (
+                not self._expected_disconnect
+                and await self._configure_client()
+                and not self._expected_disconnect
+                and self._client is client
+                and client.is_connected
+            )
+            return configured
+        finally:
+            if not configured:
+                if self._client is None or self._client is client:
+                    self._client = None
+                    self._is_paired = False
+                    self._clean_input()
+                    self._cancel_pending_responses()
+                await self._close_fingerbot_touch_client(client)
+
+    async def _configure_client(self) -> bool:
+        """Subscribe to notifications and complete the BLE handshake."""
         return (
             await self._try_start_notifications()
             and await self._try_send_device_info()
@@ -612,12 +689,22 @@ class TuyaBLEDevice(TuyaBLEProtocol):
 
     async def _try_start_notifications(self) -> bool:
         """Start GATT notifications. Returns True on success."""
-        if not self._client or not self._client.is_connected:
+        client = self._client
+        if client is None or not client.is_connected:
             return False
+
+        def handle_notification(sender: Any, data: bytearray) -> None:
+            # A backend can still deliver notifications queued by a previous client.
+            if self._client is client and not self._expected_disconnect:
+                self._safe_notification_handler(sender, data)
+
         try:
-            await self._client.start_notify(
-                CHARACTERISTIC_NOTIFY, self._safe_notification_handler
+            handler = (
+                handle_notification
+                if self._is_fingerbot_touch
+                else self._safe_notification_handler
             )
+            await client.start_notify(CHARACTERISTIC_NOTIFY, handler)
             return True
         except BLE_CONNECTION_EXCEPTIONS as err:
             self._client = None
