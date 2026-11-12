@@ -95,9 +95,11 @@ class TuyaBLEProtocolSendMixin:
         return False
 
     async def _handle_write_failure(self, client: Any) -> None:
-        """Handle a GATT write failure."""
-        if self._client and self._client.is_connected:
-            self._disconnected(self._client)
+        """Handle a failed GATT write reported for `client`.
+
+        The default hook does nothing; devices that must release or reset the
+        failed connection override it.
+        """
 
     def _fire_callbacks(self, datapoints: list[TuyaBLEDataPoint]) -> None:
         """Notify registered callbacks of data point updates, isolating each."""
@@ -456,17 +458,26 @@ class TuyaBLEProtocolSendMixin:
                     result = False
         finally:
             if future is not None:
-                if not self._is_fingerbot_touch:
-                    self._input_expected_responses.pop(seq_num, None)
-                else:
-                    if self._input_expected_responses.get(seq_num) is future:
-                        self._input_expected_responses.pop(seq_num)
-                    # A disconnect can reject the response while the write itself
-                    # is still in progress. Retrieve it even when the write raises.
-                    if future.done() and not future.cancelled():
-                        future.exception()
+                self._release_expected_response(seq_num, future)
 
         return result
+
+    def _release_expected_response(
+        self, seq_num: int, future: asyncio.Future[int]
+    ) -> None:
+        """Release an awaited response slot without losing a rejection.
+
+        A disconnect can reject the response while the write itself is still
+        in progress; retrieve that rejection even when the write raises, so
+        the future never finishes unretrieved.
+        """
+        if not self._is_fingerbot_touch:
+            self._input_expected_responses.pop(seq_num, None)
+            return
+        if self._input_expected_responses.get(seq_num) is future:
+            self._input_expected_responses.pop(seq_num)
+        if future.done() and not future.cancelled():
+            future.exception()
 
     async def _int_send_packet_while_connected(
         self,

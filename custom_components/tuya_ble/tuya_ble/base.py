@@ -549,9 +549,15 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             raise
 
     async def _handle_write_failure(self, client: BleakClientWithServiceCache) -> None:
-        """For Fingerbot Touch, close only the client whose write failed."""
+        """Handle a failed GATT write for this device.
+
+        Fingerbot Touch closes only the client whose write failed so a
+        replacement link is left alone; other devices keep the original
+        behavior of treating a failed write on a live link as a disconnect.
+        """
         if not self._is_fingerbot_touch:
-            await super()._handle_write_failure(client)
+            if self._client and self._client.is_connected:
+                self._disconnected(self._client)
         elif self._client is client:
             try:
                 await self._close_fingerbot_touch_client(client)
