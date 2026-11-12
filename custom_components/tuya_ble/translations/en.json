@@ -145,6 +145,24 @@
       }
     },
     "sensor": {
+      "generator_voltage": {
+        "name": "Voltage"
+      },
+      "generator_frequency": {
+        "name": "Frequency"
+      },
+      "generator_power": {
+        "name": "Power"
+      },
+      "generator_fuel_level": {
+        "name": "Fuel level"
+      },
+      "generator_session_runtime": {
+        "name": "Current run time"
+      },
+      "generator_total_runtime": {
+        "name": "Total run time"
+      },
       "alarm_lock": {
         "name": "Alarm"
       },
@@ -245,6 +263,12 @@
       }
     },
     "switch": {
+      "generator_engine": {
+        "name": "Engine"
+      },
+      "generator_eco_mode": {
+        "name": "Eco mode"
+      },
       "antifreeze": {
         "name": "Antifreeze"
       },
