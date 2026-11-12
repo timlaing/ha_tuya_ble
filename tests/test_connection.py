@@ -1343,3 +1343,95 @@ async def test_fingerbot_touch_closes_client_on_cancellation(
             await attempt
     assert dev._client is None
     assert not client.is_connected
+
+
+async def test_fingerbot_touch_closes_current_client_on_write_failure(
+    fingerbot_touch: TuyaBLEDevice,
+) -> None:
+    """A failed write releases the current link and schedules one reconnect."""
+    dev = fingerbot_touch
+    client = FakeBleakClient()
+    dev._client = client  # type: ignore[assignment]
+    dev._is_paired = True
+    disconnected: list[bool] = []
+    dev.register_disconnected_callback(lambda: disconnected.append(True))
+
+    with (
+        patch.object(client, "write_gatt_char", side_effect=BleakError("write failed")),
+        patch.object(dev, "_schedule_reconnect") as reconnect,
+        patch.object(dev, "_schedule_resend") as resend,
+        pytest.raises(BleakError),
+    ):
+        await dev._send_packet_while_connected(
+            TuyaBLECode.FUN_SENDER_DEVICE_INFO, b"", 0, True
+        )
+
+    assert not client.is_connected
+    assert dev._client is None
+    assert not dev._is_ready()
+    assert disconnected == [True]
+    reconnect.assert_called_once_with()
+    resend.assert_not_called()
+
+
+async def test_fingerbot_touch_logs_error_closing_failed_client(
+    fingerbot_touch: TuyaBLEDevice, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A backend disconnect error must not retain the failed client in the device."""
+    dev = fingerbot_touch
+    client = FakeBleakClient()
+    with (
+        patch.object(dev, "_try_establish_connection", return_value=client),
+        patch.object(dev, "_try_send_device_info", return_value=False),
+        patch.object(
+            client, "disconnect", side_effect=BleakError("cleanup failed")
+        ) as disconnect,
+        caplog.at_level(
+            logging.DEBUG, logger="custom_components.tuya_ble.tuya_ble.base"
+        ),
+    ):
+        assert not await dev._try_connect_and_configure()
+
+    disconnect.assert_awaited_once_with()
+    assert dev._client is None
+    assert not dev._is_ready()
+    assert "BLE client cleanup failed" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("category", "product_id", "reject_stale_write"),
+    [("kg", "bs3ubslo", True), ("kg", "6jcvqwh0", False), ("wk", "bs3ubslo", False)],
+)
+async def test_waiting_write_handles_client_replacement_by_product(
+    category: str, product_id: str, reject_stale_write: bool
+) -> None:
+    """Only Fingerbot Touch rejects a queued write when its client changes."""
+    credentials = make_credentials(category=category, product_id=product_id)
+    dev = make_device(manager=FakeBLEManager(credentials))
+    dev.initialize_with_credentials(credentials)
+    previous_client = FakeBleakClient()
+    replacement_client = FakeBleakClient()
+    dev._client = previous_client  # type: ignore[assignment]
+    packet = b"test packet"
+    sending = asyncio.Event()
+
+    async def send() -> None:
+        sending.set()
+        await dev._int_send_packet_while_connected([packet])
+
+    async with dev._operation_lock:
+        write = asyncio.create_task(send())
+        await sending.wait()
+        assert not write.done()
+        dev._client = replacement_client  # type: ignore[assignment]
+
+    if reject_stale_write:
+        with pytest.raises(BleakError, match="Connection changed"):
+            await write
+        assert not replacement_client.writes
+    else:
+        await write
+        assert replacement_client.writes == [packet]
+    assert not previous_client.writes
+    assert dev._client is replacement_client
+    assert replacement_client.is_connected
