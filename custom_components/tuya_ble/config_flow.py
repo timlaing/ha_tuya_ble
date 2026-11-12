@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Mapping
 import logging
+import time
 from typing import Any
 
 from homeassistant.components import bluetooth
@@ -20,14 +21,18 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.data_entry_flow import AbortFlow
 from homeassistant.helpers import selector
 import probatio
 from tuya_sharing import LoginControl
 
 from .cloud import HASSTuyaBLEDeviceManager
 from .const import (
+    CONF_ADVERTISED_UUID,
     CONF_CATEGORY,
     CONF_CLOUD_INFO,
+    CONF_CLOUD_UUID,
+    CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
     CONF_ENDPOINT,
     CONF_FUNCTIONS,
@@ -50,18 +55,41 @@ from .const import (
     TUYA_RESPONSE_SUCCESS,
     TUYA_SCHEMA,
 )
+from .device_registry import async_setup_registry, get_mapped_dp_ids
 from .tuya_ble import (
     MANUFACTURER_DATA_ID,
     SERVICE_UUID,
     SERVICE_UUID_V4,
     SERVICE_UUIDS,
+    ProbeOutcome,
+    TuyaBLEAdvertisementInfo,
+    TuyaBLEDeviceCredentials,
+    async_probe_authenticated_status,
     decode_tuya_ble_advertisement,
 )
 
 UNKNOWN_ERROR = "Unknown error"
 ACTIVE_SCAN_TIMEOUT = 60
+PROBE_MAX_CANDIDATES = 4
+PROBE_CLAIM_TTL = 120
+_PROBE_STATE = f"{DOMAIN}_probe_state"
+ProbeClaim = tuple[object, str, float]
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _consume_probe_result(task: asyncio.Task[Any]) -> None:
+    """Observe probe failures without logging exception text after flow removal."""
+    if not task.cancelled():
+        task.exception()
+
+
+def _probe_state(
+    hass: HomeAssistant,
+) -> tuple[asyncio.Lock, dict[str, ProbeClaim]]:
+    """Serialise probes and reserve matched cloud IDs until entry creation or TTL."""
+    state = hass.data.setdefault(_PROBE_STATE, {"lock": asyncio.Lock(), "claims": {}})
+    return state["lock"], state["claims"]
 
 
 def _advertisement_hex(discovery_info: BluetoothServiceInfoBleak) -> str:
@@ -107,6 +135,7 @@ class _QRCodeLoginMixin:
     async def _async_qr_login_store_and_advance(
         self, login_info: dict[str, Any]
     ) -> ConfigFlowResult:
+        """Require subclasses to persist login data and choose the next step."""
         raise NotImplementedError
 
     def _qr_code_form(
@@ -204,9 +233,32 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         self._data: dict[str, Any] = {}
         self._manager: HASSTuyaBLEDeviceManager | None = None
         self._get_device_info_error = False
+        self._probe_refresh_failed = False
+        self._probe_claim_owner = object()
+        self._setup_lock = asyncio.Lock()
+        self._flow_removed = False
+        self._probe_task: (
+            asyncio.Task[tuple[TuyaBLEDeviceCredentials | None, str | None, str]] | None
+        ) = None
+        self._probe_discovery: BluetoothServiceInfoBleak | None = None
+        self._probe_advertisement: TuyaBLEAdvertisementInfo | None = None
+        self._probe_source_step = "device"
+        self._probe_error: str | None = None
         self._qr_user_code: str = ""
         self._qr_code: str = ""
         self._qr_login_control = LoginControl()
+
+    @callback
+    def async_remove(self) -> None:
+        """Cancel pending verification and release only this flow's device claims."""
+        self._flow_removed = True
+        if self._probe_task is not None and not self._probe_task.done():
+            self._probe_task.cancel()
+        claims = _probe_state(self.hass)[1]
+        for device_id, claim in tuple(claims.items()):
+            if claim[0] is self._probe_claim_owner:
+                claims.pop(device_id, None)
+        super().async_remove()
 
     def is_matching(self, other_flow: ConfigFlow) -> bool:
         """Return True if other_flow is matching this flow."""
@@ -320,7 +372,24 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         self, address: str
     ) -> tuple[ConfigFlowResult | None, str | None]:
         """Scan, decode, and create an entry for one BLE address."""
+        async with self._setup_lock:
+            return await self._async_setup_address_locked(address)
+
+    @callback
+    def _abort_if_flow_removed(self) -> None:
+        """Stop an executing setup step once Home Assistant removes its flow."""
+        if self._flow_removed:
+            raise AbortFlow("unknown")
+
+    async def _async_setup_address_locked(
+        self, address: str
+    ) -> tuple[ConfigFlowResult | None, str | None]:
+        """Keep the flow identity stable while setup submissions overlap."""
+        self._abort_if_flow_removed()
+        if self._probe_task is not None:
+            return await self.async_step_probe(), None
         await self.async_set_unique_id(address, raise_on_progress=False)
+        self._abort_if_flow_removed()
         self._abort_if_unique_id_configured()
         if self._manager is None:
             _LOGGER.warning(
@@ -329,6 +398,7 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             return self.async_abort(reason="unknown"), None
 
         discovery_info = await self._async_scan_device(address)
+        self._abort_if_flow_removed()
         if discovery_info is None:
             _LOGGER.debug("%s: bluetooth_scan_failed", address)
             return None, "bluetooth_scan_failed"
@@ -342,26 +412,67 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             )
             return None, "identity_not_decoded"
 
-        credentials = await self._manager.get_device_credentials_by_uuid(
-            advertisement.uuid,
-            force_update=self._get_device_info_error,
-        )
-        if credentials is None:
-            _LOGGER.warning(
-                "%s: device_not_registered, no cloud credentials for uuid %s "
-                "(force_update: %s)",
-                address,
+        refresh_failed = False
+        try:
+            credentials = await self._manager.get_device_credentials_by_uuid(
                 advertisement.uuid,
-                self._get_device_info_error,
+                force_update=self._get_device_info_error,
             )
+            self._abort_if_flow_removed()
+            if credentials is None and not self._get_device_info_error:
+                credentials = await self._manager.get_device_credentials_by_uuid(
+                    advertisement.uuid, force_update=True
+                )
+        except AbortFlow:
+            raise
+        except Exception:  # pylint: disable=broad-exception-caught
+            # A cached candidate may still pass a genuine authenticated read.
+            # Do not log SDK exceptions: they can contain cloud credentials.
+            _LOGGER.warning("%s: Tuya cloud refresh failed", address)
+            credentials = None
+            refresh_failed = True
+        self._abort_if_flow_removed()
+        pairing_uuid: str | None = None
+        if credentials is None:
             self._get_device_info_error = True
-            return None, "device_not_registered"
+            self._probe_refresh_failed = refresh_failed
+            self._probe_discovery = discovery_info
+            self._probe_advertisement = advertisement
+            self._probe_source_step = (
+                "discovered_device"
+                if self.discovery_info is not None
+                and self.discovery_info.address == address
+                else "device"
+            )
+            self._probe_task = self.hass.async_create_task(
+                self._async_probe_fallback(discovery_info, advertisement)
+            )
+            self._probe_task.add_done_callback(_consume_probe_result)
+            return self.async_show_progress(
+                step_id="probe",
+                progress_action="verify_device",
+                progress_task=self._probe_task,
+            ), None
 
+        return self._create_device_entry(
+            discovery_info, advertisement, credentials, pairing_uuid
+        ), None
+
+    def _create_device_entry(
+        self,
+        discovery_info: BluetoothServiceInfoBleak,
+        advertisement: TuyaBLEAdvertisementInfo,
+        credentials: TuyaBLEDeviceCredentials,
+        pairing_uuid: str | None,
+    ) -> ConfigFlowResult:
+        """Persist both original identities and the verified BLE pairing UUID."""
         entry_data: dict[str, Any] = {
-            CONF_ADDRESS: address,
-            CONF_UUID: credentials.uuid,
+            CONF_ADDRESS: discovery_info.address,
+            CONF_UUID: pairing_uuid or credentials.uuid,
+            CONF_CLOUD_UUID: credentials.uuid,
+            CONF_ADVERTISED_UUID: advertisement.uuid,
             CONF_LOCAL_KEY: credentials.local_key,
-            "device_id": credentials.device_id,
+            CONF_DEVICE_ID: credentials.device_id,
             CONF_CATEGORY: credentials.category,
             CONF_PRODUCT_ID: credentials.product_id,
             CONF_DEVICE_NAME: credentials.device_name,
@@ -374,18 +485,174 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         }
         _LOGGER.debug(
             "%s: config entry created (category: %s, product_id: %s, device_name: %s)",
-            address,
+            discovery_info.address,
             credentials.category,
             credentials.product_id,
             credentials.device_name,
         )
-        return (
-            self.async_create_entry(
-                title=credentials.device_name or discovery_info.name or address,
+        try:
+            result = self.async_create_entry(
+                title=credentials.device_name
+                or discovery_info.name
+                or discovery_info.address,
                 data=entry_data,
-            ),
-            None,
+            )
+        except Exception:
+            if pairing_uuid is not None:
+                claims = _probe_state(self.hass)[1]
+                claim = claims.get(credentials.device_id)
+                if claim is not None and claim[0] is self._probe_claim_owner:
+                    claims.pop(credentials.device_id, None)
+            raise
+        return result
+
+    async def async_step_probe(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show progress while testing bound cloud candidates over Bluetooth."""
+        task = self._probe_task
+        if task is None:
+            return self.async_abort(reason="unknown")
+        if not task.done():
+            return self.async_show_progress(
+                step_id="probe", progress_action="verify_device", progress_task=task
+            )
+        return self.async_show_progress_done(next_step_id="probe_finish")
+
+    async def async_step_probe_finish(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Finish entry creation, or return to the originating device form."""
+        async with self._setup_lock:
+            return await self._async_finish_probe()
+
+    async def _async_finish_probe(self) -> ConfigFlowResult:
+        """Complete verification without permitting a concurrent identity change."""
+        task = self._probe_task
+        discovery = self._probe_discovery
+        advertisement = self._probe_advertisement
+        if (
+            task is None
+            or discovery is None
+            or advertisement is None
+            or not task.done()
+        ):
+            return self.async_abort(reason="unknown")
+        self._probe_task = None
+        self._probe_discovery = None
+        self._probe_advertisement = None
+        if task.cancelled():
+            credentials, pairing_uuid, error = None, None, "bluetooth_probe_failed"
+        else:
+            try:
+                credentials, pairing_uuid, error = task.result()
+            except Exception:  # pylint: disable=broad-exception-caught
+                _LOGGER.debug("Cloud credential verification failed")
+                credentials, pairing_uuid, error = None, None, "probe_setup_failed"
+        if credentials is not None and pairing_uuid is not None:
+            result = self._create_verified_entry(
+                discovery, advertisement, credentials, pairing_uuid
+            )
+            if result is not None:
+                return result
+            error = "device_verification_expired"
+        elif error == "device_not_registered" and self._probe_refresh_failed:
+            error = "cloud_refresh_failed"
+        self._probe_error = error
+        if self._probe_source_step == "discovered_device":
+            return await self.async_step_discovered_device()
+        return await self.async_step_device()
+
+    def _create_verified_entry(
+        self,
+        discovery: BluetoothServiceInfoBleak,
+        advertisement: TuyaBLEAdvertisementInfo,
+        credentials: TuyaBLEDeviceCredentials,
+        pairing_uuid: str,
+    ) -> ConfigFlowResult | None:
+        """Atomically validate ownership and create an entry on the event loop."""
+        # No awaits: claim validation and entry creation cannot interleave with
+        # another flow, and need not wait behind an unrelated Bluetooth probe.
+        claims = _probe_state(self.hass)[1]
+        claim = claims.get(credentials.device_id)
+        still_owned = (
+            claim is not None
+            and claim[0] is self._probe_claim_owner
+            and claim[1] == discovery.address
+            and claim[2] > time.monotonic()
+            and not any(
+                entry.data.get(CONF_DEVICE_ID) == credentials.device_id
+                for entry in self.hass.config_entries.async_entries(DOMAIN)
+            )
         )
+        if still_owned:
+            return self._create_device_entry(
+                discovery, advertisement, credentials, pairing_uuid
+            )
+        if claim is not None and claim[0] is self._probe_claim_owner:
+            claims.pop(credentials.device_id, None)
+        return None
+
+    async def _async_probe_fallback(
+        self,
+        discovery_info: BluetoothServiceInfoBleak,
+        advertisement: TuyaBLEAdvertisementInfo,
+    ) -> tuple[TuyaBLEDeviceCredentials | None, str | None, str]:
+        """Use only an authenticated read to associate a cloud record with BLE."""
+        if not advertisement.is_bound:
+            return None, None, "device_not_registered"
+        manager = self._manager
+        if manager is None:
+            return None, None, "device_not_registered"
+        await async_setup_registry(self.hass)
+        lock, claims = _probe_state(self.hass)
+        async with lock:
+            count, candidates = await manager.get_probe_candidates(
+                advertisement.uuid, advertisement.product_id
+            )
+            for device_id, (_, _, expires) in tuple(claims.items()):
+                if expires < time.monotonic():
+                    claims.pop(device_id, None)
+            if count > PROBE_MAX_CANDIDATES:
+                return None, None, "too_many_candidates"
+            for credentials in candidates:
+                if credentials.device_id in claims:
+                    continue
+                outcome, pairing_uuid = await self._async_probe_cloud_candidate(
+                    discovery_info, advertisement, credentials
+                )
+                if outcome == ProbeOutcome.MATCHED and pairing_uuid is not None:
+                    claims[credentials.device_id] = (
+                        self._probe_claim_owner,
+                        discovery_info.address,
+                        time.monotonic() + PROBE_CLAIM_TTL,
+                    )
+                    return credentials, pairing_uuid, ""
+                if outcome == ProbeOutcome.INCONCLUSIVE:
+                    return None, None, "bluetooth_probe_failed"
+            return None, None, "device_not_registered"
+
+    @staticmethod
+    async def _async_probe_cloud_candidate(
+        discovery_info: BluetoothServiceInfoBleak,
+        advertisement: TuyaBLEAdvertisementInfo,
+        credentials: TuyaBLEDeviceCredentials,
+    ) -> tuple[ProbeOutcome | None, str | None]:
+        """Try the cloud UUID only after a conclusive advertised-UUID rejection."""
+        expected = get_mapped_dp_ids(credentials.category, credentials.product_id)
+        if not expected:
+            return None, None
+        for uuid in (advertisement.uuid, credentials.uuid):
+            outcome = await async_probe_authenticated_status(
+                discovery_info.device,
+                discovery_info.advertisement,
+                credentials,
+                uuid,
+                expected,
+            )
+            if outcome != ProbeOutcome.REJECTED:
+                return outcome, uuid
+        return ProbeOutcome.REJECTED, None
 
     async def async_step_discovered_device(
         self, user_input: dict[str, Any] | None = None
@@ -395,6 +662,8 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             return self.async_abort(reason="unknown")
 
         errors: dict[str, str] = {}
+        if self._probe_error is not None:
+            errors["base"], self._probe_error = self._probe_error, None
         if user_input is not None:
             result, error = await self._async_setup_address(self.discovery_info.address)
             if result is not None:
@@ -417,6 +686,8 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle the user step to pick discovered device."""
         errors: dict[str, str] = {}
+        if self._probe_error is not None:
+            errors["base"], self._probe_error = self._probe_error, None
 
         if user_input is not None:
             address = user_input[CONF_ADDRESS]

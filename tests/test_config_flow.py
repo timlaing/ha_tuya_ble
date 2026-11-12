@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 import hashlib
 from typing import Any, cast
 from unittest.mock import AsyncMock, patch
@@ -20,8 +21,10 @@ from custom_components.tuya_ble.config_flow import (
     TuyaBLEOptionsFlow,
 )
 from custom_components.tuya_ble.const import (
+    CONF_ADVERTISED_UUID,
     CONF_CATEGORY,
     CONF_CLOUD_INFO,
+    CONF_CLOUD_UUID,
     CONF_DEVICE_NAME,
     CONF_LOCAL_SCHEMA,
     CONF_PRODUCT_ID,
@@ -95,6 +98,12 @@ class FakeManager:
         """Return the fake credentials and record the call."""
         self.calls.append((uuid, force_update))
         return self.credentials
+
+    async def get_probe_candidates(
+        self, advertised_uuid: str, product_id: str | None
+    ) -> tuple[int, Iterator[TuyaBLEDeviceCredentials]]:
+        """An unmatched test account has no fallback candidates by default."""
+        return 0, iter(())
 
 
 class FakeDiscovery:
@@ -447,6 +456,8 @@ async def test_async_step_device_setup(hass: HomeAssistant) -> None:
         result = await flow.async_step_device(user_input={CONF_ADDRESS: d.address})
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["title"] == "Device"
+    assert result["data"][CONF_ADVERTISED_UUID] == "1234567890abcdef"
+    assert result["data"][CONF_CLOUD_UUID] == "1234567890abcdef"
     assert manager.calls == [("1234567890abcdef", False)]
 
 
@@ -467,6 +478,13 @@ async def test_async_step_device_no_credentials(hass: HomeAssistant) -> None:
         patch.object(flow, "_async_scan_device", return_value=d),
     ):
         result = await flow.async_step_device(user_input={CONF_ADDRESS: d.address})
+        assert result["type"] == FlowResultType.SHOW_PROGRESS
+        assert flow._probe_task is not None
+        await flow._probe_task
+        assert (await flow.async_step_probe())[
+            "type"
+        ] == FlowResultType.SHOW_PROGRESS_DONE
+        result = await flow.async_step_probe_finish()
     assert result["type"] == FlowResultType.FORM
     assert result["errors"]["base"] == "device_not_registered"  # type: ignore[index]
     assert flow._get_device_info_error is True

@@ -29,8 +29,10 @@ from .cloud import (
     filter_cloud_info,
 )
 from .const import (
+    CONF_ADVERTISED_UUID,
     CONF_CATEGORY,
     CONF_CLOUD_INFO,
+    CONF_CLOUD_UUID,
     CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
     CONF_ENDPOINT,
@@ -57,10 +59,10 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 # The BLE local key is the only secret needed to talk to the device, and the
-# token set is enough to act on the user's cloud account. `uuid` and `device_id`
-# stay in the clear: they identify the device but cannot reach it, and without
-# them a diagnostics download cannot be matched to a report. The network and
-# owner identifiers are the fields the raw cloud payload used to leak through
+# token set is enough to act on the user's cloud account. Both BLE and cloud
+# UUIDs and `device_id` stay in the clear: they identify the device but cannot
+# reach it, and without them diagnostics cannot be matched to a report. The
+# network and owner identifiers are the fields the raw cloud payload leaked through
 # `cloud_info`; they stay redacted across the whole payload even though the
 # capture is allowlisted now.
 _TO_REDACT = frozenset({
@@ -244,9 +246,9 @@ async def _async_diagnostics(
 
     category = entry.data[CONF_CATEGORY]
     product_id = entry.data[CONF_PRODUCT_ID]
-    uuid = entry.data[CONF_UUID]
+    cloud_uuid = entry.data.get(CONF_CLOUD_UUID, entry.data[CONF_UUID])
 
-    cloud_device = await _async_refresh_cloud_device(hass, entry, uuid)
+    cloud_device = await _async_refresh_cloud_device(hass, entry, cloud_uuid)
     schema, schema_source = _select_schema(cloud_device, entry)
     # Fresh captures are already allowlisted; stored snapshots may predate it,
     # so they are filtered down on export as well.
@@ -295,7 +297,9 @@ async def _async_diagnostics(
         "descriptor": _descriptor_section(category, product_id),
         "identity": {
             "address": entry.data.get(CONF_ADDRESS),
-            "uuid": uuid,
+            "uuid": entry.data[CONF_UUID],
+            CONF_ADVERTISED_UUID: entry.data.get(CONF_ADVERTISED_UUID),
+            CONF_CLOUD_UUID: entry.data.get(CONF_CLOUD_UUID),
             "device_id": entry.data.get(CONF_DEVICE_ID),
             "category": category,
             "product_id": product_id,
