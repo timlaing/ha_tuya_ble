@@ -8,14 +8,19 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
-from unittest.mock import patch
+from typing import Any, cast
+from unittest.mock import AsyncMock, patch
 
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 import pytest
 
 from custom_components.tuya_ble.const import CONF_USER_CODE
-from custom_components.tuya_ble.tuya_ble import SERVICE_UUID, TuyaBLEDeviceCredentials
+from custom_components.tuya_ble.tuya_ble import (
+    SERVICE_UUID,
+    ProbeOutcome,
+    TuyaBLEDeviceCredentials,
+)
 from custom_components.tuya_ble.tuya_ble.const import MANUFACTURER_DATA_ID
 from tests.conftest import FakeAdvertisementData
 from tests.test_config_flow import (
@@ -212,25 +217,59 @@ async def test_setup_address_undecodable_identity_is_logged(
     assert "manufacturer_data" in caplog.text
 
 
-async def test_setup_address_unregistered_device_is_warned(
+async def test_setup_address_inconclusive_probe_uses_safe_error(
     hass: HomeAssistant, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A device missing from the cloud account is a warning, with the force flag."""
+    """An inconclusive probe returns a safe error without logging credentials."""
     flow = build_flow(hass)
-    flow._manager = FakeManager(credentials=None)  # type: ignore[assignment]
+    credentials = TuyaBLEDeviceCredentials(
+        uuid="cloud-uuid",
+        local_key="secret-local-key-0123456789",
+        device_id="device-id-secret",
+        category="wk",
+        product_id="prod",
+        product_model="Model",
+        product_name="Product",
+        device_name="Device",
+    )
+    manager = FakeManager(credentials=credentials)
+    flow._manager = manager  # type: ignore[assignment]
+    manager.get_device_credentials_by_uuid = AsyncMock(  # type: ignore[method-assign]
+        return_value=None
+    )
+    manager.get_probe_candidates = AsyncMock(  # type: ignore[method-assign]
+        return_value=(1, iter([credentials]))
+    )
     discovery = captured_irrigation_discovery()
+    discovery.device = object()  # type: ignore[attr-defined]
+    flow.discovery_info = cast(Any, discovery)
     with (
         patch.object(flow, "_async_scan_device", return_value=discovery),
+        patch.object(flow, "_async_refresh_discovered_devices", new_callable=AsyncMock),
+        patch(
+            "custom_components.tuya_ble.config_flow.async_probe_authenticated_status",
+            new_callable=AsyncMock,
+            return_value=ProbeOutcome.INCONCLUSIVE,
+        ) as probe,
+        patch(
+            "custom_components.tuya_ble.config_flow.get_mapped_dp_ids",
+            return_value=frozenset({1}),
+        ),
         caplog.at_level(logging.DEBUG),
     ):
-        _result, error = await flow._async_setup_address(discovery.address)
-    assert error == "device_not_registered"
-    assert any(
-        "DC:23:4D:CD:E0:34: device_not_registered" in message
-        and "0237f144b99142e6" in message
-        and "force_update: False" in message
-        for message in _warnings(caplog)
-    )
+        result = await flow.async_step_discovered_device({})
+        assert result["type"] == FlowResultType.SHOW_PROGRESS
+        assert flow._probe_task is not None
+        await flow._probe_task
+        await flow.async_step_probe()
+        result = await flow.async_step_probe_finish()
+    probe.assert_awaited_once()
+    assert probe.await_args is not None
+    assert probe.await_args.args[2] is credentials
+    assert result["errors"] is not None
+    assert result["errors"]["base"] == "bluetooth_probe_failed"
+    assert "secret-local-key-0123456789" not in caplog.text
+    assert "device-id-secret" not in caplog.text
 
 
 async def test_setup_address_entry_created_is_logged(

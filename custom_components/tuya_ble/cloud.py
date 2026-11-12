@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 import logging
 from typing import Any
 
@@ -12,10 +12,12 @@ from homeassistant.util import dt as dt_util
 from tuya_sharing import CustomerDevice, Manager, SharingTokenListener
 
 from .const import (
+    CONF_DEVICE_ID,
     CONF_ENDPOINT,
     CONF_TERMINAL_ID,
     CONF_TOKEN_INFO,
     CONF_USER_CODE,
+    DOMAIN,
     TUYA_CLIENT_ID,
 )
 from .tuya_ble import TuyaBLEDeviceCredentials
@@ -23,10 +25,34 @@ from .tuya_ble import TuyaBLEDeviceCredentials
 _LOGGER = logging.getLogger(__name__)
 
 
+def _is_probe_candidate(
+    device: CustomerDevice, advertised_uuid: str, configured: set[str | None]
+) -> bool:
+    """Allow only complete, unclaimed BLE cloud records with frame-safe IDs.
+
+    A product/name resemblance is never proof: filtering only bounds the set
+    that the encrypted read-only authentication probe may attempt.
+    """
+    if getattr(device, "uuid", None) == advertised_uuid:
+        return False
+    if getattr(device, "id", None) in configured:
+        return False
+    fields = ("uuid", "local_key", "id", "category", "product_id")
+    if not all(
+        isinstance(getattr(device, field, None), str) and getattr(device, field)
+        for field in fields
+    ):
+        return False
+    return (
+        len(device.local_key) >= 6 and len(device.uuid) <= 16 and len(device.id) <= 20
+    )
+
+
 class TokenRefreshListener(SharingTokenListener):  # type: ignore[misc]
     """Persist refreshed tokens back to config entry data."""
 
     def __init__(self, hass: HomeAssistant, data: dict[str, Any]) -> None:
+        """Retain the Home Assistant instance and mutable token storage."""
         self._hass = hass
         self._data = data
 
@@ -40,6 +66,7 @@ class HASSTuyaBLEDeviceManager:
     """Cloud connected manager of the Tuya BLE devices credentials."""
 
     def __init__(self, hass: HomeAssistant, data: dict[str, Any]) -> None:
+        """Store cloud login data without starting an SDK connection."""
         if hass is None:
             raise ValueError("hass must not be None")
         self._hass = hass
@@ -100,6 +127,32 @@ class HASSTuyaBLEDeviceManager:
 
         _LOGGER.debug("Retrieved credentials for Tuya UUID %s", uuid)
         return _build_credentials(device)
+
+    async def get_probe_candidates(
+        self, advertised_uuid: str, product_id: str | None
+    ) -> tuple[int, Iterator[TuyaBLEDeviceCredentials]]:
+        """Count eligible records and lazily build credentials in sorted order.
+
+        The caller checks the count against its safety cap before consuming the
+        iterator, so an oversized cloud account builds no probe credentials.
+        """
+        if self._manager is None:
+            await self.initialize()
+        if self._manager is None:
+            raise ConfigEntryNotReady("Failed to initialize Tuya cloud manager")
+        configured = {
+            entry.data.get(CONF_DEVICE_ID)
+            for entry in self._hass.config_entries.async_entries(DOMAIN)
+        }
+        candidates = sorted(
+            (
+                device
+                for device in self._manager.device_map.values()
+                if _is_probe_candidate(device, advertised_uuid, configured)
+            ),
+            key=lambda device: (device.product_id != product_id, device.id),
+        )
+        return len(candidates), (_build_credentials(device) for device in candidates)
 
     @property
     def data(self) -> dict[str, Any]:
