@@ -137,6 +137,24 @@
       }
     },
     "sensor": {
+      "generator_voltage": {
+        "name": "Voltage"
+      },
+      "generator_frequency": {
+        "name": "Frequency"
+      },
+      "generator_power": {
+        "name": "Power"
+      },
+      "generator_fuel_level": {
+        "name": "Fuel level"
+      },
+      "generator_session_runtime": {
+        "name": "Current run time"
+      },
+      "generator_total_runtime": {
+        "name": "Total run time"
+      },
       "battery": {
         "name": "[%key:component::sensor::entity_component::battery::name%]"
       },
@@ -237,6 +255,12 @@
       }
     },
     "switch": {
+      "generator_engine": {
+        "name": "Engine"
+      },
+      "generator_eco_mode": {
+        "name": "Eco mode"
+      },
       "programming_mode": {
         "name": "Programming Mode"
       },

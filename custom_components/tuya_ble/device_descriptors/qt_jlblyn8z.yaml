@@ -1,0 +1,44 @@
+category: qt
+product_id: jlblyn8z
+device_name: MaXpeedingRods MXR4000GT Generator
+model_name: MXR4000GT
+manufacturer: MaXpeedingRods
+entities:
+  switch:
+    - dp_id: 101
+      translation_key: generator_engine
+      icon: mdi:engine
+    - dp_id: 108
+      translation_key: generator_eco_mode
+      icon: mdi:leaf
+  sensor:
+    - dp_id: 110
+      translation_key: generator_voltage
+      device_class: voltage
+      unit: V
+      state_class: measurement
+    - dp_id: 111
+      translation_key: generator_frequency
+      device_class: frequency
+      unit: Hz
+      state_class: measurement
+    - dp_id: 104
+      translation_key: generator_power
+      device_class: power
+      unit: W
+      state_class: measurement
+    - dp_id: 102
+      translation_key: generator_fuel_level
+      icon: mdi:gas-station
+      unit: "%"
+      state_class: measurement
+    - dp_id: 103
+      translation_key: generator_session_runtime
+      device_class: duration
+      unit: min
+      state_class: measurement
+    - dp_id: 105
+      translation_key: generator_total_runtime
+      device_class: duration
+      unit: min
+      state_class: total_increasing

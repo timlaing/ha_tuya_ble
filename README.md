@@ -178,6 +178,7 @@ The integration supports a broad range of Tuya BLE devices across the following 
 | Ceiling lights (`xdd`)                   | Globo WiFi/BLE CCT ceiling light                                          |
 | Blinds & curtains (`cl`)                 | Blind/curtain controllers, venetian blind motors                          |
 | Plant sensors (`zwjcy`)                  | Soil moisture / plant sensors                                             |
+| Generators (`qt`)                        | MaXpeedingRods MXR4000GT inverter generator                               |
 
 Category codes are Tuya's, and several of them do not mean what their name suggests — `kg` is
 "Switch" and holds Fingerbot Plus, `znhsb` is "Smart glass" but the product is a water bottle.
