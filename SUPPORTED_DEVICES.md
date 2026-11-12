@@ -142,3 +142,7 @@ reference, including every category this integration does not use, is in
   that can never move. No robot is supported yet.
 - **`znhsb` officially means "Smart glass,"** although the `cdlandip` product listed above is a
   smart water bottle. There is no glass device to compare it to, so the name is not a guide.
+
+## Generators (category_id `qt`)
+
+- **MaXpeedingRods MXR4000GT** (product_id `jlblyn8z`): engine start/stop, eco mode, output voltage, frequency and power, fuel level, current and total run time.
