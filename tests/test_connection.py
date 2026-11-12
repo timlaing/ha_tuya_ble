@@ -1191,6 +1191,54 @@ async def test_status_recovers_when_old_client_repeats_notification_fragments(
     await dev.stop()
 
 
+async def test_fingerbot_touch_accepts_a_fragmented_reply_with_duplicates(
+    fingerbot_touch: TuyaBLEDevice, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Repeated fragments on one BLE client must not break the handshake reply."""
+    dev = fingerbot_touch
+    client = FakeBleakClient()
+    dev._client = client  # type: ignore[assignment]
+    assert await dev._try_start_notifications()
+    notify = client.notify_handler
+    assert notify is not None
+    login_key = dev._login_key
+    assert login_key is not None
+    response = frame_packet0(
+        encrypt_payload(
+            login_key,
+            4,
+            1,
+            dev._current_seq_num,
+            TuyaBLECode.FUN_SENDER_DEVICE_INFO,
+            device_info_data(),
+        )
+    )
+    fragments = [response[:20]]
+    for packet_num, offset in enumerate(range(20, len(response), 19), start=1):
+        fragments.append(pack_varint(packet_num) + response[offset : offset + 19])
+
+    async def deliver_response(_packets: list[bytes]) -> None:
+        for fragment in fragments:
+            notify(CHARACTERISTIC_NOTIFY, bytearray(fragment))
+            notify(CHARACTERISTIC_NOTIFY, bytearray(fragment))
+
+    with (
+        patch.object(
+            dev, "_int_send_packet_while_connected", side_effect=deliver_response
+        ),
+        patch(
+            "custom_components.tuya_ble.tuya_ble.protocol_send.RESPONSE_WAIT_TIMEOUT",
+            0.05,
+        ),
+    ):
+        assert await dev._try_send_device_info()
+
+    assert dev._auth_key == b"B" * 32
+    assert "Unexpected packet" not in caplog.text
+    assert "Missing packet" not in caplog.text
+    await dev.stop()
+
+
 @pytest.mark.parametrize(
     ("category", "product_id"), [("kg", "6jcvqwh0"), ("wk", "bs3ubslo")]
 )

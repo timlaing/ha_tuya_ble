@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 import hashlib
 import json
 import logging
+import time
 from typing import Any
 
 from bleak.backends.device import BLEDevice
@@ -23,6 +24,7 @@ from bleak_retry_connector import (
 from .advertisement import decode_tuya_ble_advertisement
 from .const import (
     CHARACTERISTIC_NOTIFY,
+    INPUT_REASSEMBLY_TIMEOUT,
     MANUFACTURER_DATA_ID,
     PAIRING_REQUEST_LENGTH,
     SERVICE_UUID_V4,
@@ -693,10 +695,26 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         if client is None or not client.is_connected:
             return False
 
+        last_notification: bytes | None = None
+        last_notification_at = 0.0
+
         def handle_notification(sender: Any, data: bytearray) -> None:
+            nonlocal last_notification, last_notification_at
             # A backend can still deliver notifications queued by a previous client.
-            if self._client is client and not self._expected_disconnect:
-                self._safe_notification_handler(sender, data)
+            if self._client is not client or self._expected_disconnect:
+                return
+            now = time.monotonic()
+            # A packet 0 outside reassembly may be a complete message that needs an ACK.
+            if (
+                data
+                and (data[0] != 0 or self._input_expected_packet_num > 0)
+                and data == last_notification
+                and now - last_notification_at <= INPUT_REASSEMBLY_TIMEOUT
+            ):
+                return
+            last_notification = bytes(data)
+            last_notification_at = now
+            self._safe_notification_handler(sender, data)
 
         try:
             handler = (
