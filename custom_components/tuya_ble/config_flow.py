@@ -21,6 +21,7 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.data_entry_flow import AbortFlow
 from homeassistant.helpers import selector
 import probatio
 from tuya_sharing import LoginControl
@@ -235,6 +236,7 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         self._probe_refresh_failed = False
         self._probe_claim_owner = object()
         self._setup_lock = asyncio.Lock()
+        self._flow_removed = False
         self._probe_task: (
             asyncio.Task[tuple[TuyaBLEDeviceCredentials | None, str | None, str]] | None
         ) = None
@@ -249,6 +251,7 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
     @callback
     def async_remove(self) -> None:
         """Cancel pending verification and release only this flow's device claims."""
+        self._flow_removed = True
         if self._probe_task is not None and not self._probe_task.done():
             self._probe_task.cancel()
         claims = _probe_state(self.hass)[1]
@@ -372,13 +375,21 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         async with self._setup_lock:
             return await self._async_setup_address_locked(address)
 
+    @callback
+    def _abort_if_flow_removed(self) -> None:
+        """Stop an executing setup step once Home Assistant removes its flow."""
+        if self._flow_removed:
+            raise AbortFlow("unknown")
+
     async def _async_setup_address_locked(
         self, address: str
     ) -> tuple[ConfigFlowResult | None, str | None]:
         """Keep the flow identity stable while setup submissions overlap."""
+        self._abort_if_flow_removed()
         if self._probe_task is not None:
             return await self.async_step_probe(), None
         await self.async_set_unique_id(address, raise_on_progress=False)
+        self._abort_if_flow_removed()
         self._abort_if_unique_id_configured()
         if self._manager is None:
             _LOGGER.warning(
@@ -387,6 +398,7 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             return self.async_abort(reason="unknown"), None
 
         discovery_info = await self._async_scan_device(address)
+        self._abort_if_flow_removed()
         if discovery_info is None:
             _LOGGER.debug("%s: bluetooth_scan_failed", address)
             return None, "bluetooth_scan_failed"
@@ -406,16 +418,20 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
                 advertisement.uuid,
                 force_update=self._get_device_info_error,
             )
+            self._abort_if_flow_removed()
             if credentials is None and not self._get_device_info_error:
                 credentials = await self._manager.get_device_credentials_by_uuid(
                     advertisement.uuid, force_update=True
                 )
+        except AbortFlow:
+            raise
         except Exception:  # pylint: disable=broad-exception-caught
             # A cached candidate may still pass a genuine authenticated read.
             # Do not log SDK exceptions: they can contain cloud credentials.
             _LOGGER.warning("%s: Tuya cloud refresh failed", address)
             credentials = None
             refresh_failed = True
+        self._abort_if_flow_removed()
         pairing_uuid: str | None = None
         if credentials is None:
             self._get_device_info_error = True

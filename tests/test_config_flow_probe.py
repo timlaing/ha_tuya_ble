@@ -5,7 +5,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import Awaitable, Callable, Iterator
+from dataclasses import dataclass, field
 import gc
 import logging
 import time
@@ -13,7 +14,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.data_entry_flow import AbortFlow, FlowResultType
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -42,6 +43,52 @@ class CandidateManager(FakeManager):
         self, advertised_uuid: str, product_id: str | None
     ) -> tuple[int, Iterator[TuyaBLEDeviceCredentials]]:
         return len(self.candidates), iter(self.candidates)
+
+
+@dataclass
+class RemovalSetupGate:
+    """Pause one setup await while allowing its result to outlive flow removal."""
+
+    stage: str
+    discovery: FakeDiscovery
+    candidate: TuyaBLEDeviceCredentials
+    original_set_unique_id: Callable[..., Awaitable[Any]]
+    matched: bool
+    lookup_fails: bool
+    started: asyncio.Event = field(default_factory=asyncio.Event)
+    resume: asyncio.Event = field(default_factory=asyncio.Event)
+    lookup_calls: int = 0
+
+    async def pause_at(self, current_stage: str) -> None:
+        """Hold the selected setup await until the flow has been removed."""
+        if current_stage == self.stage:
+            self.started.set()
+            await self.resume.wait()
+
+    async def set_unique_id(self, address: str, *, raise_on_progress: bool) -> None:
+        """Preserve normal identity setup before pausing its completion."""
+        await self.original_set_unique_id(address, raise_on_progress=raise_on_progress)
+        await self.pause_at("unique_id")
+
+    async def scan(self, _address: str) -> FakeDiscovery:
+        """Return discovery data even if the pending scan outlives removal."""
+        await self.pause_at("scan")
+        return self.discovery
+
+    async def lookup_credentials(
+        self, _uuid: str, *, force_update: bool = False
+    ) -> TuyaBLEDeviceCredentials | None:
+        """Let cached and forced lookups finish after their flow is removed."""
+        self.lookup_calls += 1
+        assert force_update is (self.lookup_calls == 2)
+        current_stage = "cached_lookup" if self.lookup_calls == 1 else "forced_lookup"
+        await self.pause_at(current_stage)
+        if current_stage == self.stage:
+            if self.lookup_fails:
+                raise OSError("private-lookup-failure")
+            if self.matched:
+                return self.candidate
+        return None
 
 
 def _flow(
@@ -330,8 +377,7 @@ async def test_cancelled_progress_returns_safe_retry_form(hass: HomeAssistant) -
         patch.object(flow, "_async_scan_device", return_value=discovery),
         patch.object(flow, "_async_refresh_discovered_devices", new_callable=AsyncMock),
     ):
-        progress, _ = await flow._async_setup_address(discovery.address)
-        assert progress is not None
+        progress = await flow.async_step_device({"address": discovery.address})
         assert progress["type"] == FlowResultType.SHOW_PROGRESS
         await started.wait()
         task = flow._probe_task
@@ -390,8 +436,7 @@ async def test_progress_exception_has_no_secret_in_error(
         ),
         caplog.at_level(logging.DEBUG),
     ):
-        progress, _ = await flow._async_setup_address(discovery.address)
-        assert progress is not None
+        progress = await flow.async_step_device({"address": discovery.address})
         assert progress["type"] == FlowResultType.SHOW_PROGRESS
         assert flow._probe_task is not None
         with pytest.raises(RuntimeError):
@@ -722,3 +767,69 @@ async def test_verified_flow_finishes_while_other_probe_holds_lock(
             assert lock.locked()
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_DEVICE_ID] == candidate.device_id
+
+
+@pytest.mark.parametrize(
+    ("stage", "matched", "lookup_fails"),
+    [
+        ("before_setup", False, False),
+        ("unique_id", False, False),
+        ("scan", False, False),
+        ("cached_lookup", False, False),
+        ("cached_lookup", True, False),
+        ("cached_lookup", False, True),
+        ("forced_lookup", False, False),
+        ("forced_lookup", True, False),
+        ("forced_lookup", False, True),
+    ],
+)
+async def test_removed_flow_cannot_resume_setup(
+    hass: HomeAssistant, stage: str, matched: bool, lookup_fails: bool
+) -> None:
+    """Removal during setup cannot start verification or persist an exact match."""
+    candidate = make_credentials(uuid="cloud-uuid", product_id="prod")
+    flow, discovery = _flow(hass, [candidate])
+    manager = flow._manager
+    assert manager is not None
+    gate = RemovalSetupGate(
+        stage, discovery, candidate, flow.async_set_unique_id, matched, lookup_fails
+    )
+
+    with (
+        patch.object(flow, "async_set_unique_id", side_effect=gate.set_unique_id),
+        patch.object(flow, "_async_scan_device", side_effect=gate.scan) as scan_mock,
+        patch.object(
+            manager,
+            "get_device_credentials_by_uuid",
+            side_effect=gate.lookup_credentials,
+        ) as lookup,
+        patch.object(flow, "async_create_entry") as create_entry,
+        patch(
+            "custom_components.tuya_ble.config_flow.async_probe_authenticated_status",
+            new_callable=AsyncMock,
+        ) as probe,
+    ):
+        operation: Awaitable[Any]
+        if stage == "before_setup":
+            flow.async_remove()
+            operation = flow.async_step_device({"address": discovery.address})
+        else:
+            operation = asyncio.create_task(
+                flow.async_step_device({"address": discovery.address})
+            )
+            await gate.started.wait()
+            flow.async_remove()
+            gate.resume.set()
+        with pytest.raises(AbortFlow) as aborted:
+            await operation
+        assert aborted.value.reason == "unknown"
+        assert flow._probe_task is None
+        assert _probe_state(hass)[1] == {}
+        create_entry.assert_not_called()
+        probe.assert_not_awaited()
+        assert scan_mock.await_count == (
+            0 if stage in ("before_setup", "unique_id") else 1
+        )
+        assert lookup.await_count == {"cached_lookup": 1, "forced_lookup": 2}.get(
+            stage, 0
+        )
