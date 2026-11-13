@@ -7,9 +7,18 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+## [2.10.0-beta.2] - 2026-11-13
+
+> **Beta — for testing only.** This build supersedes beta.1 with protocol 4 connections and safer credential-probe retries. Test affected devices and report results on #39 before 2.10.0 ships.
+
+### Added
+
+- **Protocol 4 / FD50 BLE connections and datapoint reports** (#139): use the protocol 4 handshake and characteristics, and decode its status reports. This extends beta.1's identity-advertisement support to device connections; authenticated cloud-credential fallback remains limited to protocols 2 and 3.
+
 ### Fixed
 
 - **Fingerbot Touch (`kg` / `bs3ubslo`)** (#137, fixes #132). Expose both channels and battery percentage, and clean up obsolete Fingerbot Plus controls for this product. Each channel has one switch that sends ON/OFF in Switch mode or triggers one press in Push mode. In Push mode, Home Assistant returns the switch to OFF after the configured touch duration. Per-channel settings include mode, touch duration, double-tap interval, touch input, inversion, and a separate OFF duration in Switch mode. The integration preserves existing channel switch IDs and improves BLE reconnect handling for this model.
+- **Credential verification continues after failed candidates** (#141, refs #39): timeouts and silent disconnects receive one fresh-session retry before advancing through distinct UUIDs and remaining credentials. Malformed cloud metadata is isolated per record. Cleanup retains ownership of partially established connections, confirms native and proxy disconnection, and rejects proxy-session changes before connecting so retries cannot overlap unclosed links. Only authenticated expected datapoints can confirm a match; a sole cloud candidate is never trusted automatically.
 
 ## [2.10.0-beta.1] - 2026-11-12
 
