@@ -140,11 +140,34 @@ class _ProbeClient(BleakClientWithServiceCache):
         if name == "_backend" and value is not None:
             self._probe_backends.append(value)
             if self._is_proxy_backend(value):
-                api_client = getattr(value, "_client", None)
-                session = getattr(api_client, "_connection", None)
-                if api_client is not None and session is not None:
-                    self._probe_proxy_sessions[id(value)] = (api_client, session)
+                self._capture_proxy_session(value)
         super().__setattr__(name, value)
+
+    def _capture_proxy_session(self, backend: BaseBleakClient) -> None:
+        """Bind ownership to the API session before the proxy's connect request."""
+        api_client = getattr(backend, "_client", None)
+        session = getattr(api_client, "_connection", None)
+        wait_for_slot = getattr(backend, "_wait_for_free_connection_slot", None)
+        if api_client is None or session is None or not callable(wait_for_slot):
+            return
+        self._probe_proxy_sessions[id(backend)] = (api_client, session)
+        first_wait = True
+
+        async def guarded_wait_for_slot(slot_timeout: float) -> None:
+            """Reject replacement after the first slot wait, before BLE connect I/O."""
+            nonlocal first_wait
+            connect_gate = first_wait
+            first_wait = False
+            await wait_for_slot(slot_timeout)
+            if connect_gate and (
+                getattr(backend, "_client", None) is not api_client
+                or getattr(api_client, "_connection", None) is not session
+            ):
+                raise ConnectionError("Proxy API session changed before connect")
+
+        # This is a per-backend guard, not a shared API-client monkeypatch.
+        # pylint: disable-next=protected-access
+        cast(Any, backend)._wait_for_free_connection_slot = guarded_wait_for_slot
 
     @property
     def is_connected(self) -> bool:

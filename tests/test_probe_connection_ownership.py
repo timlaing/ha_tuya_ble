@@ -209,9 +209,20 @@ class ProxyBackend(PartialDiscoveryBackend):
 
     physical_connected: bool = False
     _client: Any = None
+    delay_slot: bool = False
+    slot_waiting: asyncio.Event = field(default_factory=asyncio.Event)
+    release_slot: asyncio.Event = field(default_factory=asyncio.Event)
+    disconnect_waiting: asyncio.Event = field(default_factory=asyncio.Event)
+
+    async def _wait_for_free_connection_slot(self, _timeout: float) -> None:
+        """Model the proxy's pre-connect gate separately from its BLE request."""
+        self.slot_waiting.set()
+        if self.delay_slot:
+            await self.release_slot.wait()
 
     async def connect(self) -> None:
         """Open the proxy link without service-discovery delay."""
+        await self._wait_for_free_connection_slot(2.0)
         self.connect_calls += 1
         self.is_connected = True
         self.physical_connected = True
@@ -222,10 +233,12 @@ class ProxyBackend(PartialDiscoveryBackend):
             api_client = getattr(self, "_client", None)
             if api_client is not None and api_client._connection is None:
                 raise OSError("The owning API session has ended")
+            self.disconnect_waiting.set()
             await self.release_disconnect.wait()
             self.physical_connected = False
         finally:
             self.is_connected = False
+        await self._wait_for_free_connection_slot(5.0)
 
 
 async def test_acknowledged_proxy_disconnect_allows_next_probe(
@@ -349,6 +362,72 @@ async def test_proxy_session_replacement_requires_confirmed_old_session_closure(
         assert len(ownership_harness.clients) == 1
         assert backend.physical_connected
         assert probe_module._pending_probe_cleanup
+
+
+async def test_proxy_guard_does_not_reject_later_cleanup_slot_wait(
+    ownership_harness: OwnershipHarness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The session gate protects connect without altering post-disconnect settling."""
+    session = SimpleNamespace(connection_state=SimpleNamespace(name="CONNECTED"))
+    api_client = SimpleNamespace(_connection=session)
+    backend = ProxyBackend(partial=False, _client=api_client)
+    monkeypatch.setattr(ProxyBackend, "__module__", "bleak_esphome.backend.client")
+    ownership_harness.backends[0] = backend
+    ble, adv = _input()
+    first = asyncio.create_task(
+        async_probe_authenticated_status(
+            ble, adv, make_credentials(), "1234567890abcdef", frozenset({1})
+        )
+    )
+    await backend.disconnect_waiting.wait()
+    session.connection_state = SimpleNamespace(name="CLOSED")
+    api_client._connection = SimpleNamespace(
+        connection_state=SimpleNamespace(name="CONNECTED")
+    )
+    backend.release_disconnect.set()
+    assert await first == ProbeOutcome.MATCHED
+    assert backend.connect_calls == 1
+    assert not backend.physical_connected
+    assert not probe_module._pending_probe_cleanup
+
+
+@pytest.mark.parametrize("replacement", ["session", "client"])
+async def test_proxy_session_change_during_slot_wait_rejects_connect_request(
+    ownership_harness: OwnershipHarness,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: str,
+) -> None:
+    """A stale session snapshot cannot own a BLE request on a replacement session."""
+    session = SimpleNamespace(connection_state=SimpleNamespace(name="CONNECTED"))
+    api_client = SimpleNamespace(_connection=session)
+    backend = ProxyBackend(partial=False, _client=api_client, delay_slot=True)
+    monkeypatch.setattr(ProxyBackend, "__module__", "bleak_esphome.backend.client")
+    ownership_harness.backends[0] = backend
+    ble, adv = _input()
+    first = asyncio.create_task(
+        async_probe_authenticated_status(
+            ble, adv, make_credentials(), "1234567890abcdef", frozenset({1})
+        )
+    )
+    await backend.slot_waiting.wait()
+    session.connection_state = SimpleNamespace(name="CLOSED")
+    new_session = SimpleNamespace(connection_state=SimpleNamespace(name="CONNECTED"))
+    if replacement == "session":
+        api_client._connection = new_session
+    else:
+        api_client._connection = None
+        backend._client = SimpleNamespace(_connection=new_session)
+    backend.release_slot.set()
+    assert await first == ProbeOutcome.RETRYABLE
+    assert backend.connect_calls == 0
+    assert not backend.physical_connected
+    assert not probe_module._pending_probe_cleanup
+    resumed = await async_probe_authenticated_status(
+        ble, adv, make_credentials(), "1234567890abcdef", frozenset({1})
+    )
+    assert resumed == ProbeOutcome.MATCHED
+    assert len(ownership_harness.clients) == 2
+    assert not probe_module._pending_probe_cleanup
 
 
 @pytest.mark.parametrize("internal_retry", ["connect", "new_client"])
