@@ -28,9 +28,11 @@ FD50 discovery is validated before requesting cloud login. An incomplete v4
 advertisement triggers an active scan for a supported identity; unsupported
 formats are excluded from manual discovery. Active scans ignore beacon and
 invalid-identity packets rather than ending at the first block-aligned payload.
-Fresh FD50 connections also require a decoded identity so their initial handshake
-never uses the legacy default protocol version. An established session remains
-usable when a later advertisement is only a beacon.
+Fresh FD50 connections also require a usable identity record so their initial
+handshake never uses the legacy default protocol version. Once the device has
+stored credentials, the record in the advertisement is enough and the scan
+response is not needed (see [PROTOCOL_4.md](PROTOCOL_4.md)). An established
+session remains usable when a later advertisement is only a beacon.
 
 Manual discovery rebuilds eligibility from the current scanner snapshot, so
 vanished and configured addresses are not retained. Candidate identities resolve

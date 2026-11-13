@@ -26,12 +26,50 @@ logged at debug level. Protocol 2/3 devices skip the lookup entirely.
 ## Which protocol version is used
 
 The handshake is chosen before the first byte is sent, so the version has to be
-known in advance. It comes from the decoded FD50 identity advertisement, and
-after a successful device-info exchange from byte 2 of the device's reply.
-Home Assistant may build the device before it has seen any advertisement, for
-example right after a restart. To cover that, an FD50 advertisement that has
-arrived in the meantime is decoded again at the start of every connection
-attempt. Classic advertisements are not re-decoded.
+known in advance. It comes from the FD50 advertisement, and after a successful
+device-info exchange from byte 2 of the device's reply.
+
+The firmware splits its identity over two packets
+([`tuya_ble_main.c:395-431`](https://github.com/hjytry/tuya-ble-sdk/blob/815c07120e96372e8746e9d01a21381a8fdd8655/sdk/src/tuya_ble_main.c#L395-L431)):
+
+- The **advertisement** carries the flags, the FD50 service UUID and the FD50
+  service data. The service data starts with the identity record: the protocol
+  version in the high nibble of byte 0, the identity-record bit (`0x01`), the
+  bound flag (`0x08`), then the product type, length and id.
+- The **scan response** carries the manufacturer data (`0x07D0`) with the
+  encrypted device identity.
+
+Only an active scan receives scan responses. Home Assistant scans passively by
+default and merges the two packets once both have been seen. On an SRB-PM01
+behind an ESPHome proxy, no scan response arrived for more than 30 minutes
+after a restart, across two of Home Assistant's own active-scan windows.
+
+Discovery and setup still require the full identity. It is what matches the
+device to its cloud credentials. After setup, a device with stored credentials
+chooses its handshake from the identity record alone: the record checks are
+the same as for the full decode, and the device's identity comes from the
+credentials. A device without stored credentials still needs the scan
+response.
+
+The integration never runs a handshake while the stored FD50 advertisement is
+unusable: a beacon frame, another protocol version, or malformed data.
+
+- Before connecting, it does not connect at all.
+- If such an advertisement arrives while connecting, it closes that link before
+  sending anything. Setup builds the device before any advertisement may have
+  been seen, so the first connection can start without one.
+- Either way it waits, and decodes every new advertisement. The first usable one
+  starts the connection, and the status is requested as usual once connected.
+
+The advertisement callback alone does not deliver every advertisement. Home
+Assistant skips it for packets whose data has not changed, and while another
+scanner is the device's preferred source, it stores a connectable packet without
+passing it on. After a restart the integration once connected without ever
+having been given an advertisement. So before connecting, and again once a
+connection is established, the device reads the newest connectable advertisement
+Home Assistant has stored (`bluetooth.async_last_service_info`).
+
+Classic advertisements never wait.
 
 ## Handshake
 
@@ -107,6 +145,8 @@ All links point at the SDK mirror revision that
 - [Report acknowledgement handlers](https://github.com/hjytry/tuya-ble-sdk/blob/815c07120e96372e8746e9d01a21381a8fdd8655/sdk/src/tuya_ble_data_handler.c#L2306-L2394)
 - [Report version constant](https://github.com/hjytry/tuya-ble-sdk/blob/815c07120e96372e8746e9d01a21381a8fdd8655/sdk/include/tuya_ble_internal_config.h#L41)
 - [CRC-16](https://github.com/hjytry/tuya-ble-sdk/blob/815c07120e96372e8746e9d01a21381a8fdd8655/sdk/src/tuya_ble_utils.c#L347-L364)
+- [Advertisement and scan response templates](https://github.com/hjytry/tuya-ble-sdk/blob/815c07120e96372e8746e9d01a21381a8fdd8655/sdk/src/tuya_ble_main.c#L395-L431),
+  [identity copied into the scan response](https://github.com/hjytry/tuya-ble-sdk/blob/815c07120e96372e8746e9d01a21381a8fdd8655/sdk/src/tuya_ble_main.c#L517-L533)
 
 [svnmsc/tuya-ble-v4](https://github.com/svnmsc/tuya-ble-v4), a standalone client
 tested on a protocol-4.2 thermo-hygrometer, follows the same handshake. It sends
@@ -115,14 +155,25 @@ datapoint offsets heuristically. This integration does neither.
 
 ## Hardware status
 
-Verified on one device: an SRB-PM01 soil moisture sensor (`zwjcy` /
-`jabotj1z`), bound in the Smart Life app and reached through an ESPHome
-Bluetooth proxy. Home Assistant discovered it from its FD50 advertisement, the
-normal QR-code login matched it to its cloud credentials, and once connected it
-reported plausible datapoint values. The 8-byte report acknowledgement described
-above was verified on this device. The long-term battery impact has not been
-assessed, and other protocol-4 firmware may differ, for example in which GATT
-characteristics it offers.
+Verified on two units of one product: the SRB-PM01 soil moisture sensor
+(`zwjcy` / `jabotj1z`, firmware 1.2), bound in the Smart Life app and reached
+through an ESPHome Bluetooth proxy. Home Assistant discovered both from their
+FD50 advertisements, the normal QR-code login matched them to their cloud
+credentials, and once connected they reported their datapoints. The first unit
+then reported every hour.
+
+Both also connected over protocol 4 after a Home Assistant restart and after an
+entry reload, and again after the link dropped. For the first unit no scan
+response arrived after a restart. In one restart its connection was established
+before it had been given any advertisement, and the stored advertisement
+supplied the protocol version. Over sessions of several hours its report
+sequence numbers kept increasing and no report was sent twice. The device does
+not confirm acknowledgements, so this is the only sign that they are accepted.
+
+The integration keeps the connection open, and the long-term battery impact has
+not been assessed. Other protocol-4 firmware may differ, for example in which
+GATT characteristics it offers.
 
 Synthetic vectors and an SDK-shaped firmware double cover the handshake and
-report parsing in `tests/test_protocol_v4.py`.
+report parsing in `tests/test_protocol_v4.py`, and the protocol choice from the
+advertisement in `tests/test_protocol_v4_identity.py`.

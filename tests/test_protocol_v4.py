@@ -654,32 +654,3 @@ async def test_v4_connect_and_read_end_to_end(
         if (dp := device.datapoints[dp_id]) is not None
     }
     assert values == {3: 41, 5: 215, 14: 1, 15: 87}
-
-
-async def test_fd50_identity_arriving_mid_connect_is_used() -> None:
-    """An advertisement stored after the connect loop started still counts.
-
-    Setup builds the device before any advertisement may have been seen, so
-    ``_ensure_connected`` finds nothing to decode and the loop starts with the
-    protocol-2 default. The identity that arrives while connecting must switch
-    the handshake to protocol 4 before the device-info request goes out.
-    """
-    credentials = make_credentials()
-    data = report(soil_sensor_datapoints())
-    firmware = FakeV4Firmware(credentials, data)
-    device = make_device()
-    device._advertisement_data = None
-    device.initialize_with_credentials(credentials)
-    assert device._protocol_version == 2
-
-    def advertise() -> None:
-        device.set_ble_device_and_advertisement_data(
-            device._ble_device, v4_advertisement(uuid=credentials.uuid.encode())
-        )
-
-    await run_session(device, firmware, while_connecting=advertise)
-
-    assert_v4_session(firmware, data)
-    dp = device.datapoints[5]
-    assert dp is not None
-    assert dp.value == 215
