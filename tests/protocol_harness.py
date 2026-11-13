@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import hashlib
-from struct import pack
+from struct import pack, unpack
+from typing import cast
 
+from bleak.backends.scanner import AdvertisementData
 from Crypto.Cipher import AES
 
 from custom_components.tuya_ble.tuya_ble.const import (
     CHARACTERISTIC_NOTIFY,
+    GATT_MTU,
+    MANUFACTURER_DATA_ID,
+    SERVICE_UUID_V4,
     TuyaBLECode,
 )
 from tests.conftest import (
+    FakeAdvertisementData,
     FakeBleakClient,
     FakeBLEManager,
     make_credentials,
@@ -106,6 +112,85 @@ def frame_packet0(encrypted: bytes, protocol_version: int = 2) -> bytes:
         + pack_varint(len(encrypted))
         + pack(">B", protocol_version << 4)
         + encrypted
+    )
+
+
+def unpack_varint(data: bytes, pos: int) -> tuple[int, int]:
+    """Decode a variable-length integer, returning it and the next position."""
+    result = 0
+    shift = 0
+    while True:
+        byte = data[pos]
+        pos += 1
+        result |= (byte & 0x7F) << shift
+        shift += 7
+        if not byte & 0x80:
+            return result, pos
+
+
+def fragment(
+    encrypted: bytes, protocol_version: int, mtu: int = GATT_MTU
+) -> list[bytes]:
+    """Split an encrypted frame into notifications of at most ``mtu`` bytes."""
+    packets: list[bytes] = []
+    pos = 0
+    packet_num = 0
+    while pos < len(encrypted):
+        header = pack_varint(packet_num)
+        if packet_num == 0:
+            header += pack_varint(len(encrypted)) + pack(">B", protocol_version << 4)
+        part = encrypted[pos : pos + mtu - len(header)]
+        packets.append(header + part)
+        pos += len(part)
+        packet_num += 1
+    return packets
+
+
+def reassemble(packets: list[bytes]) -> bytes:
+    """Join the fragments of one frame back into its encrypted bytes."""
+    encrypted = bytearray()
+    total = 0
+    for expected_num, packet in enumerate(packets):
+        packet_num, pos = unpack_varint(packet, 0)
+        assert packet_num == expected_num
+        if packet_num == 0:
+            total, pos = unpack_varint(packet, pos)
+            pos += 1  # protocol version byte
+        encrypted += packet[pos:]
+    assert len(encrypted) == total
+    return bytes(encrypted)
+
+
+def decode_frame(
+    keys: dict[int, bytes], packets: list[bytes]
+) -> tuple[int, int, int, bytes, int]:
+    """Reassemble, decrypt and CRC-check one frame written by the device.
+
+    Returns ``(seq_num, response_to, code, data, security_flag)``.
+    """
+    encrypted = reassemble(packets)
+    security_flag = encrypted[0]
+    cipher = AES.new(keys[security_flag], AES.MODE_CBC, encrypted[1:17])
+    raw = cipher.decrypt(encrypted[17:])
+    seq_num, response_to, code, length = unpack(">IIHH", raw[:12])
+    end = 12 + length
+    assert unpack(">H", raw[end : end + 2])[0] == crc16(raw[:end])
+    return seq_num, response_to, code, raw[12:end], security_flag
+
+
+def v4_advertisement(
+    uuid: bytes = b"1234567890abcdef",
+    service: bytes = b"\x49\x00\x00\x08abcdefgh",
+) -> AdvertisementData:
+    """Build a synthetic bound protocol-4 FD50 identity advertisement."""
+    key = hashlib.md5(service, usedforsecurity=False).digest()
+    encrypted = AES.new(key, AES.MODE_CBC, key).encrypt(uuid)
+    return cast(
+        AdvertisementData,
+        FakeAdvertisementData(
+            service_data={SERVICE_UUID_V4: service},
+            manufacturer_data={MANUFACTURER_DATA_ID: b"\x00\x00\x01\x00" + encrypted},
+        ),
     )
 
 

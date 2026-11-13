@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from bleak.backends.device import BLEDevice
+from bleak.backends.scanner import AdvertisementData
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth.match import BluetoothCallbackMatcher
 from homeassistant.config_entries import ConfigEntry
@@ -163,6 +164,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     manager = OfflineTuyaBLEDeviceManager(credentials)
     device = TuyaBLEDevice(manager, ble_device)
     device.initialize_with_credentials(credentials)
+
+    @callback
+    def _async_latest_advertisement() -> tuple[BLEDevice, AdvertisementData] | None:
+        """Return the newest connectable advertisement Home Assistant has stored."""
+        if info := bluetooth.async_last_service_info(hass, address, connectable=True):
+            return info.device, info.advertisement
+        return None
+
+    device.set_advertisement_provider(_async_latest_advertisement)
 
     # Load the YAML descriptor registry in the executor before the first
     # synchronous lookup below, and before forwarding to the platforms, whose
