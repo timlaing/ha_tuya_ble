@@ -152,12 +152,25 @@ class HASSTuyaBLEDeviceManager:
             ),
             key=lambda device: (device.product_id != product_id, device.id),
         )
-        return len(candidates), (_build_credentials(device) for device in candidates)
+        return len(candidates), _iter_probe_credentials(candidates)
 
     @property
     def data(self) -> dict[str, Any]:
         """Return the stored configuration data."""
         return self._data
+
+
+def _iter_probe_credentials(
+    candidates: list[CustomerDevice],
+) -> Iterator[TuyaBLEDeviceCredentials]:
+    """Build lazily while isolating malformed metadata to its own cloud record."""
+    for device in candidates:
+        try:
+            credentials = _build_credentials(device)
+        except Exception:  # pylint: disable=broad-exception-caught
+            _LOGGER.debug("Skipping malformed Tuya BLE probe candidate")
+            continue
+        yield credentials
 
 
 def _extract_local_strategy(

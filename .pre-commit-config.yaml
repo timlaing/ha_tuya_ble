@@ -94,6 +94,7 @@ repos:
           # BEGIN GENERATED REQUIREMENTS
           - tuya-device-sharing-sdk
           - aiousbwatcher
+          - dbus-fast
           - homeassistant==2026.10.4
           - mypy
           - prek
@@ -120,6 +121,7 @@ repos:
           # BEGIN GENERATED REQUIREMENTS
           - tuya-device-sharing-sdk
           - aiousbwatcher
+          - dbus-fast
           - homeassistant==2026.10.4
           - mypy
           - prek
@@ -148,6 +150,7 @@ repos:
           # BEGIN GENERATED REQUIREMENTS
           - tuya-device-sharing-sdk
           - aiousbwatcher
+          - dbus-fast
           - homeassistant==2026.10.4
           - mypy
           - prek

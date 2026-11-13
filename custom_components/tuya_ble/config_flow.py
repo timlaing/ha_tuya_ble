@@ -615,12 +615,15 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
                     claims.pop(device_id, None)
             if count > PROBE_MAX_CANDIDATES:
                 return None, None, "too_many_candidates"
+            probe_failed = False
             for credentials in candidates:
+                self._abort_if_flow_removed()
                 if credentials.device_id in claims:
                     continue
-                outcome, pairing_uuid = await self._async_probe_cloud_candidate(
+                outcome, pairing_uuid = await self._async_try_probe_cloud_candidate(
                     discovery_info, advertisement, credentials
                 )
+                self._abort_if_flow_removed()
                 if outcome == ProbeOutcome.MATCHED and pairing_uuid is not None:
                     claims[credentials.device_id] = (
                         self._probe_claim_owner,
@@ -628,31 +631,87 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
                         time.monotonic() + PROBE_CLAIM_TTL,
                     )
                     return credentials, pairing_uuid, ""
-                if outcome == ProbeOutcome.INCONCLUSIVE:
-                    return None, None, "bluetooth_probe_failed"
-            return None, None, "device_not_registered"
+                if outcome in (ProbeOutcome.INCONCLUSIVE, ProbeOutcome.RETRYABLE):
+                    probe_failed = True
+            return (
+                None,
+                None,
+                ("bluetooth_probe_failed" if probe_failed else "device_not_registered"),
+            )
 
-    @staticmethod
-    async def _async_probe_cloud_candidate(
+    async def _async_try_probe_cloud_candidate(
+        self,
         discovery_info: BluetoothServiceInfoBleak,
         advertisement: TuyaBLEAdvertisementInfo,
         credentials: TuyaBLEDeviceCredentials,
     ) -> tuple[ProbeOutcome | None, str | None]:
-        """Try the cloud UUID only after a conclusive advertised-UUID rejection."""
+        """Isolate candidate-specific failures without suppressing flow aborts."""
+        try:
+            return await self._async_probe_cloud_candidate(
+                discovery_info, advertisement, credentials
+            )
+        except AbortFlow:
+            raise
+        except Exception:  # pylint: disable=broad-exception-caught
+            _LOGGER.debug("Cloud credential candidate verification failed")
+            return ProbeOutcome.INCONCLUSIVE, None
+
+    async def _async_probe_cloud_candidate(
+        self,
+        discovery_info: BluetoothServiceInfoBleak,
+        advertisement: TuyaBLEAdvertisementInfo,
+        credentials: TuyaBLEDeviceCredentials,
+    ) -> tuple[ProbeOutcome | None, str | None]:
+        """Try each distinct pairing UUID, advancing after every probe failure."""
         expected = get_mapped_dp_ids(credentials.category, credentials.product_id)
         if not expected:
             return None, None
-        for uuid in (advertisement.uuid, credentials.uuid):
-            outcome = await async_probe_authenticated_status(
-                discovery_info.device,
-                discovery_info.advertisement,
-                credentials,
-                uuid,
-                expected,
+        failure = ProbeOutcome.REJECTED
+        for uuid in dict.fromkeys((advertisement.uuid, credentials.uuid)):
+            outcome = await self._async_probe_uuid(
+                discovery_info, credentials, uuid, expected
             )
-            if outcome != ProbeOutcome.REJECTED:
+            if outcome == ProbeOutcome.MATCHED:
                 return outcome, uuid
-        return ProbeOutcome.REJECTED, None
+            if outcome != ProbeOutcome.REJECTED:
+                failure = outcome
+        return failure, None
+
+    async def _async_probe_uuid(
+        self,
+        discovery_info: BluetoothServiceInfoBleak,
+        credentials: TuyaBLEDeviceCredentials,
+        uuid: str,
+        expected_dp_ids: frozenset[int],
+    ) -> ProbeOutcome:
+        """Retry a timeout or silent disconnect once, using a fresh probe."""
+        for attempt in range(2):
+            self._abort_if_flow_removed()
+            try:
+                outcome = await async_probe_authenticated_status(
+                    discovery_info.device,
+                    discovery_info.advertisement,
+                    credentials,
+                    uuid,
+                    expected_dp_ids,
+                )
+            except TimeoutError, ConnectionError:
+                outcome = ProbeOutcome.RETRYABLE
+            except AbortFlow:
+                raise
+            except Exception:  # pylint: disable=broad-exception-caught
+                _LOGGER.debug("Authenticated cloud credential probe failed")
+                outcome = ProbeOutcome.INCONCLUSIVE
+            self._abort_if_flow_removed()
+            _LOGGER.debug(
+                "%s: credential probe attempt %s returned %s",
+                discovery_info.address,
+                attempt + 1,
+                outcome,
+            )
+            if outcome != ProbeOutcome.RETRYABLE:
+                return outcome
+        return ProbeOutcome.RETRYABLE
 
     async def async_step_discovered_device(
         self, user_input: dict[str, Any] | None = None

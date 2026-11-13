@@ -135,12 +135,81 @@ async def _setup(
 
 
 @pytest.mark.parametrize(
-    ("results", "selected", "error"),
+    ("results", "selected", "error", "expected_uuids"),
     [
-        ([ProbeOutcome.MATCHED], "1234567890abcdef", None),
-        ([ProbeOutcome.REJECTED, ProbeOutcome.MATCHED], "cloud-uuid", None),
-        ([ProbeOutcome.REJECTED, ProbeOutcome.REJECTED], None, "device_not_registered"),
-        ([ProbeOutcome.INCONCLUSIVE], None, "bluetooth_probe_failed"),
+        ([ProbeOutcome.MATCHED], "1234567890abcdef", None, ["1234567890abcdef"]),
+        (
+            [ProbeOutcome.REJECTED, ProbeOutcome.MATCHED],
+            "cloud-uuid",
+            None,
+            ["1234567890abcdef", "cloud-uuid"],
+        ),
+        (
+            [ProbeOutcome.REJECTED, ProbeOutcome.REJECTED],
+            None,
+            "device_not_registered",
+            ["1234567890abcdef", "cloud-uuid"],
+        ),
+        (
+            [ProbeOutcome.INCONCLUSIVE, ProbeOutcome.INCONCLUSIVE],
+            None,
+            "bluetooth_probe_failed",
+            ["1234567890abcdef", "cloud-uuid"],
+        ),
+        (
+            [ProbeOutcome.INCONCLUSIVE, ProbeOutcome.MATCHED],
+            "cloud-uuid",
+            None,
+            ["1234567890abcdef", "cloud-uuid"],
+        ),
+        (
+            [ProbeOutcome.INCONCLUSIVE, ProbeOutcome.REJECTED],
+            None,
+            "bluetooth_probe_failed",
+            ["1234567890abcdef", "cloud-uuid"],
+        ),
+        (
+            [ProbeOutcome.REJECTED, ProbeOutcome.INCONCLUSIVE],
+            None,
+            "bluetooth_probe_failed",
+            ["1234567890abcdef", "cloud-uuid"],
+        ),
+        (
+            [ProbeOutcome.RETRYABLE, ProbeOutcome.MATCHED],
+            "1234567890abcdef",
+            None,
+            ["1234567890abcdef", "1234567890abcdef"],
+        ),
+        (
+            [ProbeOutcome.RETRYABLE, ProbeOutcome.RETRYABLE, ProbeOutcome.MATCHED],
+            "cloud-uuid",
+            None,
+            ["1234567890abcdef", "1234567890abcdef", "cloud-uuid"],
+        ),
+        (
+            [ProbeOutcome.REJECTED, ProbeOutcome.RETRYABLE, ProbeOutcome.MATCHED],
+            "cloud-uuid",
+            None,
+            ["1234567890abcdef", "cloud-uuid", "cloud-uuid"],
+        ),
+        (
+            [ProbeOutcome.RETRYABLE, ProbeOutcome.INCONCLUSIVE, ProbeOutcome.MATCHED],
+            "cloud-uuid",
+            None,
+            ["1234567890abcdef", "1234567890abcdef", "cloud-uuid"],
+        ),
+        (
+            [ProbeOutcome.RETRYABLE] * 4,
+            None,
+            "bluetooth_probe_failed",
+            ["1234567890abcdef", "1234567890abcdef", "cloud-uuid", "cloud-uuid"],
+        ),
+        (
+            [ProbeOutcome.RETRYABLE, ProbeOutcome.REJECTED, ProbeOutcome.REJECTED],
+            None,
+            "device_not_registered",
+            ["1234567890abcdef", "1234567890abcdef", "cloud-uuid"],
+        ),
     ],
 )
 async def test_probe_order_and_outcomes(
@@ -148,8 +217,9 @@ async def test_probe_order_and_outcomes(
     results: list[ProbeOutcome],
     selected: str | None,
     error: str | None,
+    expected_uuids: list[str],
 ) -> None:
-    """Test advertised first, cloud UUID only on conclusive pair rejection."""
+    """Retry transport failures once and advance after all other failed outcomes."""
     candidate = make_credentials(
         uuid="cloud-uuid", product_id="prod", local_key="abcdef"
     )
@@ -163,7 +233,7 @@ async def test_probe_order_and_outcomes(
     assert failure == error
     assert probe.await_count == len(results)
     uuids = [call.args[3] for call in probe.await_args_list]
-    assert uuids == ["1234567890abcdef", "cloud-uuid"][: len(results)]
+    assert uuids == expected_uuids
     if selected:
         assert outcome["type"] == FlowResultType.CREATE_ENTRY
         assert outcome["data"][CONF_UUID] == selected
@@ -509,8 +579,7 @@ async def test_registry_failure_is_not_reported_as_bluetooth_failure(
             side_effect=OSError("unreadable descriptors"),
         ),
     ):
-        progress, _ = await flow._async_setup_address(discovery.address)
-        assert progress is not None
+        progress = await flow.async_step_device({"address": discovery.address})
         assert progress["type"] == FlowResultType.SHOW_PROGRESS
         assert flow._probe_task is not None
         with pytest.raises(OSError):
@@ -546,8 +615,7 @@ async def test_stale_claim_does_not_create_an_entry(
         ),
         patch.object(flow, "async_create_entry") as create_entry,
     ):
-        progress, _ = await flow._async_setup_address(discovery.address)
-        assert progress is not None
+        progress = await flow.async_step_device({"address": discovery.address})
         assert progress["type"] == FlowResultType.SHOW_PROGRESS
         assert flow._probe_task is not None
         await flow._probe_task
