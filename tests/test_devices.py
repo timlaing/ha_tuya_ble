@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from home_assistant_bluetooth import BluetoothServiceInfoBleak
 from homeassistant.const import CONF_ADDRESS, CONF_DEVICE_ID
@@ -317,6 +317,7 @@ def _make_coord(hass: HomeAssistant) -> tuple[TuyaBLECoordinator, TuyaBLEDevice]
     """Build a coordinator and device wired together for tests."""
     dev = make_device()
     dev._device_info = make_credentials()
+    dev.update = AsyncMock()  # type: ignore[method-assign]
     return TuyaBLECoordinator(hass, dev), dev
 
 
@@ -513,9 +514,7 @@ def test_calls_async_write_ha_state(hass: HomeAssistant) -> None:
 
 async def test_no_event_when_not_changed_by_device(hass: HomeAssistant) -> None:
     """Do not fire fingerbot event when changed_by_device is False."""
-    dev = make_device()
-    dev._device_info = make_credentials()
-    coordinator = TuyaBLECoordinator(hass, dev)
+    coordinator, dev = _make_coord(hass)
     product = make_product_info(name="Fingerbot", mode=1, switch=2, manual_control=7)
     # Create a datapoint with changed_by_device=False
     device = dev
