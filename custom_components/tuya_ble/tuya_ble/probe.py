@@ -128,6 +128,7 @@ class _ProbeClient(BleakClientWithServiceCache):
         self._probe_transport_state: dict[int, bool] = {}
         self._probe_native_released: set[int] = set()
         self._probe_proxy_released: set[int] = set()
+        self._probe_proxy_sessions: dict[int, tuple[Any, Any]] = {}
         super().__init__(*args, **kwargs)
         self._probe_connect_started = False
         capture_client(self)
@@ -138,6 +139,11 @@ class _ProbeClient(BleakClientWithServiceCache):
         # reference on failure. Capture it before that failure can hide a link.
         if name == "_backend" and value is not None:
             self._probe_backends.append(value)
+            if self._is_proxy_backend(value):
+                api_client = getattr(value, "_client", None)
+                session = getattr(api_client, "_connection", None)
+                if api_client is not None and session is not None:
+                    self._probe_proxy_sessions[id(value)] = (api_client, session)
         super().__setattr__(name, value)
 
     @property
@@ -183,12 +189,30 @@ class _ProbeClient(BleakClientWithServiceCache):
         )
 
     async def refresh_transport_state(self) -> None:
-        """Check BlueZ's independent manager, not a retained client's stale flag."""
+        """Confirm native state and terminated proxy sessions independently."""
         for backend in self._probe_backends:
             if self._is_bluez_backend(backend):
                 self._probe_transport_state[
                     id(backend)
                 ] = await self._async_bluez_connected(backend)
+            elif self._is_proxy_backend(backend) and self._proxy_session_ended(backend):
+                # ESPHome releases a subscriber's BLE links when its API session
+                # ends. A replaced session cannot acknowledge the old disconnect.
+                self._probe_proxy_released.add(id(backend))
+                self._probe_transport_state[id(backend)] = False
+
+    def _proxy_session_ended(self, backend: BaseBleakClient) -> bool:
+        """Require a captured CLOSED session that is no longer the client's owner."""
+        captured = self._probe_proxy_sessions.get(id(backend))
+        if captured is None:
+            return False
+        api_client, session = captured
+        state = getattr(session, "connection_state", None)
+        return (
+            not backend.is_connected
+            and getattr(state, "name", None) == "CLOSED"
+            and getattr(api_client, "_connection", session) is not session
+        )
 
     async def disconnect_retained_links(self) -> None:
         """Recover native links through a live manager instead of a dead session bus."""
@@ -197,9 +221,10 @@ class _ProbeClient(BleakClientWithServiceCache):
             if self._is_bluez_backend(backend):
                 await self._async_release_bluez_backend(backend)
             elif self._is_proxy_backend(backend):
-                if (
-                    id(backend) not in self._probe_proxy_released
-                    or backend.is_connected
+                if id(
+                    backend
+                ) not in self._probe_proxy_released or self._probe_transport_state.get(
+                    id(backend), backend.is_connected
                 ):
                     # ESPHome disconnect always awaits the proxy's address-specific
                     # disconnected response, even after its local flag was cleared.

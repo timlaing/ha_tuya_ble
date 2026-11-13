@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
@@ -207,6 +208,7 @@ class ProxyBackend(PartialDiscoveryBackend):
     """Model ESPHome clearing local state before remote disconnect is acknowledged."""
 
     physical_connected: bool = False
+    _client: Any = None
 
     async def connect(self) -> None:
         """Open the proxy link without service-discovery delay."""
@@ -217,6 +219,9 @@ class ProxyBackend(PartialDiscoveryBackend):
     async def disconnect(self) -> None:
         """Await the remote response; clear the local flag even on cancellation."""
         try:
+            api_client = getattr(self, "_client", None)
+            if api_client is not None and api_client._connection is None:
+                raise OSError("The owning API session has ended")
             await self.release_disconnect.wait()
             self.physical_connected = False
         finally:
@@ -279,6 +284,71 @@ async def test_cancelled_proxy_disconnect_keeps_barrier_until_remote_ack(
     assert not backend.physical_connected
     assert len(ownership_harness.clients) == 2
     assert not probe_module._pending_probe_cleanup
+
+
+@pytest.mark.parametrize(
+    ("session_state", "current_session", "release_expected"),
+    [
+        ("CLOSED", "detached", True),
+        ("CLOSED", "replaced", True),
+        ("CONNECTED", "detached", False),
+        ("CLOSED", "original", False),
+        (None, "replaced", False),
+    ],
+)
+async def test_proxy_session_replacement_requires_confirmed_old_session_closure(
+    ownership_harness: OwnershipHarness,
+    monkeypatch: pytest.MonkeyPatch,
+    session_state: str | None,
+    current_session: str,
+    release_expected: bool,
+) -> None:
+    """Only a terminated owning API session can release an unacknowledged proxy."""
+    session = SimpleNamespace(connection_state=SimpleNamespace(name="CONNECTED"))
+    api_client = SimpleNamespace(_connection=session)
+    backend = ProxyBackend(partial=False)
+    cast(Any, backend)._client = api_client
+    monkeypatch.setattr(ProxyBackend, "__module__", "bleak_esphome.backend.client")
+    ownership_harness.backends[0] = backend
+    ble, adv = _input()
+    first = await async_probe_authenticated_status(
+        ble, adv, make_credentials(), "1234567890abcdef", frozenset({1})
+    )
+    await asyncio.gather(
+        *(pending[0] for pending in probe_module._pending_probe_cleanup.values()),
+        return_exceptions=True,
+    )
+    assert first == ProbeOutcome.RETRYABLE
+    assert backend.physical_connected
+    assert not backend.is_connected
+    session.connection_state = (
+        None if session_state is None else SimpleNamespace(name=session_state)
+    )
+    if current_session == "detached":
+        api_client._connection = None
+    elif current_session == "replaced":
+        api_client._connection = SimpleNamespace(
+            connection_state=SimpleNamespace(name="CONNECTED")
+        )
+    if release_expected:
+        # The proxy releases this subscriber's BLE links when its session ends.
+        backend.physical_connected = False
+    resumed = await async_probe_authenticated_status(
+        ble, adv, make_credentials(), "1234567890abcdef", frozenset({1})
+    )
+    await asyncio.gather(
+        *(pending[0] for pending in probe_module._pending_probe_cleanup.values()),
+        return_exceptions=True,
+    )
+    if release_expected:
+        assert resumed == ProbeOutcome.MATCHED
+        assert len(ownership_harness.clients) == 2
+        assert not probe_module._pending_probe_cleanup
+    else:
+        assert resumed == ProbeOutcome.RETRYABLE
+        assert len(ownership_harness.clients) == 1
+        assert backend.physical_connected
+        assert probe_module._pending_probe_cleanup
 
 
 @pytest.mark.parametrize("internal_retry", ["connect", "new_client"])
