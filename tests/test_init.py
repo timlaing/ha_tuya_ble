@@ -682,6 +682,42 @@ async def test_setup_registers_and_calls_ble_callback(hass: HomeAssistant) -> No
     await hass.async_stop()
 
 
+async def test_setup_gives_the_device_home_assistants_stored_advertisement(
+    hass: HomeAssistant,
+) -> None:
+    """The device can read the newest connectable advertisement on demand.
+
+    Home Assistant does not pass every stored advertisement to the callback,
+    so the device asks for it before and right after connecting.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Device",
+        data=_make_entry_data(),
+        entry_id="entry-ble-provider",
+    )
+    entry.add_to_hass(hass)
+    deps = _patch_deps(hass, product_info=MagicMock())
+
+    with ExitStack() as stack:
+        for p in deps["patches"]:
+            stack.enter_context(p)
+        assert await async_setup_entry(hass, entry) is True
+
+    deps["device"].set_advertisement_provider.assert_called_once()
+    provider = deps["device"].set_advertisement_provider.call_args.args[0]
+    service_info = MagicMock()
+    target = "custom_components.tuya_ble.bluetooth.async_last_service_info"
+    with patch(target, return_value=service_info) as last:
+        assert provider() == (service_info.device, service_info.advertisement)
+    last.assert_called_once_with(hass, "AA:BB:CC:DD:EE:FF", connectable=True)
+    with patch(target, return_value=None):
+        assert provider() is None
+
+    _close_background_tasks(deps)
+    await hass.async_stop()
+
+
 async def test_setup_uppercases_address_for_lookup_and_matcher(
     hass: HomeAssistant,
 ) -> None:

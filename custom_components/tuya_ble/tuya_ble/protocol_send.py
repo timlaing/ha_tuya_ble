@@ -18,7 +18,6 @@ from bleak_retry_connector import (
 from Crypto.Cipher import AES
 
 from .const import (
-    CHARACTERISTIC_WRITE,
     GATT_MTU,
     RESPONSE_WAIT_TIMEOUT,
     TuyaBLECode,
@@ -64,6 +63,7 @@ class TuyaBLEProtocolSendMixin:
     _current_seq_num: int
     _operation_lock: asyncio.Lock
     _client: Any
+    _write_char: str
     _datapoints: TuyaBLEDataPoints
     _callbacks: list[Callable[[list[TuyaBLEDataPoint]], None]]
     _reconnect_task: asyncio.Task[None] | None
@@ -567,7 +567,7 @@ class TuyaBLEProtocolSendMixin:
             if client and client is self._client:
                 try:
                     await client.write_gatt_char(
-                        CHARACTERISTIC_WRITE,
+                        self._write_char,
                         packet,
                         False,
                     )
