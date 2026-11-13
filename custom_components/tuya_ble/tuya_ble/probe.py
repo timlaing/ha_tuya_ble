@@ -525,9 +525,9 @@ async def _async_close_probe(
     except Exception:  # pylint: disable=broad-exception-caught
         cleanup_task.cancel()
         _LOGGER.debug("BLE probe disconnect failed")
-        return (
-            outcome if outcome == ProbeOutcome.RETRYABLE else ProbeOutcome.INCONCLUSIVE
-        )
+        if outcome == ProbeOutcome.RETRYABLE:
+            return outcome
+        return ProbeOutcome.INCONCLUSIVE
     if await _async_confirm_cleanup(pending):
         if _pending_probe_cleanup.get(device.address) is pending:
             _pending_probe_cleanup.pop(device.address, None)
