@@ -12,6 +12,7 @@ import logging
 from struct import pack
 import time
 from typing import Any
+from weakref import WeakSet
 
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
@@ -136,7 +137,8 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         self._send_response_tasks: set[asyncio.Task[None]] = set()
 
         self._awaiting_fd50_identity = False
-        self._discarded_client: BleakClientWithServiceCache | None = None
+        self._discarded_clients: WeakSet[BleakClientWithServiceCache] = WeakSet()
+        self._pending_client_cleanup: set[BleakClientWithServiceCache] = set()
         self._identity_connect_task: asyncio.Task[None] | None = None
         self._advertisement_provider: (
             Callable[[], tuple[BLEDevice, AdvertisementData] | None] | None
@@ -145,12 +147,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
     def set_advertisement_provider(
         self, provider: Callable[[], tuple[BLEDevice, AdvertisementData] | None]
     ) -> None:
-        """Set where to read the newest stored advertisement before connecting.
-
-        Home Assistant does not pass every advertisement to the callback: it
-        skips unchanged packets, and while another scanner is the preferred
-        source it only stores a connectable packet.
-        """
+        """Supply advertisements stored by Home Assistant but omitted from callbacks."""
         self._advertisement_provider = provider
 
     def set_ble_device_and_advertisement_data(
@@ -495,6 +492,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             if not task.done():
                 task.cancel()
         await self._execute_disconnect()
+        await self._cleanup_discarded_clients()
         for task in self._background_tasks():
             with suppress(asyncio.CancelledError, Exception):
                 await task
@@ -514,11 +512,12 @@ class TuyaBLEDevice(TuyaBLEProtocol):
 
     def _disconnected(self, client: BleakClientWithServiceCache) -> None:
         """Handle BLE disconnection: fire callbacks and reconnect."""
-        if client is self._discarded_client:
+        if client in self._discarded_clients:
             # Closed on purpose before any handshake, see _discard_client. The
             # callback can arrive after a later connection has replaced it, so
             # it must not touch the current client or the paired state.
-            self._discarded_client = None
+            self._discarded_clients.discard(client)
+            self._pending_client_cleanup.discard(client)
             _LOGGER.debug(
                 "%s: Closed the connection made before the FD50 identity arrived",
                 self.address,
@@ -657,6 +656,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
 
     async def _try_connect_and_configure(self) -> bool:
         """Try one connection + handshake cycle. Returns True on success."""
+        await self._cleanup_discarded_clients()
         client = await self._try_establish_connection()
         if client is None:
             return False
@@ -748,13 +748,10 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         return None
 
     def _await_fd50_identity(self) -> bool:
-        """Return True, and start waiting, while an FD50 advertisement is unusable.
+        """Wait if the latest stored FD50 advertisement cannot choose a handshake.
 
-        It first reads the newest stored advertisement. A beacon, another
-        version, malformed data, or a device without credentials that has no
-        scan response leaves the protocol version unknown, and a handshake would
-        run the protocol-2 default against protocol-4 firmware. The next usable
-        advertisement starts the connection. Classic advertisements never wait.
+        Reject beacons, unknown versions and malformed identities before sending
+        the protocol-2 default. Classic advertisements never wait.
         """
         if self._advertisement_provider is not None and (
             latest := self._advertisement_provider()
@@ -776,13 +773,27 @@ class TuyaBLEDevice(TuyaBLEProtocol):
 
     async def _discard_client(self, client: BleakClientWithServiceCache) -> None:
         """Close a connection that will not be used, without treating it as a drop."""
-        self._discarded_client = client
+        self._discarded_clients.add(client)
+        self._pending_client_cleanup.add(client)
         try:
             await client.disconnect()
         except BLE_CONNECTION_EXCEPTIONS:
             _LOGGER.debug(
                 "%s: Closing the unused connection failed", self.address, exc_info=True
             )
+        finally:
+            if not client.is_connected:
+                self._pending_client_cleanup.discard(client)
+
+    async def _cleanup_discarded_clients(self) -> None:
+        """Retry cleanup of unused links without closing the current client twice."""
+        for client in tuple(self._pending_client_cleanup):
+            if client is self._client:
+                continue
+            if client.is_connected:
+                await self._discard_client(client)
+            else:
+                self._pending_client_cleanup.discard(client)
 
     def _start_identity_connect(self) -> None:
         """Connect in the background once the awaited FD50 identity is known."""
@@ -796,28 +807,24 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         )
 
     async def _connect_after_identity(self) -> None:
-        """Run the connection that waited for the FD50 identity.
+        """Retry the identity connection without resetting a concurrent session's SN.
 
-        Unlike ``_reconnect`` this keeps the sequence number: another caller may
-        have connected meanwhile, and protocol-4 firmware drops the link when it
-        does not increase.
+        Firmware drops the link if sequence numbers do not increase.
         """
-        try:
-            await self._ensure_connected()
-        except BLE_CONNECTION_EXCEPTIONS:
-            _LOGGER.debug(
-                "%s: Connecting after the FD50 identity arrived failed",
-                self.address,
-                exc_info=True,
-            )
+        while not self._expected_disconnect:
+            try:
+                await self._ensure_connected()
+                return
+            except BLE_CONNECTION_EXCEPTIONS:
+                _LOGGER.debug(
+                    "%s: Connecting after the FD50 identity arrived failed",
+                    self.address,
+                    exc_info=True,
+                )
+                await asyncio.sleep(BLEAK_BACKOFF_TIME)
 
     def _select_characteristics(self, client: BleakClientWithServiceCache) -> None:
-        """Choose the notify/write characteristic pair for this connection.
-
-        Protocol 2/3 devices always use the classic pair. A protocol-4 device
-        uses the SDK's FD50 pair when its GATT services offer both
-        characteristics, and the classic pair otherwise.
-        """
+        """Use the FD50 pair only for v4 devices offering both, otherwise classic."""
         self._notify_char = CHARACTERISTIC_NOTIFY
         self._write_char = CHARACTERISTIC_WRITE
         if self._protocol_version != PROTOCOL_VERSION_V4:
@@ -838,13 +845,10 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         )
 
     def _build_device_info_request(self) -> bytes:
-        """Return the device info request payload for the current protocol.
+        """Return v4's two-byte fragment length, or an empty v2/v3 request.
 
-        The version comes from the decoded advertisement, or from byte 2 of the
-        previous device info response, which overwrites it. Protocol 4 firmware
-        disconnects unless the request carries exactly two bytes: the app's
-        preferred data length, which the device then uses to size its own
-        fragments. Earlier protocols take an empty request.
+        The advertisement or previous device-info response supplies the version.
+        Protocol 4 firmware disconnects on any other request length.
         """
         if self._protocol_version == PROTOCOL_VERSION_V4:
             return pack(">H", GATT_MTU)

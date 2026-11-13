@@ -60,6 +60,9 @@ unusable: a beacon frame, another protocol version, or malformed data.
   been seen, so the first connection can start without one.
 - Either way it waits, and decodes every new advertisement. The first usable one
   starts the connection, and the status is requested as usual once connected.
+  Failed identity connections retry with backoff even when advertisements are
+  unchanged. Stopping the device cancels these retries and retries cleanup of any
+  unused link whose earlier disconnect failed.
 
 The advertisement callback alone does not deliver every advertisement. Home
 Assistant skips it for packets whose data has not changed, and while another
@@ -112,6 +115,10 @@ The datapoint list follows. Each entry is `dp_id (1)`, `dp_type (1)`, a
 here. The list must contain at least one entry and end exactly on an entry
 boundary. All entries are decoded before any datapoint is stored, so a malformed
 report changes nothing.
+
+VALUE uses four bytes and remains signed; BOOL and ENUM use one byte, and ENUM is
+unsigned. BITMAP accepts one, two or four bytes. Invalid widths reject the whole
+report without updates or acknowledgement. Protocol-3 decoding is unchanged.
 
 Each report is acknowledged with the same code: its 7-byte header followed by a
 status byte `0`. The SDK ignores an acknowledgement of any other length. Reports

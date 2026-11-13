@@ -43,6 +43,13 @@ V4_DATAPOINT_HEADER_LENGTH = 4
 
 type DataPointValue = bytes | bool | int | str
 
+V4_VALUE_WIDTHS = {
+    TuyaBLEDataPointType.DT_BOOL: (1,),
+    TuyaBLEDataPointType.DT_VALUE: (4,),
+    TuyaBLEDataPointType.DT_ENUM: (1,),
+    TuyaBLEDataPointType.DT_BITMAP: (1, 2, 4),
+}
+
 
 class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
     """Mixin providing packet decryption, parsing and dispatch."""
@@ -194,7 +201,14 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
             if next_pos > len(data):
                 raise TuyaBLEDataLengthError()
             raw_value = data[pos:next_pos]
-            value = self._decode_datapoint_value(dp_type, raw_value)
+            widths = V4_VALUE_WIDTHS.get(dp_type)
+            if widths is not None and len(raw_value) not in widths:
+                raise TuyaBLEDataLengthError()
+            value = (
+                int.from_bytes(raw_value, "big")
+                if dp_type == TuyaBLEDataPointType.DT_ENUM
+                else self._decode_datapoint_value(dp_type, raw_value)
+            )
             entries.append((dp_id, dp_type, raw_value, value))
             pos = next_pos
         if not entries:

@@ -306,6 +306,68 @@ async def test_v4_report_value_longer_than_one_byte_length(
     assert dp.value == blob
 
 
+@pytest.mark.parametrize("enum_value", [0x80, 0xFF])
+async def test_v4_report_enum_is_unsigned(h: ProtocolHarness, enum_value: int) -> None:
+    """High-bit enum values stay positive and receive a success acknowledgement."""
+    deliver(
+        h,
+        DP_RECEIVE_V4,
+        report(klv(14, TuyaBLEDataPointType.DT_ENUM, bytes((enum_value,)))),
+    )
+    await drain_responses(h.device)
+    dp = h.device.datapoints[14]
+    assert dp is not None
+    assert dp.value == enum_value
+    assert written_frames(h)[0][3][-1:] == b"\x00"
+
+
+@pytest.mark.parametrize("width", [1, 2, 4])
+async def test_v4_report_bitmap_accepts_sdk_widths(
+    h: ProtocolHarness, width: int
+) -> None:
+    """Every defined bitmap width retains its raw bytes."""
+    raw = bytes(range(width))
+    deliver(h, DP_RECEIVE_V4, report(klv(6, TuyaBLEDataPointType.DT_BITMAP, raw)))
+    await drain_responses(h.device)
+    dp = h.device.datapoints[6]
+    assert dp is not None
+    assert dp.value == raw
+    assert len(written_frames(h)) == 1
+
+
+@pytest.mark.parametrize(
+    ("dp_type", "width"),
+    [
+        (TuyaBLEDataPointType.DT_VALUE, 0),
+        (TuyaBLEDataPointType.DT_VALUE, 1),
+        (TuyaBLEDataPointType.DT_VALUE, 3),
+        (TuyaBLEDataPointType.DT_VALUE, 5),
+        (TuyaBLEDataPointType.DT_BOOL, 0),
+        (TuyaBLEDataPointType.DT_BOOL, 2),
+        (TuyaBLEDataPointType.DT_ENUM, 0),
+        (TuyaBLEDataPointType.DT_ENUM, 2),
+        (TuyaBLEDataPointType.DT_BITMAP, 0),
+        (TuyaBLEDataPointType.DT_BITMAP, 3),
+        (TuyaBLEDataPointType.DT_BITMAP, 5),
+    ],
+)
+@pytest.mark.parametrize("code", [DP_RECEIVE_V4, DP_RECEIVE_TIME_V4])
+async def test_v4_invalid_width_rejects_entire_report(
+    h: ProtocolHarness, dp_type: TuyaBLEDataPointType, width: int, code: TuyaBLECode
+) -> None:
+    """A wrong-width second entry commits nothing and gets no acknowledgement."""
+    seen: list[list[TuyaBLEDataPoint]] = []
+    h.device.register_callback(seen.append)
+    body = soil_sensor_datapoints() + klv(30, dp_type, bytes(width))
+    if code == DP_RECEIVE_TIME_V4:
+        body = pack(">BI", 1, 1_700_000_000) + body
+    deliver(h, code, report(body))
+    await drain_responses(h.device)
+    assert not list(h.device.datapoints.values())
+    assert not seen
+    assert not h.writes()
+
+
 async def test_v4_report_without_response_flag_gets_no_answer(
     h: ProtocolHarness, caplog: pytest.LogCaptureFixture
 ) -> None:

@@ -213,8 +213,8 @@ async def test_provider_identity_clears_wait_only_after_connection() -> None:
     assert device._identity_connect_task is None
 
 
-async def test_failed_identity_connection_retries_on_later_advertisement() -> None:
-    """An exhausted identity connect remains armed for a later advertisement."""
+async def test_failed_identity_connection_retries_without_new_advertisement() -> None:
+    """Backoff retries an unchanged identity without resetting sequence numbers."""
     credentials = make_credentials()
     data = report(soil_sensor_datapoints())
     firmware = FakeV4Firmware(credentials, data)
@@ -224,23 +224,22 @@ async def test_failed_identity_connection_retries_on_later_advertisement() -> No
         await device.update()
 
     identity = without_scan_response(credentials)
-    with patch(ESTABLISH, new_callable=AsyncMock, return_value=None) as connect:
+    device._current_seq_num = 20
+    with (
+        patch(
+            ESTABLISH, new_callable=AsyncMock, side_effect=[None] * 100 + [firmware]
+        ) as connect,
+        patch("custom_components.tuya_ble.tuya_ble.base.BLEAK_BACKOFF_TIME", 0),
+    ):
         device.set_ble_device_and_advertisement_data(device._ble_device, identity)
         first = device._identity_connect_task
         assert first is not None
-        await first
-        assert connect.await_count == 100
-
-    assert device._awaiting_fd50_identity
-    with patch(ESTABLISH, new_callable=AsyncMock, return_value=firmware) as connect:
-        device.set_ble_device_and_advertisement_data(device._ble_device, identity)
-        retry = device._identity_connect_task
-        assert retry is not None and retry is not first
-        await retry
-        connect.assert_awaited_once()
+        await asyncio.wait_for(first, 1)
+        assert connect.await_count == 101
+        assert device._current_seq_num > 20
         assert not device._awaiting_fd50_identity
         device.set_ble_device_and_advertisement_data(device._ble_device, identity)
-        assert device._identity_connect_task is retry
+        assert device._identity_connect_task is first
         await device.update()
         await asyncio.wait_for(firmware.acknowledged.wait(), 1)
         await drain_responses(device)
@@ -344,9 +343,14 @@ async def test_waiting_device_does_not_connect_until_the_identity_arrives(
     credentials = make_credentials()
     device = make_unadvertised_device(credentials)
     device.set_ble_device_and_advertisement_data(device._ble_device, beacon())
+    attempts_exhausted = asyncio.Event()
+
+    async def unavailable(*_args: object, **_kwargs: object) -> None:
+        if connect.await_count == 100:
+            attempts_exhausted.set()
 
     with (
-        patch(ESTABLISH, new_callable=AsyncMock, return_value=None) as connect,
+        patch(ESTABLISH, new_callable=AsyncMock, side_effect=unavailable) as connect,
         caplog.at_level(logging.DEBUG),
     ):
         for _ in range(2):
@@ -362,10 +366,12 @@ async def test_waiting_device_does_not_connect_until_the_identity_arrives(
         )
         task = device._identity_connect_task
         assert task is not None
-        await task
+        await asyncio.wait_for(attempts_exhausted.wait(), 1)
         assert connect.await_count == 100
         assert "Connecting after the FD50 identity arrived failed" in caplog.text
         await device.stop()
+        assert task.cancelled()
+        assert connect.await_count == 100
 
 
 async def test_identity_connect_runs_once_and_never_after_stop() -> None:
@@ -393,6 +399,31 @@ async def test_identity_connect_runs_once_and_never_after_stop() -> None:
         assert device._identity_connect_task is first
 
 
+async def test_identity_retry_exits_when_stop_is_requested_during_failure() -> None:
+    """An intentional stop prevents another connection cycle after backoff."""
+    device = make_v4_device(make_credentials())
+    device._awaiting_fd50_identity = True
+
+    async def fail_while_stopping() -> None:
+        device._expected_disconnect = True
+        raise TuyaBLEDeviceError(0)
+
+    with (
+        patch.object(
+            device, "_ensure_connected", side_effect=fail_while_stopping
+        ) as ensure,
+        patch("custom_components.tuya_ble.tuya_ble.base.BLEAK_BACKOFF_TIME", 0),
+    ):
+        device.set_ble_device_and_advertisement_data(
+            device._ble_device, v4_advertisement()
+        )
+        task = device._identity_connect_task
+        assert task is not None
+        await task
+        ensure.assert_awaited_once()
+        await device.stop()
+
+
 async def test_failure_to_close_the_unused_connection_is_only_logged(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -400,6 +431,7 @@ async def test_failure_to_close_the_unused_connection_is_only_logged(
     credentials = make_credentials()
     device = make_unadvertised_device(credentials)
     client = FakeBleakClient()
+    close = client.disconnect
     disconnect = AsyncMock(side_effect=BleakError("gone"))
     client.disconnect = disconnect  # type: ignore[method-assign]
 
@@ -418,6 +450,92 @@ async def test_failure_to_close_the_unused_connection_is_only_logged(
     assert "Closing the unused connection failed" in caplog.text
     assert device._client is None
     assert not client.writes
+    assert client in device._pending_client_cleanup  # type: ignore[comparison-overlap]
+
+    disconnect.side_effect = close
+    await device.stop()
+    assert disconnect.await_count == 2
+    assert not client.is_connected
+    assert not device._pending_client_cleanup
+
+
+async def test_failed_discard_is_cleaned_before_reconnecting() -> None:
+    """An unused active client is closed before a replacement is established."""
+    credentials = make_credentials()
+    data = report(soil_sensor_datapoints())
+    device = make_unadvertised_device(credentials)
+    early = FakeBleakClient()
+    close = early.disconnect
+    disconnect = AsyncMock(side_effect=BleakError("still active"))
+    early.disconnect = disconnect  # type: ignore[method-assign]
+
+    async def establish_early(*_args: object, **_kwargs: object) -> FakeBleakClient:
+        device.set_ble_device_and_advertisement_data(device._ble_device, beacon())
+        return early
+
+    with (
+        patch(ESTABLISH, side_effect=establish_early),
+        pytest.raises(TuyaBLEDeviceError),
+    ):
+        await device.update()
+
+    disconnect.side_effect = close
+    late = FakeV4Firmware(credentials, data)
+
+    async def establish_late(*_args: object, **_kwargs: object) -> FakeV4Firmware:
+        assert not early.is_connected
+        return late
+
+    with patch(ESTABLISH, side_effect=establish_late):
+        device.set_ble_device_and_advertisement_data(
+            device._ble_device, without_scan_response(credentials)
+        )
+        task = device._identity_connect_task
+        assert task is not None
+        await task
+        assert disconnect.await_count == 2
+        device._disconnected(early)  # type: ignore[arg-type]
+        assert device._client is late  # type: ignore[comparison-overlap]
+        assert device._is_paired
+        await device.stop()
+
+
+async def test_cleanup_preserves_current_client_and_drops_already_closed_links() -> (
+    None
+):
+    """Cleanup skips the owned client and never disconnects a closed link twice."""
+    device = make_v4_device(make_credentials())
+    current = FakeBleakClient()
+    closed = FakeBleakClient(is_connected=False)
+    device._client = current  # type: ignore[assignment]
+    device._pending_client_cleanup.update((current, closed))  # type: ignore[arg-type]
+    current_disconnect = AsyncMock(wraps=current.disconnect)
+    current.disconnect = current_disconnect  # type: ignore[method-assign]
+    closed.disconnect = AsyncMock()  # type: ignore[method-assign]
+
+    await device._cleanup_discarded_clients()
+    current_disconnect.assert_not_awaited()
+    closed.disconnect.assert_not_awaited()
+    assert closed not in device._pending_client_cleanup  # type: ignore[comparison-overlap]
+    await device.stop()
+    current_disconnect.assert_awaited_once()
+    assert not device._pending_client_cleanup
+
+
+async def test_multiple_discarded_callbacks_do_not_clear_replacement_client() -> None:
+    """All discarded callbacks remain isolated even if they arrive out of order."""
+    device = make_v4_device(make_credentials())
+    first, second, current = FakeBleakClient(), FakeBleakClient(), FakeBleakClient()
+    await device._discard_client(first)  # type: ignore[arg-type]
+    await device._discard_client(second)  # type: ignore[arg-type]
+    device._client = current  # type: ignore[assignment]
+    device._is_paired = True
+    device._disconnected(second)  # type: ignore[arg-type]
+    device._disconnected(first)  # type: ignore[arg-type]
+    assert device._client is current  # type: ignore[comparison-overlap]
+    assert device._is_paired
+    assert not device._discarded_clients
+    await device.stop()
 
 
 async def test_classic_advertisement_never_waits_for_an_fd50_identity() -> None:
