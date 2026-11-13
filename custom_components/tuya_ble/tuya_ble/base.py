@@ -159,12 +159,12 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         """Update the underlying BLE device and advertisement data after a new scan.
 
         While a connection waits for an FD50 identity, each new advertisement
-        is decoded, and the first one that completes the identity starts it.
+        is decoded, and a usable identity starts it. Keep the wait armed until
+        the handshake succeeds so later advertisements can retry a failed attempt.
         """
         self._ble_device = ble_device
         self._advertisement_data = advertisement_data
         if self._awaiting_fd50_identity and self._decode_advertisement_data():
-            self._awaiting_fd50_identity = False
             _LOGGER.debug("%s: FD50 identity received, connecting", self.address)
             self._start_identity_connect()
 
@@ -961,6 +961,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             _LOGGER.error("%s: Not connected", self.address)
             return
         if self._is_paired:
+            self._awaiting_fd50_identity = False
             _LOGGER.debug("%s: Successfully connected", self.address)
             self._fire_connected_callbacks()
         else:

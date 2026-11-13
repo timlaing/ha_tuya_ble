@@ -191,6 +191,64 @@ async def test_stored_beacon_from_the_provider_prevents_connecting() -> None:
     assert device._awaiting_fd50_identity
 
 
+async def test_provider_identity_clears_wait_only_after_connection() -> None:
+    """A provider-only identity clears the wait once the handshake succeeds."""
+    credentials = make_credentials()
+    data = report(soil_sensor_datapoints())
+    firmware = FakeV4Firmware(credentials, data)
+    device = make_unadvertised_device(credentials)
+    stored = [beacon()]
+    device.set_advertisement_provider(lambda: (device._ble_device, stored[-1]))
+
+    with pytest.raises(TuyaBLEDeviceError):
+        await device.update()
+    assert device._awaiting_fd50_identity
+
+    stored.append(without_scan_response(credentials))
+    await run_session(device, firmware)
+
+    assert_v4_session(firmware, data)
+    assert not device._awaiting_fd50_identity
+    device.set_ble_device_and_advertisement_data(device._ble_device, stored[-1])
+    assert device._identity_connect_task is None
+
+
+async def test_failed_identity_connection_retries_on_later_advertisement() -> None:
+    """An exhausted identity connect remains armed for a later advertisement."""
+    credentials = make_credentials()
+    data = report(soil_sensor_datapoints())
+    firmware = FakeV4Firmware(credentials, data)
+    device = make_unadvertised_device(credentials)
+    device.set_ble_device_and_advertisement_data(device._ble_device, beacon())
+    with pytest.raises(TuyaBLEDeviceError):
+        await device.update()
+
+    identity = without_scan_response(credentials)
+    with patch(ESTABLISH, new_callable=AsyncMock, return_value=None) as connect:
+        device.set_ble_device_and_advertisement_data(device._ble_device, identity)
+        first = device._identity_connect_task
+        assert first is not None
+        await first
+        assert connect.await_count == 100
+
+    assert device._awaiting_fd50_identity
+    with patch(ESTABLISH, new_callable=AsyncMock, return_value=firmware) as connect:
+        device.set_ble_device_and_advertisement_data(device._ble_device, identity)
+        retry = device._identity_connect_task
+        assert retry is not None and retry is not first
+        await retry
+        connect.assert_awaited_once()
+        assert not device._awaiting_fd50_identity
+        device.set_ble_device_and_advertisement_data(device._ble_device, identity)
+        assert device._identity_connect_task is retry
+        await device.update()
+        await asyncio.wait_for(firmware.acknowledged.wait(), 1)
+        await drain_responses(device)
+        await device.stop()
+
+    assert_v4_session(firmware, data)
+
+
 async def test_device_without_credentials_still_needs_the_scan_response(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
