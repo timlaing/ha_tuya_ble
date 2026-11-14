@@ -12,7 +12,6 @@ import logging
 from struct import pack
 import time
 from typing import Any
-from weakref import WeakSet
 
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
@@ -24,6 +23,7 @@ from bleak_retry_connector import (
 )
 
 from .advertisement import decode_fd50_identity_record, decode_tuya_ble_advertisement
+from .connection_cleanup import _ConnectionCleanup
 from .const import (
     CHARACTERISTIC_NOTIFY,
     CHARACTERISTIC_NOTIFY_V4,
@@ -32,7 +32,6 @@ from .const import (
     GATT_MTU,
     INPUT_REASSEMBLY_TIMEOUT,
     MANUFACTURER_DATA_ID,
-    PAIRING_REQUEST_LENGTH,
     PROTOCOL_VERSION_V4,
     SERVICE_UUID_V4,
     DPType,
@@ -50,6 +49,9 @@ from .protocol_mixin import (
 
 _LOGGER = logging.getLogger(__name__)
 _FINGERBOT_TOUCH_DISCONNECT_TIMEOUT = 5.0
+# ESPHome's default acknowledgement timeout is 20s, followed by up to 5s
+# settling the proxy slot. Leave headroom without making teardown unbounded.
+_DISCARDED_CLIENT_CLEANUP_TIMEOUT = 30.0
 
 global_connect_lock = asyncio.Lock()
 
@@ -137,8 +139,10 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         self._send_response_tasks: set[asyncio.Task[None]] = set()
 
         self._awaiting_fd50_identity = False
-        self._discarded_clients: WeakSet[BleakClientWithServiceCache] = WeakSet()
-        self._pending_client_cleanup: set[BleakClientWithServiceCache] = set()
+        self._connection_cleanup = _ConnectionCleanup(ble_device.address)
+        self._discarded_clients = self._connection_cleanup.discarded
+        self._pending_client_cleanup = self._connection_cleanup.pending
+        self._client_cleanup_tasks = self._connection_cleanup.tasks
         self._identity_connect_task: asyncio.Task[None] | None = None
         self._advertisement_provider: (
             Callable[[], tuple[BLEDevice, AdvertisementData] | None] | None
@@ -187,25 +191,6 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             credentials.status_range if credentials.status_range else [],
         )
         self._decode_advertisement_data()
-
-    def _build_pairing_request(self) -> bytes:
-        result = bytearray()
-        if self._device_info is None or self._local_key is None:
-            raise TuyaBLEDeviceError(0)
-
-        result += self._device_info.uuid.encode()
-        result += self._local_key
-        result += self._device_info.device_id.encode()
-        if len(result) > PAIRING_REQUEST_LENGTH:
-            _LOGGER.error(
-                "%s: Pairing request of %d bytes exceeds the %d byte frame",
-                self.address,
-                len(result),
-                PAIRING_REQUEST_LENGTH,
-            )
-            raise TuyaBLEDeviceError(0)
-
-        return bytes(result).ljust(PAIRING_REQUEST_LENGTH, b"\x00")
 
     async def pair(self) -> None:
         """Send pairing request."""
@@ -517,7 +502,8 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             # callback can arrive after a later connection has replaced it, so
             # it must not touch the current client or the paired state.
             self._discarded_clients.discard(client)
-            self._pending_client_cleanup.discard(client)
+            # Only successful cleanup releases its ownership barrier. Proxy
+            # callbacks can clear local state before disconnect is acknowledged.
             _LOGGER.debug(
                 "%s: Closed the connection made before the FD50 identity arrived",
                 self.address,
@@ -570,6 +556,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
                 if client and client.is_connected:
                     await client.stop_notify(self._notify_char)
                     await client.disconnect()
+                    self._pending_client_cleanup.discard(client)
         async with self._seq_num_lock:
             self._current_seq_num = 1
 
@@ -642,11 +629,13 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             )
         if self._is_ready():
             return
-        if self._await_fd50_identity():
-            raise TuyaBLEDeviceError(0)
         async with self._connect_lock:
             if self._is_ready():
                 return
+            # Only the handshake owner may initialise its protocol from adverts.
+            # A waiter must not overwrite the version negotiated by DEVICE_INFO.
+            if self._await_fd50_identity():
+                raise TuyaBLEDeviceError(0)
             await self._connect_with_retries()
         self._log_connection_status()
 
@@ -656,19 +645,21 @@ class TuyaBLEDevice(TuyaBLEProtocol):
 
     async def _try_connect_and_configure(self) -> bool:
         """Try one connection + handshake cycle. Returns True on success."""
-        await self._cleanup_discarded_clients()
+        if not await self._cleanup_discarded_clients():
+            return False
         client = await self._try_establish_connection()
         if client is None:
             return False
+        self._connection_cleanup.capture_source(client)
         if self._await_fd50_identity():
             # The FD50 advertisement arrived while connecting, still without its
             # identity. Retrying would only repeat the wrong-protocol handshake.
             await self._discard_client(client)
             raise TuyaBLEDeviceError(0)
         self._client = client
-        if not self._is_fingerbot_touch:
-            return await self._configure_client()
-        self._clean_input()
+        fingerbot_touch = self._is_fingerbot_touch
+        if fingerbot_touch:
+            self._clean_input()
         configured = False
         try:
             configured = (
@@ -678,15 +669,19 @@ class TuyaBLEDevice(TuyaBLEProtocol):
                 and self._client is client
                 and client.is_connected
             )
+            if configured:
+                self._connection_cleanup.release_source(client)
             return configured
         finally:
             if not configured:
                 if self._client is None or self._client is client:
                     self._client = None
                     self._is_paired = False
+                    self._session_key = None
+                    self._auth_key = None
                     self._clean_input()
                     self._cancel_pending_responses()
-                await self._close_fingerbot_touch_client(client)
+                await self._discard_client(client)
 
     async def _configure_client(self) -> bool:
         """Subscribe to notifications and complete the BLE handshake."""
@@ -703,8 +698,17 @@ class TuyaBLEDevice(TuyaBLEProtocol):
                 return
             if await self._try_connect_and_configure():
                 return
+            if self._pending_client_cleanup:
+                break
         if self._expected_disconnect:
             return
+        if self._pending_client_cleanup:
+            _LOGGER.debug(
+                "%s: Deferring connection until cleanup completes", self.address
+            )
+            if self._reconnect_task is not asyncio.current_task():
+                self._schedule_reconnect()
+            raise TuyaBLEDeviceError(0)
         _LOGGER.error(
             "%s: Connecting, all attempts failed; RSSI: %s",
             self.address,
@@ -748,19 +752,22 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         return None
 
     def _await_fd50_identity(self) -> bool:
-        """Wait if the latest stored FD50 advertisement cannot choose a handshake.
+        """Wait when a stored FD50 advertisement cannot choose a safe handshake.
 
-        Reject beacons, unknown versions and malformed identities before sending
-        the protocol-2 default. Classic advertisements never wait.
+        Reject beacons, unsupported versions and malformed FD50 identities.
         """
         if self._advertisement_provider is not None and (
             latest := self._advertisement_provider()
         ):
             self._ble_device, self._advertisement_data = latest
+        if not self._advertisement_data:
+            return False
+        # Runtime setup starts without an advertisement. Decode classic records
+        # too, so its first handshake uses the same version as the setup probe.
+        identity_decoded = self._decode_advertisement_data()
         if (
-            not self._advertisement_data
-            or SERVICE_UUID_V4 not in self._advertisement_data.service_data
-            or self._decode_advertisement_data()
+            SERVICE_UUID_V4 not in self._advertisement_data.service_data
+            or identity_decoded
         ):
             return False
         if not self._awaiting_fd50_identity:
@@ -773,27 +780,15 @@ class TuyaBLEDevice(TuyaBLEProtocol):
 
     async def _discard_client(self, client: BleakClientWithServiceCache) -> None:
         """Close a connection that will not be used, without treating it as a drop."""
-        self._discarded_clients.add(client)
-        self._pending_client_cleanup.add(client)
-        try:
-            await client.disconnect()
-        except BLE_CONNECTION_EXCEPTIONS:
-            _LOGGER.debug(
-                "%s: Closing the unused connection failed", self.address, exc_info=True
-            )
-        finally:
-            if not client.is_connected:
-                self._pending_client_cleanup.discard(client)
+        await self._connection_cleanup.async_discard(
+            client, _DISCARDED_CLIENT_CLEANUP_TIMEOUT
+        )
 
-    async def _cleanup_discarded_clients(self) -> None:
-        """Retry cleanup of unused links without closing the current client twice."""
-        for client in tuple(self._pending_client_cleanup):
-            if client is self._client:
-                continue
-            if client.is_connected:
-                await self._discard_client(client)
-            else:
-                self._pending_client_cleanup.discard(client)
+    async def _cleanup_discarded_clients(self) -> bool:
+        """Resolve unused ownership before any replacement can connect."""
+        return await self._connection_cleanup.async_cleanup(
+            self._client, _DISCARDED_CLIENT_CLEANUP_TIMEOUT
+        )
 
     def _start_identity_connect(self) -> None:
         """Connect in the background once the awaited FD50 identity is known."""
@@ -862,11 +857,15 @@ class TuyaBLEDevice(TuyaBLEProtocol):
 
         last_notification: bytes | None = None
         last_notification_at = 0.0
+        fingerbot_touch = self._is_fingerbot_touch
 
         def handle_notification(sender: Any, data: bytearray) -> None:
             nonlocal last_notification, last_notification_at
             # A backend can still deliver notifications queued by a previous client.
             if self._client is not client or self._expected_disconnect:
+                return
+            if not fingerbot_touch:
+                self._safe_notification_handler(sender, data)
                 return
             now = time.monotonic()
             notification = bytes(data)
@@ -884,12 +883,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
 
         try:
             self._select_characteristics(client)
-            handler = (
-                handle_notification
-                if self._is_fingerbot_touch
-                else self._safe_notification_handler
-            )
-            await client.start_notify(self._notify_char, handler)
+            await client.start_notify(self._notify_char, handle_notification)
             return True
         except BLE_CONNECTION_EXCEPTIONS as err:
             self._client = None
@@ -974,11 +968,16 @@ class TuyaBLEDevice(TuyaBLEProtocol):
     async def _reconnect(self) -> None:
         """Attempt reconnection with exponential backoff, retrying on BLE errors."""
         _LOGGER.debug("%s: Reconnect, ensuring connection", self.address)
-        async with self._seq_num_lock:
-            self._current_seq_num = 1
         try:
-            if self._expected_disconnect:
+            if self._expected_disconnect or self._is_ready():
                 return
+            if self._pending_client_cleanup:
+                await asyncio.sleep(BLEAK_BACKOFF_TIME)
+                if self._expected_disconnect or self._is_ready():
+                    return
+            async with self._seq_num_lock:
+                if not self._connect_lock.locked() and not self._is_ready():
+                    self._current_seq_num = 1
             await self._ensure_connected()
             if self._expected_disconnect:
                 return
