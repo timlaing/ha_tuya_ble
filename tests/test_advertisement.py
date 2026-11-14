@@ -16,6 +16,10 @@ from custom_components.tuya_ble.tuya_ble import (
     SERVICE_UUID_V4,
     decode_tuya_ble_advertisement,
 )
+from custom_components.tuya_ble.tuya_ble.advertisement import (
+    TuyaBLEIdentityRecord,
+    decode_fd50_identity_record,
+)
 from custom_components.tuya_ble.tuya_ble.const import TuyaBLECode
 from custom_components.tuya_ble.tuya_ble.exceptions import TuyaBLEDeviceError
 from tests.conftest import (
@@ -207,6 +211,68 @@ def test_runtime_uses_v4_metadata() -> None:
     assert dev.uuid == "1234567890abcdef"
     assert dev._protocol_version == 4
     assert dev._is_bound is True
+
+
+def service_only(
+    service: bytes, service_uuid: str = SERVICE_UUID_V4
+) -> AdvertisementData:
+    """Build what a passive scanner stores: service data, no scan response."""
+    return cast(
+        AdvertisementData, FakeAdvertisementData(service_data={service_uuid: service})
+    )
+
+
+@pytest.mark.parametrize(
+    ("service", "bound"),
+    [
+        (b"\x49\x00\x00\x08abcdefgh", True),
+        (b"\x41\x00\x00\x08abcdefgh", False),
+        (b"\x41\x00\x01\x08abcdefgh", False),
+        (b"\x41\x00\x00\x10abcdefghijklmnop", False),
+    ],
+)
+def test_fd50_identity_record_without_scan_response(
+    service: bytes, bound: bool
+) -> None:
+    """The advertisement alone gives the protocol version and bound flag."""
+    adv = service_only(service)
+    assert decode_tuya_ble_advertisement(adv) is None
+    assert decode_fd50_identity_record(adv) == TuyaBLEIdentityRecord(
+        is_bound=bound, protocol_version=4
+    )
+
+
+@pytest.mark.parametrize(
+    "adv",
+    [
+        service_only(b"\x41"),
+        service_only(b"\x48\x00\x00\x08abcdefgh"),  # beacon
+        service_only(b"\x59\x00\x00\x08abcdefgh"),  # protocol 5
+        service_only(b"\x41\x00\x02\x08abcdefgh"),  # unknown product type
+        service_only(b"\x41\x00\x00\x14" + bytes(20)),  # 20-character product id
+        service_only(b"\x41\x00\x00\x08abcdefg"),  # length mismatch
+        service_only(b"\x00abcdefgh", SERVICE_UUID),  # classic record
+        cast(AdvertisementData, FakeAdvertisementData()),
+    ],
+)
+def test_fd50_identity_record_rejects_like_the_full_decode(
+    adv: AdvertisementData,
+) -> None:
+    """Beacons, other versions and malformed records give no record."""
+    assert decode_fd50_identity_record(adv) is None
+
+
+def test_runtime_uses_identity_record_with_stored_credentials() -> None:
+    """Stored credentials make the advertisement alone enough at runtime."""
+    credentials = make_credentials()
+    dev = make_device()
+    dev.set_ble_device_and_advertisement_data(
+        dev._ble_device, service_only(b"\x49\x00\x00\x08abcdefgh")
+    )
+    dev.initialize_with_credentials(credentials)
+    assert dev._protocol_version == 4
+    assert dev._is_bound is True
+    assert dev.uuid == credentials.uuid
 
 
 @pytest.mark.parametrize(

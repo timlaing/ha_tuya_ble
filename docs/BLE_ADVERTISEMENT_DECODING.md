@@ -28,9 +28,11 @@ FD50 discovery is validated before requesting cloud login. An incomplete v4
 advertisement triggers an active scan for a supported identity; unsupported
 formats are excluded from manual discovery. Active scans ignore beacon and
 invalid-identity packets rather than ending at the first block-aligned payload.
-Fresh FD50 connections also require a decoded identity so their initial handshake
-never uses the legacy default protocol version. An established session remains
-usable when a later advertisement is only a beacon.
+Fresh FD50 connections also require a usable identity record so their initial
+handshake never uses the legacy default protocol version. Once the device has
+stored credentials, the record in the advertisement is enough and the scan
+response is not needed (see [PROTOCOL_4.md](PROTOCOL_4.md)). An established
+session remains usable when a later advertisement is only a beacon.
 
 Manual discovery rebuilds eligibility from the current scanner snapshot, so
 vanished and configured addresses are not retained. Candidate identities resolve
@@ -59,5 +61,9 @@ guessing or fallback from FD50 to a possibly stale classic service record.
   protocol 4, not protocol 5.
 
 Tests include the supplied captured protocol-3 advertisement and synthetic
-protocol-4 vectors constructed using the firmware format. Real protocol-4
-hardware/cloud matching remains to be verified.
+protocol-4 vectors constructed using the firmware format. Discovery and cloud
+matching on real protocol-4 hardware have since been verified on one SRB-PM01;
+see [PROTOCOL_4.md](PROTOCOL_4.md#hardware-status).
+
+The connection handshake and datapoint reports that follow discovery are
+described in [PROTOCOL_4.md](PROTOCOL_4.md).

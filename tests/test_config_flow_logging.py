@@ -263,7 +263,7 @@ async def test_setup_address_inconclusive_probe_uses_safe_error(
         await flow._probe_task
         await flow.async_step_probe()
         result = await flow.async_step_probe_finish()
-    probe.assert_awaited_once()
+    assert probe.await_count == 2
     assert probe.await_args is not None
     assert probe.await_args.args[2] is credentials
     assert result["errors"] is not None

@@ -107,7 +107,8 @@ Entities: on/off, brightness, color temperature, RGB color.
 
 ## Blind / curtain controllers (category_id `cl`)
 
-- Blind Controller (product_ids `4pbr8eig`, `vlwf3ud6`, `ulughw4g`).
+- Blind Controller (product_ids `4pbr8eig`, `vlwf3ud6`).
+- LY curtain motor (product_id `ulughw4g`). Open/close/stop and position (DPs 1–3; the device only reports 0, 50 and 100 %), battery (DP 13), work state (DP 7), temperature (DP 103), fault (DP 12), auto-close temperature (DP 105, 10–60 °C in steps of 10), closing side (DP 101), learning start/end (DP 102), a disabled-by-default reset (DP 107) and a disabled-by-default timer schedules payload (DP 22).
 - Curtain Controller (product_id `kcy0x4pi`).
 - AOK AM24 Venetian Blinds Motor (product_id `dy4dh1q0`).
 - Battery BLE Roller (product_id `jetlwvfm`). Cloud-schema-based mapping for open/close/stop and position (DPs 1–3), battery percentage (DP 13), and last operation duration (DP 10). Hardware operation is not yet verified; this descriptor does not resolve the cloud identity matching error in #39.

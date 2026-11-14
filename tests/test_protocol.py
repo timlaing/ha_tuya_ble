@@ -169,6 +169,51 @@ async def test_receive_dp_all_types(h: ProtocolHarness) -> None:
     assert dp2.value is True
 
 
+async def test_receive_dp_keeps_entries_before_malformed_one(
+    h: ProtocolHarness,
+) -> None:
+    """v3 stores the entries before a malformed one but fires no callback.
+
+    This pins long-standing behaviour: unlike the protocol-4 parser, the v3
+    parser is not all-or-nothing, and the ack is never sent.
+    """
+    seen: list[TuyaBLEDataPoint] = []
+    h.device.register_callback(seen.extend)
+    data = pack(">BBB", 3, TuyaBLEDataPointType.DT_VALUE.value, 1) + b"\x07"
+    data += pack(">BBB", 4, 6, 1) + b"\x00"
+    msg = frame_packet0(
+        encrypt_payload(session_key(h), 5, 1, 0, TuyaBLECode.FUN_RECEIVE_DP, data)
+    )
+    with pytest.raises(TuyaBLEDataFormatError):
+        h.notify(msg)
+    await asyncio.sleep(0)
+    dp3 = h.device.datapoints[3]
+    assert dp3 is not None
+    assert dp3.value == 7
+    assert h.device.datapoints[4] is None
+    assert not seen
+    assert not h.writes()
+
+
+async def test_v3_enum_and_short_value_decoding_unchanged(h: ProtocolHarness) -> None:
+    """The v4 validation and unsigned enum fix do not change legacy decoding."""
+    data = pack(">BBB", 3, TuyaBLEDataPointType.DT_VALUE.value, 1) + b"\x07"
+    data += pack(">BBB", 4, TuyaBLEDataPointType.DT_ENUM.value, 1) + b"\x80"
+    h.notify(
+        frame_packet0(
+            encrypt_payload(session_key(h), 5, 1, 0, TuyaBLECode.FUN_RECEIVE_DP, data)
+        )
+    )
+    await asyncio.gather(*tuple(h.device._send_response_tasks))
+    dp3 = h.device.datapoints[3]
+    dp4 = h.device.datapoints[4]
+    assert dp3 is not None
+    assert dp3.value == 7
+    assert dp4 is not None
+    assert dp4.value == -128
+    assert h.writes()
+
+
 async def test_receive_sign_dp(h: ProtocolHarness) -> None:
     """Receiving signed datapoints should be handled."""
     seen: list[TuyaBLEDataPoint] = []

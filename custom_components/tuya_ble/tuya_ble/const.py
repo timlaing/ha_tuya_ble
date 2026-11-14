@@ -18,6 +18,13 @@ INPUT_REASSEMBLY_TIMEOUT = 5.0
 CHARACTERISTIC_NOTIFY = "00002b10-0000-1000-8000-00805f9b34fb"
 CHARACTERISTIC_WRITE = "00002b11-0000-1000-8000-00805f9b34fb"
 
+# The Tuya BLE SDK's GATT table for protocol 4 (FD50 service). Firmware is not
+# guaranteed to follow that table, so a protocol-4 device only uses this pair
+# when its GATT services offer both characteristics, and the classic pair above
+# otherwise.
+CHARACTERISTIC_NOTIFY_V4 = "00000002-0000-1001-8001-00805f9b07d0"
+CHARACTERISTIC_WRITE_V4 = "00000001-0000-1001-8001-00805f9b07d0"
+
 SERVICE_UUID = "0000a201-0000-1000-8000-00805f9b34fb"
 SERVICE_UUID_V4 = "0000fd50-0000-1000-8000-00805f9b34fb"
 SERVICE_UUIDS = (SERVICE_UUID, SERVICE_UUID_V4)
@@ -25,6 +32,8 @@ SERVICE_UUIDS = (SERVICE_UUID, SERVICE_UUID_V4)
 MANUFACTURER_DATA_ID = 0x07D0
 
 RESPONSE_WAIT_TIMEOUT = 60
+
+PROTOCOL_VERSION_V4 = 4
 
 # The pairing request is a fixed-size frame holding uuid + local_key + device_id,
 # zero-padded to the end. The field widths below are the protocol's own limits and

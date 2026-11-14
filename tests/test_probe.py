@@ -5,11 +5,18 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
+from bleak_retry_connector import (
+    BleakAbortedError,
+    BleakConnectionError,
+    BleakNotFoundError,
+    BleakOutOfConnectionSlotsError,
+)
 import pytest
 
 from custom_components.tuya_ble.tuya_ble import (
@@ -21,6 +28,7 @@ from custom_components.tuya_ble.tuya_ble.exceptions import (
     TuyaBLEDataFormatError,
     TuyaBLEDeviceError,
 )
+import custom_components.tuya_ble.tuya_ble.probe as probe_module
 from custom_components.tuya_ble.tuya_ble.probe import (
     ProbeOutcome,
     _ProbeDevice,
@@ -33,6 +41,12 @@ from tests.conftest import (
     make_credentials,
 )
 from tests.test_device import _encrypt_uuid
+
+
+@pytest.fixture(autouse=True)
+def isolated_probe_cleanups(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep failed mock connections from blocking probes in another test."""
+    monkeypatch.setattr(probe_module, "_pending_probe_cleanup", {})
 
 
 def _input(bound: bool = True) -> tuple[BLEDevice, AdvertisementData]:
@@ -76,13 +90,15 @@ async def test_probe_without_expected_dp_or_binding(bound: bool) -> None:
         ("none", ProbeOutcome.MATCHED),
         ("connect", ProbeOutcome.INCONCLUSIVE),
         ("notifications", ProbeOutcome.INCONCLUSIVE),
-        ("info", ProbeOutcome.INCONCLUSIVE),
+        ("info", ProbeOutcome.RETRYABLE),
+        ("missing_session", ProbeOutcome.INCONCLUSIVE),
         ("unbound_info", ProbeOutcome.INCONCLUSIVE),
         ("pair", ProbeOutcome.REJECTED),
         ("pair_uncorrelated", ProbeOutcome.INCONCLUSIVE),
-        ("pair_timeout", ProbeOutcome.INCONCLUSIVE),
+        ("pair_timeout", ProbeOutcome.RETRYABLE),
         ("status", ProbeOutcome.INCONCLUSIVE),
-        ("unexpected_dp", ProbeOutcome.INCONCLUSIVE),
+        ("status_timeout", ProbeOutcome.RETRYABLE),
+        ("unexpected_dp", ProbeOutcome.RETRYABLE),
     ],
 )
 async def test_probe_stages(
@@ -108,6 +124,8 @@ async def test_probe_stages(
         if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO:
             if failure == "info":
                 return False
+            if failure == "missing_session":
+                return True
             reply = bytearray(46)
             reply[5] = 0 if failure == "unbound_info" else 1
             reply[2] = 3
@@ -122,6 +140,8 @@ async def test_probe_stages(
             if failure == "pair":
                 device.pair_rejected = True
         elif code == TuyaBLECode.FUN_SENDER_DEVICE_STATUS:
+            if failure == "status_timeout":
+                return False
             device._handle_device_status_response(
                 b"\x01" if failure == "status" else b"\x00"
             )
@@ -164,6 +184,257 @@ async def test_probe_stages(
     assert credentials.uuid == "cloud-identity-uuid"
 
 
+@pytest.mark.parametrize(
+    ("failure", "expected"),
+    [
+        ("timeout", ProbeOutcome.RETRYABLE),
+        ("connection_error", ProbeOutcome.RETRYABLE),
+        ("disconnect_callback", ProbeOutcome.RETRYABLE),
+        ("disconnect_state", ProbeOutcome.RETRYABLE),
+        ("disconnect_exception", ProbeOutcome.RETRYABLE),
+        ("other_error", ProbeOutcome.INCONCLUSIVE),
+    ],
+)
+async def test_transport_failure_classification(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    failure: str,
+    expected: ProbeOutcome,
+) -> None:
+    """Only timeouts and lost connections request a retry of the same identity."""
+    caplog.set_level(logging.DEBUG)
+    ble, adv = _input()
+    client = FakeBleakClient()
+
+    async def authenticated_read(
+        device: _ProbeDevice, received: asyncio.Future[None], enable_status: Any
+    ) -> ProbeOutcome:
+        """Simulate transport failures without exposing their secret-bearing text."""
+        if failure == "timeout":
+            raise TimeoutError("private-transport-failure")
+        if failure == "connection_error":
+            raise ConnectionError("private-transport-failure")
+        if failure == "other_error":
+            raise OSError("private-transport-failure")
+        device._client = cast(Any, client)
+        if failure == "disconnect_callback":
+            device._disconnected(client)
+        else:
+            await client.disconnect()
+        if failure == "disconnect_exception":
+            raise OSError("private-transport-failure")
+        return ProbeOutcome.INCONCLUSIVE
+
+    monkeypatch.setattr(_ProbeDevice, "authenticated_read", authenticated_read)
+    outcome = await async_probe_authenticated_status(
+        ble, adv, make_credentials(), "1234567890abcdef", frozenset({1})
+    )
+    assert outcome == expected
+    assert "private-transport-failure" not in caplog.text
+
+
+async def test_normal_cleanup_disconnect_does_not_request_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A completed authenticated match survives its intentional cleanup callback."""
+    ble, adv = _input()
+
+    async def authenticated_read(
+        device: _ProbeDevice, received: asyncio.Future[None], enable_status: Any
+    ) -> ProbeOutcome:
+        """Return a completed authenticated result before cleanup disconnects."""
+        return ProbeOutcome.MATCHED
+
+    async def close_probe(device: _ProbeDevice) -> None:
+        """Notify the device of the disconnect performed by normal cleanup."""
+        device._disconnected(object())
+
+    monkeypatch.setattr(_ProbeDevice, "authenticated_read", authenticated_read)
+    monkeypatch.setattr(_ProbeDevice, "close_probe", close_probe)
+    assert (
+        await async_probe_authenticated_status(
+            ble, adv, make_credentials(), "1234567890abcdef", frozenset({1})
+        )
+        == ProbeOutcome.MATCHED
+    )
+
+
+@pytest.mark.parametrize(
+    "error_type",
+    [
+        BleakConnectionError,
+        BleakAbortedError,
+        BleakOutOfConnectionSlotsError,
+        BleakNotFoundError,
+    ],
+)
+async def test_connector_errors_before_client_return_are_retryable(
+    error_type: type[Exception], caplog: pytest.LogCaptureFixture
+) -> None:
+    """Connector-specific failures still retry when no disconnect callback fires."""
+    ble, adv = _input()
+    error = error_type("private-connector-failure")
+    if error_type is BleakNotFoundError:
+        error.__cause__ = TimeoutError("private-connector-timeout")
+    with (
+        patch(
+            "custom_components.tuya_ble.tuya_ble.probe.establish_connection",
+            new_callable=AsyncMock,
+            side_effect=error,
+        ) as establish,
+        caplog.at_level(logging.DEBUG),
+    ):
+        outcome = await async_probe_authenticated_status(
+            ble, adv, make_credentials(), "1234567890abcdef", frozenset({1})
+        )
+    assert outcome == ProbeOutcome.RETRYABLE
+    establish.assert_awaited_once()
+    assert establish.await_args is not None
+    assert establish.await_args.kwargs["max_attempts"] == 1
+    assert "private-connector-failure" not in caplog.text
+    assert "private-connector-timeout" not in caplog.text
+
+
+async def test_timeout_remains_retryable_when_cleanup_also_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An additional cleanup exception must not hide an earlier transport timeout."""
+    ble, adv = _input()
+
+    async def authenticated_read(
+        device: _ProbeDevice, received: asyncio.Future[None], enable_status: Any
+    ) -> ProbeOutcome:
+        """Report a timeout independently of the subsequent cleanup failure."""
+        raise TimeoutError()
+
+    async def close_probe(device: _ProbeDevice) -> None:
+        """Fail cleanup after the read has already timed out."""
+        raise OSError()
+
+    monkeypatch.setattr(_ProbeDevice, "authenticated_read", authenticated_read)
+    monkeypatch.setattr(_ProbeDevice, "close_probe", close_probe)
+    assert (
+        await async_probe_authenticated_status(
+            ble, adv, make_credentials(), "1234567890abcdef", frozenset({1})
+        )
+        == ProbeOutcome.RETRYABLE
+    )
+
+
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+@pytest.mark.parametrize("external_close", [False, True])
+async def test_failed_cleanup_recovers_before_next_connection(
+    monkeypatch: pytest.MonkeyPatch, cleanup_fails: bool, external_close: bool
+) -> None:
+    """A finished cleanup error is not proof that its connected client is closed."""
+    ble, adv = _input()
+    clients = [FakeBleakClient(), FakeBleakClient()]
+    reads = 0
+
+    async def authenticated_read(
+        device: _ProbeDevice, received: asyncio.Future[None], enable_status: Any
+    ) -> ProbeOutcome:
+        """Record actual connection attempts rather than blocked probe invocations."""
+        nonlocal reads
+        if reads:
+            assert not clients[0].is_connected
+        device._client = cast(Any, clients[reads])
+        reads += 1
+        return ProbeOutcome.MATCHED
+
+    async def close_probe(device: _ProbeDevice) -> None:
+        """Fail to release the first link, but successfully close a later link."""
+        if device._client is cast(Any, clients[0]):
+            if cleanup_fails:
+                raise OSError("private-cleanup-failure")
+            return
+        assert device._client is cast(Any, clients[1])
+        await clients[1].disconnect()
+
+    monkeypatch.setattr(_ProbeDevice, "authenticated_read", authenticated_read)
+    monkeypatch.setattr(_ProbeDevice, "close_probe", close_probe)
+    first = await async_probe_authenticated_status(
+        ble, adv, make_credentials(), "1234567890abcdef", frozenset({1})
+    )
+    assert first == (
+        ProbeOutcome.INCONCLUSIVE if cleanup_fails else ProbeOutcome.RETRYABLE
+    )
+    assert reads == 1
+    assert clients[0].is_connected
+    if external_close:
+        await clients[0].disconnect()
+    with patch.object(
+        clients[0], "disconnect", wraps=clients[0].disconnect
+    ) as disconnect:
+        resumed = await async_probe_authenticated_status(
+            ble, adv, make_credentials(), "1234567890abcdef", frozenset({1})
+        )
+        if external_close:
+            disconnect.assert_not_awaited()
+        else:
+            disconnect.assert_awaited_once()
+    assert resumed == ProbeOutcome.MATCHED
+    assert reads == 2
+    assert not clients[0].is_connected
+    assert not probe_module._pending_probe_cleanup
+
+
+@pytest.mark.parametrize("recovery", ["error", "timeout", "still_connected"])
+async def test_retained_client_recovery_is_bounded_and_requires_link_closure(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    recovery: str,
+) -> None:
+    """Failed or ineffective recovery never permits another overlapping connection."""
+    ble, adv = _input()
+    client = FakeBleakClient()
+    reads = 0
+
+    async def authenticated_read(
+        device: _ProbeDevice, received: asyncio.Future[None], enable_status: Any
+    ) -> ProbeOutcome:
+        """Record the first connection, which must remain the only connection."""
+        nonlocal reads
+        device._client = cast(Any, client)
+        reads += 1
+        return ProbeOutcome.MATCHED
+
+    async def close_probe(device: _ProbeDevice) -> None:
+        """Leave the physical link open after the initial cleanup fails."""
+        raise OSError("private-cleanup-failure")
+
+    async def disconnect() -> None:
+        """Model a failing, stalled, or ineffectual backend disconnect."""
+        if recovery == "error":
+            raise OSError("private-cleanup-failure")
+        if recovery == "timeout":
+            await asyncio.Event().wait()
+
+    monkeypatch.setattr(_ProbeDevice, "authenticated_read", authenticated_read)
+    monkeypatch.setattr(_ProbeDevice, "close_probe", close_probe)
+    monkeypatch.setattr(probe_module, "PROBE_CLEANUP_TIMEOUT", 0.01)
+    with (
+        patch.object(client, "disconnect", side_effect=disconnect) as reconnect_cleanup,
+        caplog.at_level(logging.DEBUG),
+    ):
+        first = await async_probe_authenticated_status(
+            ble, adv, make_credentials(), "1234567890abcdef", frozenset({1})
+        )
+        blocked = await async_probe_authenticated_status(
+            ble, adv, make_credentials(), "1234567890abcdef", frozenset({1})
+        )
+        await asyncio.gather(
+            *(pending[0] for pending in probe_module._pending_probe_cleanup.values()),
+            return_exceptions=True,
+        )
+        reconnect_cleanup.assert_awaited_once()
+    assert first == ProbeOutcome.INCONCLUSIVE
+    assert blocked == ProbeOutcome.RETRYABLE
+    assert reads == 1
+    assert client.is_connected
+    assert "private-cleanup-failure" not in caplog.text
+
+
 async def test_invalid_pairing_frame_stops_before_connect() -> None:
     """Malformed cloud credentials are not a pairing rejection or retry signal."""
     ble, adv = _input()
@@ -188,7 +459,7 @@ async def test_invalid_pairing_frame_stops_before_connect() -> None:
 async def test_real_pair_response_future(
     monkeypatch: pytest.MonkeyPatch, response: bytes, expected: ProbeOutcome
 ) -> None:
-    """The real sender raises on pair rejection; that alone permits UUID retry."""
+    """The real sender distinguishes explicit refusals from authenticated matches."""
     ble, adv = _input()
     client = FakeBleakClient()
 
@@ -225,7 +496,7 @@ async def test_real_pair_response_future(
 
 
 async def test_unsolicited_pair_rejection_is_not_conclusive() -> None:
-    """An unrelated rejection does not authorize testing another pairing UUID."""
+    """An unrelated rejection is not evidence of a conclusive pairing refusal."""
     ble, adv = _input()
     device = _ProbeDevice(ble, adv)
     device._handle_command_or_response(3, 0, TuyaBLECode.FUN_SENDER_PAIR, b"\x01")
@@ -428,6 +699,62 @@ async def test_failed_disconnect_cannot_confirm_match(
     )
 
 
+async def test_disconnect_after_cancelled_stop_notify_has_its_own_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cancelling notification cleanup cannot leave final disconnect pending forever."""
+    ble, adv = _input()
+    client = FakeBleakClient()
+    disconnect_started = asyncio.Event()
+    disconnect_cancelled = asyncio.Event()
+
+    async def stall_notify(*_args: Any) -> None:
+        """Wait until the outer cleanup deadline cancels notification shutdown."""
+        await asyncio.Event().wait()
+
+    async def stall_disconnect() -> None:
+        """Model a D-Bus reply that never arrives but respects cancellation."""
+        disconnect_started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            disconnect_cancelled.set()
+
+    async def read(
+        device: _ProbeDevice, _received: Any, _enable_status: Any
+    ) -> ProbeOutcome:
+        """Assign a connected client before cleanup begins."""
+        device._client = cast(Any, client)
+        return ProbeOutcome.MATCHED
+
+    monkeypatch.setattr(_ProbeDevice, "authenticated_read", read)
+    monkeypatch.setattr(probe_module, "PROBE_CLEANUP_TIMEOUT", 0.01)
+    with (
+        patch.object(client, "stop_notify", side_effect=stall_notify),
+        patch.object(client, "disconnect", side_effect=stall_disconnect),
+    ):
+        result = await async_probe_authenticated_status(
+            ble, adv, make_credentials(), "1234567890abcdef", frozenset({1})
+        )
+        await disconnect_started.wait()
+        await disconnect_cancelled.wait()
+        await asyncio.gather(
+            *(pending[0] for pending in probe_module._pending_probe_cleanup.values()),
+            return_exceptions=True,
+        )
+    assert result == ProbeOutcome.RETRYABLE
+    assert all(
+        pending[0].done() for pending in probe_module._pending_probe_cleanup.values()
+    )
+    assert client.is_connected
+    resumed = await async_probe_authenticated_status(
+        ble, adv, make_credentials(), "1234567890abcdef", frozenset({1})
+    )
+    assert resumed == ProbeOutcome.MATCHED
+    assert not client.is_connected
+    assert not probe_module._pending_probe_cleanup
+
+
 async def test_stalled_cleanup_has_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
     """An unresponsive disconnect does not hold the shared probe lock forever."""
     ble, adv = _input()
@@ -453,7 +780,7 @@ async def test_stalled_cleanup_has_deadline(monkeypatch: pytest.MonkeyPatch) -> 
         await async_probe_authenticated_status(
             ble, adv, make_credentials(), "1234567890abcdef", frozenset({1})
         )
-        == ProbeOutcome.INCONCLUSIVE
+        == ProbeOutcome.RETRYABLE
     )
     await cancelled.wait()
 
@@ -526,5 +853,5 @@ async def test_unsolicited_dp_is_not_proof(monkeypatch: pytest.MonkeyPatch) -> N
         await async_probe_authenticated_status(
             ble, adv, make_credentials(), "1234567890abcdef", frozenset({1})
         )
-        == ProbeOutcome.INCONCLUSIVE
+        == ProbeOutcome.RETRYABLE
     )

@@ -1,4 +1,5 @@
 aiousbwatcher
+dbus-fast
 homeassistant==2026.11.1
 mypy
 prek

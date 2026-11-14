@@ -26,6 +26,14 @@ class TuyaBLEAdvertisementInfo:
     protocol_version: int
 
 
+@dataclass(frozen=True)
+class TuyaBLEIdentityRecord:
+    """Connection parameters read from an FD50 identity record alone."""
+
+    is_bound: bool
+    protocol_version: int
+
+
 def _decode_uuid(key_material: bytes, encrypted_uuid: bytes) -> str | None:
     """Decode the uncompressed identity without trying alternate keys."""
     if len(encrypted_uuid) % AES.block_size:
@@ -67,20 +75,28 @@ def _decode_classic(
     )
 
 
+def _is_v4_identity_record(service: bytes) -> bool:
+    """Check the FD50 service data is a protocol-4 identity record, not a beacon."""
+    if len(service) < 4:
+        return False
+    # High nibble is the protocol version; bit 0 marks an identity record.
+    if service[0] >> 4 != 4 or not service[0] & 0x01:
+        return False
+    product_type, product_length = service[2:4]
+    if product_type not in (0, 1) or not 1 <= product_length <= 16:
+        return False
+    return len(service) == 4 + product_length
+
+
 def _decode_v4(service: bytes, manufacturer: bytes) -> TuyaBLEAdvertisementInfo | None:
     """Decode only the verified FD50 identity layout, never beacon messages."""
     # Flag bit 0 indicates a compressed 20-character identity. The current
     # pairing implementation supports only uncompressed identities.
-    if len(service) < 4 or len(manufacturer) != 20 or manufacturer[3] & 0x01:
+    if len(manufacturer) != 20 or manufacturer[3] & 0x01:
         return None
-    # High nibble is the protocol version; bit 0 marks an identity record.
-    if service[0] >> 4 != 4 or not service[0] & 0x01:
+    if not _is_v4_identity_record(service):
         return None
-    product_type, product_length = service[2:4]
-    if product_type not in (0, 1) or not 1 <= product_length <= 16:
-        return None
-    if len(service) != 4 + product_length:
-        return None
+    product_type = service[2]
     uuid = _decode_uuid(service, manufacturer[4:])
     if uuid is None:
         return None
@@ -112,3 +128,22 @@ def decode_tuya_ble_advertisement(
     if SERVICE_UUID_V4 in service_data:
         return _decode_v4(service_data[SERVICE_UUID_V4], manufacturer)
     return _decode_classic(service_data.get(SERVICE_UUID, b""), manufacturer)
+
+
+def decode_fd50_identity_record(
+    advertisement_data: AdvertisementData,
+) -> TuyaBLEIdentityRecord | None:
+    """Read the protocol version and bound flag from the FD50 service data.
+
+    Protocol-4 firmware puts this record in the advertisement and the
+    encrypted identity in the scan response, which only an active scan
+    receives. The record checks are the ones ``decode_tuya_ble_advertisement``
+    applies, so beacons, other protocol versions and 20-character product ids
+    are rejected the same way. It does not prove which device sent it, so it
+    is only for a device whose identity is already known from its stored
+    credentials; discovery needs the full identity.
+    """
+    service = (advertisement_data.service_data or {}).get(SERVICE_UUID_V4)
+    if service is None or not _is_v4_identity_record(service):
+        return None
+    return TuyaBLEIdentityRecord(is_bound=bool(service[0] & 0x08), protocol_version=4)

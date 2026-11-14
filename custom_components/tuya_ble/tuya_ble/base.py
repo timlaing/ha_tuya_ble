@@ -9,8 +9,10 @@ from dataclasses import dataclass, field
 import hashlib
 import json
 import logging
+from struct import pack
 import time
 from typing import Any
+from weakref import WeakSet
 
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
@@ -21,12 +23,17 @@ from bleak_retry_connector import (
     establish_connection,
 )
 
-from .advertisement import decode_tuya_ble_advertisement
+from .advertisement import decode_fd50_identity_record, decode_tuya_ble_advertisement
 from .const import (
     CHARACTERISTIC_NOTIFY,
+    CHARACTERISTIC_NOTIFY_V4,
+    CHARACTERISTIC_WRITE,
+    CHARACTERISTIC_WRITE_V4,
+    GATT_MTU,
     INPUT_REASSEMBLY_TIMEOUT,
     MANUFACTURER_DATA_ID,
     PAIRING_REQUEST_LENGTH,
+    PROTOCOL_VERSION_V4,
     SERVICE_UUID_V4,
     DPType,
     TuyaBLECode,
@@ -90,6 +97,8 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         self._operation_lock = asyncio.Lock()
         self._connect_lock = asyncio.Lock()
         self._client: BleakClientWithServiceCache | None = None
+        self._notify_char = CHARACTERISTIC_NOTIFY
+        self._write_char = CHARACTERISTIC_WRITE
         self._expected_disconnect = False
         self._connected_callbacks: list[Callable[[], None]] = []
         self._callbacks: list[Callable[[list[TuyaBLEDataPoint]], None]] = []
@@ -127,12 +136,34 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         self._resend_task: asyncio.Task[None] | None = None
         self._send_response_tasks: set[asyncio.Task[None]] = set()
 
+        self._awaiting_fd50_identity = False
+        self._discarded_clients: WeakSet[BleakClientWithServiceCache] = WeakSet()
+        self._pending_client_cleanup: set[BleakClientWithServiceCache] = set()
+        self._identity_connect_task: asyncio.Task[None] | None = None
+        self._advertisement_provider: (
+            Callable[[], tuple[BLEDevice, AdvertisementData] | None] | None
+        ) = None
+
+    def set_advertisement_provider(
+        self, provider: Callable[[], tuple[BLEDevice, AdvertisementData] | None]
+    ) -> None:
+        """Supply advertisements stored by Home Assistant but omitted from callbacks."""
+        self._advertisement_provider = provider
+
     def set_ble_device_and_advertisement_data(
         self, ble_device: BLEDevice, advertisement_data: AdvertisementData
     ) -> None:
-        """Update the underlying BLE device and advertisement data after a new scan."""
+        """Update the underlying BLE device and advertisement data after a new scan.
+
+        While a connection waits for an FD50 identity, each new advertisement
+        is decoded, and a usable identity starts it. Keep the wait armed until
+        the handshake succeeds so later advertisements can retry a failed attempt.
+        """
         self._ble_device = ble_device
         self._advertisement_data = advertisement_data
+        if self._awaiting_fd50_identity and self._decode_advertisement_data():
+            _LOGGER.debug("%s: FD50 identity received, connecting", self.address)
+            self._start_identity_connect()
 
     async def initialize(self) -> None:
         """Initialize the device by loading credentials and decoding advertisements."""
@@ -232,6 +263,16 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             self._uuid = advert.uuid
             self._is_bound = advert.is_bound
             self._protocol_version = advert.protocol_version
+            return True
+        # The encrypted identity is only in the scan response, which a passive
+        # scanner never receives. A device with stored credentials already has
+        # its identity, so the FD50 record in the advertisement is enough to
+        # choose the handshake.
+        if self._device_info is not None and (
+            record := decode_fd50_identity_record(self._advertisement_data)
+        ):
+            self._is_bound = record.is_bound
+            self._protocol_version = record.protocol_version
             return True
         return False
 
@@ -451,6 +492,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             if not task.done():
                 task.cancel()
         await self._execute_disconnect()
+        await self._cleanup_discarded_clients()
         for task in self._background_tasks():
             with suppress(asyncio.CancelledError, Exception):
                 await task
@@ -462,6 +504,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             for task in (
                 self._reconnect_task,
                 self._resend_task,
+                self._identity_connect_task,
                 *self._send_response_tasks,
             )
             if task is not None
@@ -469,6 +512,17 @@ class TuyaBLEDevice(TuyaBLEProtocol):
 
     def _disconnected(self, client: BleakClientWithServiceCache) -> None:
         """Handle BLE disconnection: fire callbacks and reconnect."""
+        if client in self._discarded_clients:
+            # Closed on purpose before any handshake, see _discard_client. The
+            # callback can arrive after a later connection has replaced it, so
+            # it must not touch the current client or the paired state.
+            self._discarded_clients.discard(client)
+            self._pending_client_cleanup.discard(client)
+            _LOGGER.debug(
+                "%s: Closed the connection made before the FD50 identity arrived",
+                self.address,
+            )
+            return
         fingerbot_touch = self._is_fingerbot_touch
         if fingerbot_touch and self._client is not client:
             return
@@ -514,7 +568,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             else:
                 self._client = None
                 if client and client.is_connected:
-                    await client.stop_notify(CHARACTERISTIC_NOTIFY)
+                    await client.stop_notify(self._notify_char)
                     await client.disconnect()
         async with self._seq_num_lock:
             self._current_seq_num = 1
@@ -588,15 +642,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             )
         if self._is_ready():
             return
-        if (
-            self._advertisement_data
-            and SERVICE_UUID_V4 in self._advertisement_data.service_data
-            and not self._decode_advertisement_data()
-        ):
-            _LOGGER.debug(
-                "%s: Waiting for a supported FD50 identity before connecting",
-                self.address,
-            )
+        if self._await_fd50_identity():
             raise TuyaBLEDeviceError(0)
         async with self._connect_lock:
             if self._is_ready():
@@ -610,9 +656,15 @@ class TuyaBLEDevice(TuyaBLEProtocol):
 
     async def _try_connect_and_configure(self) -> bool:
         """Try one connection + handshake cycle. Returns True on success."""
+        await self._cleanup_discarded_clients()
         client = await self._try_establish_connection()
         if client is None:
             return False
+        if self._await_fd50_identity():
+            # The FD50 advertisement arrived while connecting, still without its
+            # identity. Retrying would only repeat the wrong-protocol handshake.
+            await self._discard_client(client)
+            raise TuyaBLEDeviceError(0)
         self._client = client
         if not self._is_fingerbot_touch:
             return await self._configure_client()
@@ -695,6 +747,113 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             return client
         return None
 
+    def _await_fd50_identity(self) -> bool:
+        """Wait if the latest stored FD50 advertisement cannot choose a handshake.
+
+        Reject beacons, unknown versions and malformed identities before sending
+        the protocol-2 default. Classic advertisements never wait.
+        """
+        if self._advertisement_provider is not None and (
+            latest := self._advertisement_provider()
+        ):
+            self._ble_device, self._advertisement_data = latest
+        if (
+            not self._advertisement_data
+            or SERVICE_UUID_V4 not in self._advertisement_data.service_data
+            or self._decode_advertisement_data()
+        ):
+            return False
+        if not self._awaiting_fd50_identity:
+            _LOGGER.debug(
+                "%s: Waiting for a supported FD50 identity before connecting",
+                self.address,
+            )
+        self._awaiting_fd50_identity = True
+        return True
+
+    async def _discard_client(self, client: BleakClientWithServiceCache) -> None:
+        """Close a connection that will not be used, without treating it as a drop."""
+        self._discarded_clients.add(client)
+        self._pending_client_cleanup.add(client)
+        try:
+            await client.disconnect()
+        except BLE_CONNECTION_EXCEPTIONS:
+            _LOGGER.debug(
+                "%s: Closing the unused connection failed", self.address, exc_info=True
+            )
+        finally:
+            if not client.is_connected:
+                self._pending_client_cleanup.discard(client)
+
+    async def _cleanup_discarded_clients(self) -> None:
+        """Retry cleanup of unused links without closing the current client twice."""
+        for client in tuple(self._pending_client_cleanup):
+            if client is self._client:
+                continue
+            if client.is_connected:
+                await self._discard_client(client)
+            else:
+                self._pending_client_cleanup.discard(client)
+
+    def _start_identity_connect(self) -> None:
+        """Connect in the background once the awaited FD50 identity is known."""
+        if self._expected_disconnect:
+            return
+        pending = self._identity_connect_task
+        if pending is not None and not pending.done():
+            return
+        self._identity_connect_task = self._spawn_background_task(
+            self._connect_after_identity(), "FD50 identity connect task"
+        )
+
+    async def _connect_after_identity(self) -> None:
+        """Retry the identity connection without resetting a concurrent session's SN.
+
+        Firmware drops the link if sequence numbers do not increase.
+        """
+        while not self._expected_disconnect:
+            try:
+                await self._ensure_connected()
+                return
+            except BLE_CONNECTION_EXCEPTIONS:
+                _LOGGER.debug(
+                    "%s: Connecting after the FD50 identity arrived failed",
+                    self.address,
+                    exc_info=True,
+                )
+                await asyncio.sleep(BLEAK_BACKOFF_TIME)
+
+    def _select_characteristics(self, client: BleakClientWithServiceCache) -> None:
+        """Use the FD50 pair only for v4 devices offering both, otherwise classic."""
+        self._notify_char = CHARACTERISTIC_NOTIFY
+        self._write_char = CHARACTERISTIC_WRITE
+        if self._protocol_version != PROTOCOL_VERSION_V4:
+            return
+        services = client.services
+        if (
+            services.get_characteristic(CHARACTERISTIC_NOTIFY_V4) is not None
+            and services.get_characteristic(CHARACTERISTIC_WRITE_V4) is not None
+        ):
+            self._notify_char = CHARACTERISTIC_NOTIFY_V4
+            self._write_char = CHARACTERISTIC_WRITE_V4
+        _LOGGER.debug(
+            "%s: Using notify %s and write %s for protocol %s",
+            self.address,
+            self._notify_char,
+            self._write_char,
+            self._protocol_version,
+        )
+
+    def _build_device_info_request(self) -> bytes:
+        """Return v4's two-byte fragment length, or an empty v2/v3 request.
+
+        The advertisement or previous device-info response supplies the version.
+        Protocol 4 firmware disconnects on any other request length.
+        """
+        if self._protocol_version == PROTOCOL_VERSION_V4:
+            return pack(">H", GATT_MTU)
+        return b""
+
     async def _try_start_notifications(self) -> bool:
         """Start GATT notifications. Returns True on success."""
         client = self._client
@@ -724,12 +883,13 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             self._safe_notification_handler(sender, data)
 
         try:
+            self._select_characteristics(client)
             handler = (
                 handle_notification
                 if self._is_fingerbot_touch
                 else self._safe_notification_handler
             )
-            await client.start_notify(CHARACTERISTIC_NOTIFY, handler)
+            await client.start_notify(self._notify_char, handler)
             return True
         except BLE_CONNECTION_EXCEPTIONS as err:
             self._client = None
@@ -748,7 +908,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         try:
             if not await self._send_packet_while_connected(
                 TuyaBLECode.FUN_SENDER_DEVICE_INFO,
-                bytes(0),
+                self._build_device_info_request(),
                 0,
                 True,
             ):
@@ -805,6 +965,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             _LOGGER.error("%s: Not connected", self.address)
             return
         if self._is_paired:
+            self._awaiting_fd50_identity = False
             _LOGGER.debug("%s: Successfully connected", self.address)
             self._fire_connected_callbacks()
         else:
