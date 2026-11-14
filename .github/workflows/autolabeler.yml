@@ -1,8 +1,12 @@
 name: "Auto labeller"
 
+# pull_request_target, not pull_request: PRs from forks get a read-only
+# GITHUB_TOKEN under pull_request, so the labeller 403s with "Resource not
+# accessible by integration". This job only reads the base repo's config and
+# labels the PR — it never checks out or runs code from the fork.
 # yamllint disable-line rule:truthy
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, reopened]
 
 permissions:
