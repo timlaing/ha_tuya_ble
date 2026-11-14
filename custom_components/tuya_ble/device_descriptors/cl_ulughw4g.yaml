@@ -15,17 +15,64 @@ entities:
       entity_category: diagnostic
       options:
         - STANDBY
-        - SUCCESS
         - LEARNING
+        - SUCCESS
+        - FAIL
+    - dp_id: 103
+      translation_key: temperature
+      device_class: temperature
+      unit: "°C"
+      state_class: measurement
+      suggested_display_precision: 0
+    - dp_id: 22
+      translation_key: timer_schedules
+      name: Timer schedules
+      entity_category: diagnostic
+      enabled_by_default: false
+      handlers:
+        read: raw.raw_hex
+  binary_sensor:
+    - dp_id: 12
+      translation_key: fault_code
+      name: Fault
+      device_class: problem
+      entity_category: diagnostic
   number:
     - dp_id: 105
-      translation_key: cover_speed
-      name: Speed
-      icon: mdi:speedometer
+      translation_key: auto_close_temperature
+      name: Auto-close temperature
+      icon: mdi:thermometer-lines
       mode: box
-      min_value: 1
-      max_value: 40
-      step: 1
+      min_value: 10
+      max_value: 60
+      step: 10
+      unit: "°C"
+      entity_category: config
+  select:
+    - dp_id: 101
+      translation_key: closing_side
+      name: Closing side
+      icon: mdi:arrow-left-right
+      entity_category: config
+      options:
+        - Left
+        - Right
+    - dp_id: 102
+      translation_key: learning
+      name: Learning
+      icon: mdi:school
+      entity_category: config
+      options:
+        - Start
+        - End
+    - dp_id: 107
+      translation_key: reset
+      name: Reset
+      icon: mdi:restore
+      entity_category: config
+      enabled_by_default: false
+      options:
+        - Reset
   cover:
     - translation_key: ble_blind_controller
       name: Blind
@@ -33,6 +80,5 @@ entities:
       position_set_dp_id: 2
       position_dp_id: 3
       battery_dp_id: 13
-      speed_dp_id: 105
 device_name: Blind Controller
 model_name: ulughw4g
