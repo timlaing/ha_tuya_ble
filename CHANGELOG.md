@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+## [2.10.0-beta.3] - 2026-11-15
+
+> **Beta — for testing only.** This build supersedes beta.2 with runtime connection recovery after setup. UUID selection and storage are unchanged, and this beta does not claim to resolve every report in #39. Fresh affected-device hardware testing remains necessary.
+
+### Fixed
+
+- **Runtime availability after successful setup** (#144): initialize the runtime protocol from cached advertisements, preserve the negotiated protocol during concurrent updates, and start a fresh authenticated runtime session rather than reuse setup-probe keys. Failed handshakes close their clients, late notifications from old links are ignored, and recovery resumes automatically after blocked cleanup.
+- **Native and proxy teardown recovery** (#144): retain failed-link ownership until disconnection is acknowledged or an ESPHome source is explicitly confirmed lost. Recover native BlueZ sessions through a fresh bus only when needed, preserve session provenance across Bleak 3.0.2 and 3.1.0, and avoid redundant disconnects after confirmed teardown. Allow ESPHome's acknowledgement and slot-settling wait to finish. Fingerbot Touch failed handshakes use shared tracked cleanup while its notification deduplication and normal stop/write behavior are preserved.
+- **LY curtain motor / Blind Controller (`cl` / `ulughw4g`) mappings** (#143): DP 105 is now auto-close temperature, not cover speed, and the work-state option order is corrected. Add temperature and fault sensors, closing-side and learning selects, and disabled-by-default reset and raw timer-schedule entities.
+
+### Changed
+
+- **Contributor CI labeling**: pull requests from forks now receive automatic labels.
+
 ## [2.10.0-beta.2] - 2026-11-13
 
 > **Beta — for testing only.** This build supersedes beta.1 with protocol 4 connections and safer credential-probe retries. Test affected devices and report results on #39 before 2.10.0 ships.
