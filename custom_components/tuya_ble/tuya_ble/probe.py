@@ -709,8 +709,20 @@ async def async_detect_v4_profile(
         _LOGGER.debug(
             "%s: Verifying connection profile %s", ble_device.address, profile
         )
-        candidate: TuyaBLEDeviceCredentials = replace(
-            credentials, connection_profile=profile
+        candidate = TuyaBLEDeviceCredentials(
+            uuid=credentials.uuid,
+            local_key=credentials.local_key,
+            device_id=credentials.device_id,
+            category=credentials.category,
+            product_id=credentials.product_id,
+            device_name=credentials.device_name,
+            product_model=credentials.product_model,
+            product_name=credentials.product_name,
+            functions=credentials.functions,
+            status_range=credentials.status_range,
+            local_schema=credentials.local_schema,
+            cloud_info=credentials.cloud_info,
+            connection_profile=profile,
         )
         outcome = await async_probe_authenticated_status(
             ble_device, advertisement, candidate, credentials.uuid, expected_dp_ids

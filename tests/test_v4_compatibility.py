@@ -319,6 +319,28 @@ async def test_no_verified_profile_is_returned_on_failure(
     assert probe.call_count == (1 if outcome == ProbeOutcome.REJECTED else 4)
 
 
+async def test_profile_candidate_preserves_credentials_and_schema() -> None:
+    """The detached profile copy retains every credential and metadata field."""
+    credentials = make_credentials()
+    credentials.functions = [{"dp_id": 13, "code": "battery"}]
+    credentials.status_range = [{"code": "battery", "type": "Integer"}]
+    credentials.local_schema = {"captured_at": "synthetic"}
+    credentials.cloud_info = {"product_name": "Battery BLE Roller"}
+    device = make_device()
+    with patch(
+        "custom_components.tuya_ble.tuya_ble.probe.async_probe_authenticated_status",
+        return_value=ProbeOutcome.MATCHED,
+    ) as probe:
+        result = await async_detect_v4_profile(
+            device._ble_device, v4_advertisement(), credentials, frozenset({13})
+        )
+    candidate = probe.call_args.args[2]
+    assert result == ConnectionProfile.V4_20
+    assert vars(candidate) == {**vars(credentials), "connection_profile": result}
+    assert candidate is not credentials
+    assert credentials.connection_profile is None
+
+
 async def test_missing_expected_report_never_verifies_profile() -> None:
     """A clean handshake with unrelated datapoints is not enough."""
     device = make_device()
