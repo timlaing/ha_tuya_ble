@@ -255,7 +255,8 @@ async def test_v4_write_rejection_rolls_back_all_values() -> None:
         with pytest.raises(TuyaBLEDeviceError):
             await device.set_multiple_values({1: 0, 3: 20})
         state, position = device.datapoints[1], device.datapoints[3]
-        assert state is not None and position is not None
+        assert state is not None
+        assert position is not None
         assert state.value == 1
         assert position.value == 60
         await device.stop()

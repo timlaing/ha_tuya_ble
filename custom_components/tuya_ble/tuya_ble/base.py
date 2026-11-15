@@ -219,22 +219,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
                     self._ble_device.address
                 )
             if self._device_info:
-                self._connection_profile = self._device_info.connection_profile
-                if self._connection_profile is not None:
-                    self._protocol_version = PROTOCOL_VERSION_V4
-                local_key = self._device_info.local_key.encode()
-                if len(local_key) < 6:
-                    raise TuyaBLEDeviceError(0)
-                self._local_key = local_key[:6]
-                self._login_key = hashlib.md5(
-                    self._local_key, usedforsecurity=False
-                ).digest()
-                self.append_functions(
-                    self._device_info.functions if self._device_info.functions else [],
-                    self._device_info.status_range
-                    if self._device_info.status_range
-                    else [],
-                )
+                self.initialize_with_credentials(self._device_info)
 
         return self._device_info is not None
 

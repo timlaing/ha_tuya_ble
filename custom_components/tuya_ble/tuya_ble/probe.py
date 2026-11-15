@@ -673,12 +673,17 @@ async def async_probe_authenticated_status(
         if outcome == ProbeOutcome.INCONCLUSIVE and device.connection_lost:
             outcome = ProbeOutcome.RETRYABLE
         unregister()
-        if received.done() and not received.cancelled():
-            received.exception()
-        else:
-            received.cancel()
+        _release_probe_future(received)
         outcome = await _async_close_probe(device, outcome)
     return outcome
+
+
+def _release_probe_future(received: asyncio.Future[None]) -> None:
+    """Consume a late refusal, or cancel an unused status waiter."""
+    if received.done() and not received.cancelled():
+        received.exception()
+    else:
+        received.cancel()
 
 
 async def async_detect_v4_profile(
@@ -704,7 +709,9 @@ async def async_detect_v4_profile(
         _LOGGER.debug(
             "%s: Verifying connection profile %s", ble_device.address, profile
         )
-        candidate = replace(credentials, connection_profile=profile)
+        candidate: TuyaBLEDeviceCredentials = replace(
+            credentials, connection_profile=profile
+        )
         outcome = await async_probe_authenticated_status(
             ble_device, advertisement, candidate, credentials.uuid, expected_dp_ids
         )

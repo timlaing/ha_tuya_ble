@@ -30,6 +30,7 @@ from . import _build_credentials_from_entry
 from .cloud import HASSTuyaBLEDeviceManager
 from .config_flow_qr import UNKNOWN_ERROR, _QRCodeLoginMixin
 from .config_flow_state import PROBE_CLAIM_TTL, _consume_probe_result
+from .config_flow_state import advertisement_hex as _advertisement_hex
 from .config_flow_state import probe_state as _probe_state
 from .const import (
     CONF_ADVERTISED_UUID,
@@ -74,22 +75,6 @@ ACTIVE_SCAN_TIMEOUT = 60
 PROBE_MAX_CANDIDATES = 4
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def _advertisement_hex(discovery_info: BluetoothServiceInfoBleak) -> str:
-    """Render the Tuya-relevant advertisement payloads as hex for diagnostics."""
-    advertisement = discovery_info.advertisement
-    service_data = advertisement.service_data or {}
-    manufacturer_data = advertisement.manufacturer_data or {}
-    return (
-        " ".join(
-            f"service_data[{uuid}]={service_data.get(uuid, b'').hex()}"
-            for uuid in SERVICE_UUIDS
-        )
-        + " "
-        f"manufacturer_data[{MANUFACTURER_DATA_ID}]="
-        f"{manufacturer_data.get(MANUFACTURER_DATA_ID, b'').hex()}"
-    )
 
 
 class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
@@ -431,18 +416,7 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
                 _LOGGER.debug("Cloud credential verification failed")
                 credentials, pairing_uuid, error = None, None, "probe_setup_failed"
         if credentials is not None and pairing_uuid is not None:
-            if credentials.connection_profile is not None:
-                if self.source == SOURCE_RECONFIGURE:
-                    self._reconfigure_unloaded = False
-                    return self.async_update_reload_and_abort(
-                        self._get_reconfigure_entry(),
-                        data_updates={
-                            CONF_CONNECTION_PROFILE: str(credentials.connection_profile)
-                        },
-                        reload_even_if_entry_is_unchanged=True,
-                    )
-                self._abort_if_unique_id_configured()
-            result = self._create_verified_entry(
+            result = self._complete_verified_probe(
                 discovery, advertisement, credentials, pairing_uuid
             )
             if result is not None:
@@ -459,6 +433,28 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         if self._probe_source_step == "discovered_device":
             return await self.async_step_discovered_device()
         return await self.async_step_device()
+
+    def _complete_verified_probe(
+        self,
+        discovery: BluetoothServiceInfoBleak,
+        advertisement: TuyaBLEAdvertisementInfo,
+        credentials: TuyaBLEDeviceCredentials,
+        pairing_uuid: str,
+    ) -> ConfigFlowResult | None:
+        """Persist a verified profile or complete the original ownership check."""
+        profile = credentials.connection_profile
+        if profile is not None and self.source == SOURCE_RECONFIGURE:
+            self._reconfigure_unloaded = False
+            return self.async_update_reload_and_abort(
+                self._get_reconfigure_entry(),
+                data_updates={CONF_CONNECTION_PROFILE: str(profile)},
+                reload_even_if_entry_is_unchanged=True,
+            )
+        if profile is not None:
+            self._abort_if_unique_id_configured()
+        return self._create_verified_entry(
+            discovery, advertisement, credentials, pairing_uuid
+        )
 
     def _create_verified_entry(
         self,
