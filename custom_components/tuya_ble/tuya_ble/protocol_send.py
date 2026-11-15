@@ -19,6 +19,7 @@ from Crypto.Cipher import AES
 
 from .const import (
     GATT_MTU,
+    PAIRING_REQUEST_LENGTH,
     RESPONSE_WAIT_TIMEOUT,
     TuyaBLECode,
 )
@@ -30,6 +31,7 @@ from .exceptions import (
     TuyaBLEOutgoingDataLengthError,
     TuyaBLEResponseTimeoutError,
 )
+from .manager import TuyaBLEDeviceCredentials
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,6 +45,7 @@ class TuyaBLEProtocolSendMixin:
 
     # Instance attributes expected by protocol methods (set by TuyaBLEDevice.__init__).
     _protocol_version: int
+    _device_info: TuyaBLEDeviceCredentials | None
     _local_key: bytes | None
     _login_key: bytes | None
     _session_key: bytes | None
@@ -112,6 +115,24 @@ class TuyaBLEProtocolSendMixin:
                     self.address,
                     exc_info=True,
                 )
+
+    def _build_pairing_request(self) -> bytes:
+        """Serialize pairing identity without reusing session state across links."""
+        result = bytearray()
+        if self._device_info is None or self._local_key is None:
+            raise TuyaBLEDeviceError(0)
+        result += self._device_info.uuid.encode()
+        result += self._local_key
+        result += self._device_info.device_id.encode()
+        if len(result) > PAIRING_REQUEST_LENGTH:
+            _LOGGER.error(
+                "%s: Pairing request of %d bytes exceeds the %d byte frame",
+                self.address,
+                len(result),
+                PAIRING_REQUEST_LENGTH,
+            )
+            raise TuyaBLEDeviceError(0)
+        return bytes(result).ljust(PAIRING_REQUEST_LENGTH, b"\x00")
 
     async def send_datapoints(self, datapoint_ids: list[int]) -> None:
         """Send new values of datapoints to the device."""

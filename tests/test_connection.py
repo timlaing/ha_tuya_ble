@@ -12,7 +12,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 from bleak.exc import BleakDBusError, BleakError
-from bleak_retry_connector import BleakNotFoundError
+from bleak_retry_connector import BleakClientWithServiceCache, BleakNotFoundError
 import pytest
 
 from custom_components.tuya_ble.tuya_ble import TuyaBLEDevice
@@ -429,7 +429,7 @@ async def test_expected_disconnect_after_ensure() -> None:
     """Return early when expected_disconnect becomes True during ensure."""
     dev = make_device(manager=FakeBLEManager(make_credentials()))
     dev._client = FakeBleakClient(is_connected=True)  # type: ignore[assignment]
-    dev._is_paired = True
+    dev._is_paired = False
 
     async def set_disconnect() -> None:
         dev._expected_disconnect = True
@@ -1244,24 +1244,36 @@ async def test_fingerbot_touch_accepts_a_fragmented_reply_with_duplicates(
 @pytest.mark.parametrize(
     ("category", "product_id"), [("kg", "6jcvqwh0"), ("wk", "bs3ubslo")]
 )
-async def test_other_devices_keep_existing_handshake_behavior(
+async def test_other_devices_close_failed_handshakes_without_deduplicating(
     category: str, product_id: str
 ) -> None:
-    """Use the existing notification callback and retry behavior on other products."""
+    """Forward repeated live packets, but close failed links and ignore late packets."""
     credentials = make_credentials(category=category, product_id=product_id)
     dev = make_device(manager=FakeBLEManager(credentials))
     dev.initialize_with_credentials(credentials)
     client = FakeBleakClient()
+
+    async def fail_info() -> bool:
+        """Deliver repeated packets while the link is current, then reject setup."""
+        assert client.notify_handler is not None
+        for _ in range(2):
+            client.notify_handler(CHARACTERISTIC_NOTIFY, bytearray(b"packet"))
+        return False
+
     with (
         patch.object(dev, "_try_establish_connection", return_value=client),
-        patch.object(dev, "_try_send_device_info", return_value=False),
+        patch.object(dev, "_try_send_device_info", side_effect=fail_info),
         patch.object(dev, "_safe_notification_handler") as handler,
     ):
         assert not await dev._try_connect_and_configure()
-    assert client.notify_handler is handler
-    assert client.is_connected
+        assert handler.call_count == 2
+        assert client.notify_handler is not None
+        client.notify_handler(CHARACTERISTIC_NOTIFY, bytearray(b"late packet"))
+        assert handler.call_count == 2
+    assert not client.is_connected
+    assert dev._client is None
     await dev.stop()
-    assert client.stopped == [CHARACTERISTIC_NOTIFY]
+    assert not client.stopped
 
 
 async def test_fingerbot_touch_write_failure_keeps_new_client(
@@ -1379,7 +1391,7 @@ async def test_fingerbot_touch_closes_current_client_on_write_failure(
 async def test_fingerbot_touch_logs_error_closing_failed_client(
     fingerbot_touch: TuyaBLEDevice, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A backend disconnect error must not retain the failed client in the device."""
+    """A failed teardown stays owned without retaining it as the current client."""
     dev = fingerbot_touch
     client = FakeBleakClient()
     with (
@@ -1388,16 +1400,15 @@ async def test_fingerbot_touch_logs_error_closing_failed_client(
         patch.object(
             client, "disconnect", side_effect=BleakError("cleanup failed")
         ) as disconnect,
-        caplog.at_level(
-            logging.DEBUG, logger="custom_components.tuya_ble.tuya_ble.base"
-        ),
+        caplog.at_level(logging.DEBUG),
     ):
         assert not await dev._try_connect_and_configure()
 
     disconnect.assert_awaited_once_with()
     assert dev._client is None
     assert not dev._is_ready()
-    assert "BLE client cleanup failed" in caplog.text
+    assert cast(BleakClientWithServiceCache, client) in dev._pending_client_cleanup
+    assert "Closing the unused connection failed" in caplog.text
 
 
 @pytest.mark.parametrize(

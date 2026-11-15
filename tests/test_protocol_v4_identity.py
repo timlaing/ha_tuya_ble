@@ -500,10 +500,10 @@ async def test_failed_discard_is_cleaned_before_reconnecting() -> None:
         await device.stop()
 
 
-async def test_cleanup_preserves_current_client_and_drops_already_closed_links() -> (
+async def test_cleanup_preserves_current_client_and_confirms_pending_closed_links() -> (
     None
 ):
-    """Cleanup skips the owned client and never disconnects a closed link twice."""
+    """Cleanup skips the owned client but requires success for pending teardown."""
     device = make_v4_device(make_credentials())
     current = FakeBleakClient()
     closed = FakeBleakClient(is_connected=False)
@@ -515,7 +515,7 @@ async def test_cleanup_preserves_current_client_and_drops_already_closed_links()
 
     await device._cleanup_discarded_clients()
     current_disconnect.assert_not_awaited()
-    closed.disconnect.assert_not_awaited()
+    closed.disconnect.assert_awaited_once_with()
     assert closed not in device._pending_client_cleanup  # type: ignore[comparison-overlap]
     await device.stop()
     current_disconnect.assert_awaited_once()
