@@ -46,12 +46,15 @@ class NativeBus:
     async def call(self, message: Message) -> Message:
         """Return actual D-Bus reply objects without any BLE state shortcuts."""
         self.calls.append(message)
+        if self.error == "disconnect_loss":
+            self.connected = False
+            raise OSError("Synthetic D-Bus session lost during disconnect")
         if self.connected is False:
             raise OSError("Synthetic dead private D-Bus session")
         if self.error == "wait":
             self.waiting.set()
             await asyncio.Event().wait()
-        if self.error is not None:
+        if self.error is not None and self.error != "clean":
             return Message(
                 message_type=MessageType.ERROR,
                 reply_serial=1,
@@ -68,6 +71,8 @@ class NativeBus:
 
     async def wait_for_disconnect(self) -> None:
         """A dead bus retains its fatal exception even after BlueZ recovers."""
+        if self.error == "clean":
+            return
         raise OSError("Synthetic persistent old D-Bus failure")
 
 
@@ -106,6 +111,8 @@ async def test_real_native_dead_bus_requires_fresh_acknowledged_teardown(
 ) -> None:
     """Neither a missed watcher nor a delivered link-down signal repairs the bus."""
     client, backend, dead, manager = await make_native_client()
+    cleanup = _ConnectionCleanup(ADDRESS)
+    cleanup.capture_source(client)
     monitor = backend._disconnect_monitor_event
     assert monitor is not None
     if watcher_ran:
@@ -122,11 +129,17 @@ async def test_real_native_dead_bus_requires_fresh_acknowledged_teardown(
         assert not backend.is_connected
         assert backend.services is None
     # Exercise the real backend's disconnect, not a fake disconnect coroutine.
-    with pytest.raises(OSError):
+    try:
         await client.disconnect()
-    assert backend._bus is cast(MessageBus, dead)
+    except OSError:
+        # Bleak 3.0.2 retains the failed session for its next disconnect attempt.
+        assert backend._bus is cast(MessageBus, dead)
+    else:
+        # Bleak 3.1.0 retires local state, but documents the device may stay connected.
+        assert backend._bus is None
+        assert not backend.is_connected
+    closed_before_recovery = dead.closed
     recovery = NativeBus()
-    cleanup = _ConnectionCleanup(ADDRESS)
     with patch("dbus_fast.aio.MessageBus", return_value=recovery):
         await cleanup.async_discard(client, 0.1)
     assert recovery.calls[0].member == "Disconnect"
@@ -140,7 +153,7 @@ async def test_real_native_dead_bus_requires_fresh_acknowledged_teardown(
     assert not cleanup.pending
     assert not cleanup.tasks
     assert not cleanup._native_sources
-    assert dead.closed == (2 if watcher_ran else 1)
+    assert dead.closed == closed_before_recovery + 1
     assert recovery.closed == 1
     await asyncio.sleep(0)
 
@@ -209,26 +222,23 @@ async def test_native_recovery_does_not_replace_live_or_unknown_bus(state: str) 
     await asyncio.sleep(0)
 
 
-async def test_live_native_bus_uses_existing_disconnect_before_dead_bus_recovery() -> (
-    None
-):
-    """A live native bus still runs Bleak's own teardown, not an alternate request."""
+async def test_live_native_teardown_does_not_open_an_unnecessary_recovery_bus() -> None:
+    """Acknowledged teardown cannot be blocked by an unnecessary fresh connection."""
     client, backend, bus, _manager = await make_native_client()
     bus.connected = True
     cleanup = _ConnectionCleanup(ADDRESS)
-    # Model a delivered link-down signal, leaving only the old bus's fatal result.
+    # A delivered link-down signal may already have cleared native local state.
     cast(_ConnectionState, backend)._is_connected = False
     backend._cleanup_all()
     assert backend._disconnect_monitor_event is not None
     backend._disconnect_monitor_event.set()
-    with patch("dbus_fast.aio.MessageBus") as create:
+    unavailable = NativeBus("connect")
+    with patch("dbus_fast.aio.MessageBus", return_value=unavailable) as create:
         await cleanup.async_discard(client, 0.1)
     create.assert_not_called()
-    assert client in cleanup.pending
+    assert not cleanup.pending
+    assert bus.calls[-1].member == "Disconnect"
     assert bus.closed == 1
-    healthy = NativeBus()
-    with patch("dbus_fast.aio.MessageBus", return_value=healthy):
-        assert await cleanup.async_cleanup(None, 0.1)
     assert not backend.is_connected
     await asyncio.sleep(0)
 
@@ -251,4 +261,95 @@ async def test_cancelling_native_recovery_keeps_ownership_and_closes_fresh_bus()
     assert recovery.closed == 1
     assert backend._disconnect_monitor_event is not None
     backend._disconnect_monitor_event.set()
+    await asyncio.sleep(0)
+
+
+async def test_native_session_loss_during_disconnect_retains_captured_ownership() -> (
+    None
+):
+    """A backend clearing local state must not erase an unconfirmed physical link."""
+    client, backend, bus, _manager = await make_native_client()
+    bus.connected = True
+    bus.error = "disconnect_loss"
+    cleanup = _ConnectionCleanup(ADDRESS)
+    unavailable = NativeBus("connect")
+    with patch("dbus_fast.aio.MessageBus", return_value=unavailable):
+        await cleanup.async_discard(client, 0.1)
+    assert client in cleanup.pending
+    assert cleanup._native_sources[client].bus is cast(MessageBus, bus)
+    assert bus.connected is False
+    assert bus.calls[-1].member == "Disconnect"
+    recovery = NativeBus()
+    with patch("dbus_fast.aio.MessageBus", return_value=recovery):
+        assert await cleanup.async_cleanup(None, 0.1)
+    assert recovery.calls[0].member == "Disconnect"
+    assert not backend.is_connected
+    assert not cleanup._native_sources
+    await asyncio.sleep(0)
+
+
+@pytest.mark.parametrize("has_bus", [False, True])
+async def test_native_successful_disconnect_resolves_owned_session(
+    has_bus: bool,
+) -> None:
+    """Successful native teardown also tolerates a backend without a private bus."""
+    client, backend, bus, _manager = await make_native_client()
+    bus.connected = True
+    bus.error = "clean"
+    cast(_ConnectionState, backend)._is_connected = False
+    backend._cleanup_all()
+    assert backend._disconnect_monitor_event is not None
+    backend._disconnect_monitor_event.set()
+    if not has_bus:
+        backend._bus = None
+    cleanup = _ConnectionCleanup(ADDRESS)
+    healthy = NativeBus()
+    with patch("dbus_fast.aio.MessageBus", return_value=healthy):
+        await cleanup.async_discard(client, 0.1)
+    assert not cleanup.pending
+    assert not cleanup._native_sources
+    assert not backend.is_connected
+    assert not healthy.calls
+    await asyncio.sleep(0)
+
+
+async def test_native_confirmation_survives_normal_bus_closure() -> None:
+    """Confirmed ownership is not reopened just because normal teardown closes a bus."""
+    _client, backend, bus, _manager = await make_native_client()
+    bus.connected = True
+    source = _BlueZSource(backend)
+    requests_before = len(bus.calls)
+    with patch("dbus_fast.aio.MessageBus") as create:
+        assert await source.async_disconnect()
+        assert source.confirmed
+        assert bus.connected is False
+        assert await source.async_disconnect()
+        assert await source.recover()
+    create.assert_not_called()
+    assert len(bus.calls) == requests_before + 1
+    assert backend._bus is None
+    await asyncio.sleep(0)
+
+
+@pytest.mark.parametrize("state", ["unknown", "no_path"])
+async def test_native_unknown_session_never_confirms_local_flags(state: str) -> None:
+    """Unknown provenance cannot be treated as an acknowledged native teardown."""
+    client, backend, bus, _manager = await make_native_client()
+    bus.connected = True
+    assert backend._disconnect_monitor_event is not None
+    backend._disconnect_monitor_event.set()
+    if state == "unknown":
+        bus.connected = None
+    else:
+        backend._device_path = None
+    source = _BlueZSource(backend)
+    requests_before = len(bus.calls)
+    with patch("dbus_fast.aio.MessageBus") as create:
+        assert not await source.async_disconnect()
+        cleanup = _ConnectionCleanup(ADDRESS)
+        await cleanup.async_discard(client, 0.1)
+    create.assert_not_called()
+    assert client in cleanup.pending
+    assert not source.confirmed
+    assert len(bus.calls) == requests_before
     await asyncio.sleep(0)

@@ -53,8 +53,8 @@ class _ConnectionCleanup:
         self._native_sources: dict[BleakClientWithServiceCache, _BlueZSource] = {}
 
     def capture_source(self, client: BleakClientWithServiceCache) -> None:
-        """Capture a returned proxy before a later failure can discard its backend."""
-        if client in self._proxy_sources:
+        """Capture a returned source before failure can discard its session state."""
+        if client in self._proxy_sources or client in self._native_sources:
             return
         backend = getattr(client, "_backend", None)
         if any(
@@ -98,6 +98,30 @@ class _ConnectionCleanup:
         self.pending.discard(client)
         self.release_source(client)
 
+    async def _disconnect_discarded(
+        self, client: BleakClientWithServiceCache, cleanup_duration: float
+    ) -> None:
+        """Retain the barrier on failed, timed-out, or ineffective teardown."""
+        target = self._disconnect_target(client)
+        try:
+            async with asyncio.timeout(cleanup_duration):
+                native = self._native_sources.get(client)
+                if native is not None:
+                    if await native.async_disconnect():
+                        self._release_pending(client)
+                    return
+                await target.disconnect()
+        except (TimeoutError, *BLE_CONNECTION_EXCEPTIONS):
+            source = self._proxy_sources.get(client)
+            if source is not None and source.lost():
+                self._release_pending(client)
+                _LOGGER.debug("%s: Released unavailable proxy ownership", self.address)
+            else:
+                _LOGGER.debug("%s: Closing the unused connection failed", self.address)
+        else:
+            if not target.is_connected:
+                self._release_pending(client)
+
     async def async_discard(
         self, client: BleakClientWithServiceCache, cleanup_duration: float
     ) -> None:
@@ -106,34 +130,11 @@ class _ConnectionCleanup:
         self.pending.add(client)
         self.capture_source(client)
 
-        async def disconnect() -> None:
-            """Retain the barrier on failed, timed-out, or ineffective teardown."""
-            target = self._disconnect_target(client)
-            try:
-                async with asyncio.timeout(cleanup_duration):
-                    native = self._native_sources.get(client)
-                    if native is not None and await native.recover():
-                        self._release_pending(client)
-                        return
-                    await target.disconnect()
-            except (TimeoutError, *BLE_CONNECTION_EXCEPTIONS):
-                source = self._proxy_sources.get(client)
-                if source is not None and source.lost():
-                    self._release_pending(client)
-                    _LOGGER.debug(
-                        "%s: Released unavailable proxy ownership", self.address
-                    )
-                else:
-                    _LOGGER.debug(
-                        "%s: Closing the unused connection failed", self.address
-                    )
-            else:
-                if not target.is_connected:
-                    self._release_pending(client)
-
         task = self.tasks.get(client)
         if task is None or task.done():
-            task = asyncio.create_task(disconnect())
+            task = asyncio.create_task(
+                self._disconnect_discarded(client, cleanup_duration)
+            )
             self.tasks[client] = task
             task.add_done_callback(partial(self._finish_cleanup, client))
         try:
