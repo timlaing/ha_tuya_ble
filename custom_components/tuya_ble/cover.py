@@ -37,6 +37,7 @@ class TuyaBLECoverMapping:
     position_set_dp_id: int = 0
     position_dp_id: int = 0
     tilt_dp_id: int = 0
+    state_dp_type: TuyaBLEDataPointType = TuyaBLEDataPointType.DT_VALUE
 
 
 @dataclass
@@ -59,7 +60,14 @@ def _cover_description(desc: EntityDescriptor) -> CoverEntityDescription:
 def _build_cover_mapping(desc: EntityDescriptor) -> TuyaBLECoverMapping:
     """Construct a cover mapping from a registry descriptor."""
     extra = desc.extra
-    kwargs: dict[str, Any] = {"description": _cover_description(desc)}
+    kwargs: dict[str, Any] = {
+        "description": _cover_description(desc),
+        "state_dp_type": (
+            TuyaBLEDataPointType(desc.dp_type)
+            if desc.dp_type is not None
+            else TuyaBLEDataPointType.DT_VALUE
+        ),
+    }
     for field_name in (
         "state_dp_id",
         "position_set_dp_id",
@@ -266,10 +274,10 @@ class TuyaBLECover(TuyaBLEEntity, CoverEntity):
         if self._mapping.state_dp_id != 0:
             datapoint = self.device.datapoints.get_or_create(
                 self._mapping.state_dp_id,
-                TuyaBLEDataPointType.DT_VALUE,
-                state,
+                self._mapping.state_dp_type,
+                1,  # No prior report: start stopped, not optimistically moving.
             )
-            self.hass.create_task(datapoint.set_value(state))
+            await datapoint.set_value(state)
             self._update_ha_state_for_cover_state(state)
 
     def _update_ha_state_for_cover_state(self, state: int) -> None:

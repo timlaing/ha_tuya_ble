@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from dataclasses import replace
 from unittest.mock import patch
 
 from homeassistant.components.cover import (
@@ -13,6 +15,7 @@ from homeassistant.components.cover import (
     CoverEntityFeature,
 )
 from homeassistant.core import HomeAssistant
+import pytest
 
 from custom_components.tuya_ble import cover
 from custom_components.tuya_ble.cover import TuyaBLECover
@@ -20,12 +23,17 @@ from custom_components.tuya_ble.devices import (
     TuyaBLECoordinator,
     TuyaBLEProductInfo,
 )
+from custom_components.tuya_ble.entity import get_device_product_info
 from custom_components.tuya_ble.tuya_ble import (
+    ConnectionProfile,
     TuyaBLEDataPointType,
     TuyaBLEDevice,
 )
+from custom_components.tuya_ble.tuya_ble.exceptions import TuyaBLEDeviceError
 from custom_components.tuya_ble.tuya_ble.manager import TuyaBLEDeviceCredentials
-from tests.conftest import add_dp, build_context, connect
+from tests.conftest import add_dp, build_context, connect, make_credentials, make_device
+from tests.test_protocol_v4 import klv, report
+from tests.test_v4_compatibility import RUNTIME_CONNECT, ProfileFirmware
 
 
 def _make_entity(
@@ -65,6 +73,60 @@ def _set_device_credentials(
         product_model="m",
         product_name="pm",
     )
+
+
+@pytest.mark.parametrize("reject", [False, True])
+async def test_shade_services_use_acknowledged_enum_commands(
+    hass: HomeAssistant, reject: bool
+) -> None:
+    """Open/close/stop/position use v4 writes; rejection propagates to HA."""
+    credentials = replace(
+        make_credentials(category="cl", product_id="jetlwvfm"),
+        connection_profile=ConnectionProfile.V4_20,
+    )
+    device = make_device()
+    device.initialize_with_credentials(credentials)
+    firmware = ProfileFirmware(
+        ConnectionProfile.V4_20,
+        write_status=1 if reject else 0,
+        # No control DP report: the descriptor must supply its correct ENUM type.
+        report_data=report(klv(13, TuyaBLEDataPointType.DT_VALUE, bytes(4))),
+    )
+    coordinator = TuyaBLECoordinator(hass, device)
+    entity = cover.TuyaBLECover(
+        hass,
+        coordinator,
+        device,
+        get_device_product_info(device),
+        cover.get_mapping_by_device(device)[0],
+    )
+    entity.hass = hass
+    with (
+        patch(RUNTIME_CONNECT, return_value=firmware),
+        patch.object(entity, "async_write_ha_state") as write_state,
+    ):
+        await device.update()
+        await asyncio.wait_for(firmware.acknowledged.wait(), 1)
+        if reject:
+            with pytest.raises(TuyaBLEDeviceError):
+                await entity.async_open_cover()
+            assert not entity.is_opening
+            write_state.assert_not_called()
+            # A later battery update must not resurrect the rejected movement.
+            entity._handle_coordinator_update()
+            assert not entity.is_opening
+        else:
+            await entity.async_open_cover()
+            await entity.async_close_cover()
+            await entity.async_stop_cover()
+            await entity.async_set_cover_position(**{ATTR_POSITION: 25})
+        await device.stop()
+    writes = [frame[2][5:] for frame in firmware.received if frame[0] == 0x27]
+    expected = [
+        klv(1, TuyaBLEDataPointType.DT_ENUM, bytes([value])) for value in (0, 2, 1)
+    ]
+    expected.append(klv(2, TuyaBLEDataPointType.DT_VALUE, (75).to_bytes(4, "big")))
+    assert writes == (expected[:1] if reject else expected)
 
 
 # --- Position / state reading ---

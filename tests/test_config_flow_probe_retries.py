@@ -15,7 +15,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import AbortFlow, FlowResultType
 import pytest
 
-from custom_components.tuya_ble.config_flow import _probe_state
+from custom_components.tuya_ble.config_flow_state import probe_state as _probe_state
 from custom_components.tuya_ble.const import CONF_DEVICE_ID, CONF_UUID
 from custom_components.tuya_ble.tuya_ble import ProbeOutcome
 import custom_components.tuya_ble.tuya_ble.probe as probe_module

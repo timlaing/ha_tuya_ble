@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from functools import partial
 import logging
@@ -19,6 +20,19 @@ if TYPE_CHECKING:
     from bleak.backends.bluezdbus.client import BleakClientBlueZDBus
 
 _LOGGER = logging.getLogger(__name__)
+_probe_cleanup_state: dict[str, Callable[[str], Awaitable[bool]]] = {}
+
+
+def set_probe_cleanup_waiter(waiter: Callable[[str], Awaitable[bool]]) -> None:
+    """Register the probe ownership barrier without a device/probe import cycle."""
+    _probe_cleanup_state["waiter"] = waiter
+
+
+async def async_wait_for_probe_cleanup(address: str) -> bool:
+    """Gate runtime connections on retained configuration-time ownership."""
+    if not _probe_cleanup_state:
+        return True
+    return await _probe_cleanup_state["waiter"](address)
 
 
 @dataclass(frozen=True, repr=False)

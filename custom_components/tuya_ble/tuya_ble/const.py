@@ -46,6 +46,25 @@ MAX_DEVICE_ID_LENGTH = 20
 PAIRING_REQUEST_LENGTH = 44
 
 
+class ConnectionProfile(StrEnum):
+    """Verified FD50 handshake variants, independent of the report version."""
+
+    V4_20 = "v4_20"
+    V2_20 = "v2_20"
+    V4_MTU = "v4_mtu"
+    V2_MTU = "v2_mtu"
+
+    @property
+    def info_version(self) -> int:
+        """Return the initial device-info frame's protocol marker."""
+        return 2 if self in (self.V2_20, self.V2_MTU) else 4
+
+    @property
+    def negotiated_mtu(self) -> bool:
+        """Return whether this profile needs larger negotiated ATT writes."""
+        return self in (self.V4_MTU, self.V2_MTU)
+
+
 class DPType(StrEnum):
     """Data point types (cloud spec)."""
 
@@ -97,3 +116,11 @@ class TuyaBLEDataPointType(Enum):
     DT_STRING = 3
     DT_ENUM = 4
     DT_BITMAP = 5
+
+
+V4_VALUE_WIDTHS = {
+    TuyaBLEDataPointType.DT_BOOL: (1,),
+    TuyaBLEDataPointType.DT_VALUE: (4,),
+    TuyaBLEDataPointType.DT_ENUM: (1,),
+    TuyaBLEDataPointType.DT_BITMAP: (1, 2, 4),
+}

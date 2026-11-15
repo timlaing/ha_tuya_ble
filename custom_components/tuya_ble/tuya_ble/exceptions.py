@@ -38,17 +38,19 @@ class TuyaBLEDataLengthError(TuyaBLEError):
 
 
 class TuyaBLEOutgoingDataLengthError(TuyaBLEError):
-    """Raised when an outgoing datapoint does not fit the v3 DP envelope.
+    """Raised when an outgoing datapoint does not fit its protocol envelope.
 
     The v3 envelope encodes each datapoint as ``(dp_id, dp_type, length)`` in
     three single-byte fields, so both the id and the serialized value are capped
     at 255. Validating up front keeps ``struct.error`` out of the entity layer.
+    Protocol 4 uses the same ID limit and a two-byte value length.
     """
 
-    def __init__(self, dp_id: int) -> None:
+    def __init__(self, dp_id: int, protocol: int = 3) -> None:
+        limit = 65535 if protocol == 4 else 255
         super().__init__(
             f"Outgoing datapoint {dp_id} exceeds the maximum id or value length "
-            "of 255 bytes for the v3 protocol envelope"
+            f"of {limit} bytes for the v{protocol} protocol envelope"
         )
 
 

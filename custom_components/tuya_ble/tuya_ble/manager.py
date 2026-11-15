@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import logging
 from typing import Any
 
-from .const import MAX_DEVICE_ID_LENGTH, MAX_UUID_LENGTH
+from .const import MAX_DEVICE_ID_LENGTH, MAX_UUID_LENGTH, ConnectionProfile
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ class TuyaBLEDeviceCredentials:
     status_range: list[Any] | None = None
     local_schema: dict[str, Any] | None = None
     cloud_info: dict[str, Any] | None = None
+    connection_profile: ConnectionProfile | None = None
 
     def __str__(self) -> str:
         return (

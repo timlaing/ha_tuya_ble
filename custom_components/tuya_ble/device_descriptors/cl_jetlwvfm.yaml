@@ -8,6 +8,7 @@ entities:
     - translation_key: ble_cover
       name: Cover
       state_dp_id: 1
+      dp_type: 4 # control is ENUM, including when no state report has arrived yet.
       position_set_dp_id: 2
       position_dp_id: 3
       battery_dp_id: 13

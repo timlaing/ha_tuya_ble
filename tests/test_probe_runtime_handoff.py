@@ -426,7 +426,7 @@ async def _verified_setup(
         "custom_components.tuya_ble.tuya_ble.base.BLEAK_BACKOFF_TIME", 0.01
     )
     flow, discovery = _flow(hass, [credentials])
-    discovery.device = ble  # type: ignore[attr-defined]
+    discovery.device = ble
     discovery.advertisement = advertisement  # type: ignore[assignment]
     if firmware.exact_match:
         with patch.object(

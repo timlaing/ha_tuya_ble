@@ -19,6 +19,7 @@ from homeassistant.helpers import entity_registry as er
 
 from .const import (
     CONF_CATEGORY,
+    CONF_CONNECTION_PROFILE,
     CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
     CONF_FUNCTIONS,
@@ -36,6 +37,7 @@ from .entity import evict_legacy_suffix_cache
 from .tuya_ble import (
     BLE_CONNECTION_EXCEPTIONS,
     AbstractTuyaBLEDeviceManager,
+    ConnectionProfile,
     TuyaBLEDevice,
     TuyaBLEDeviceCredentials,
 )
@@ -87,6 +89,11 @@ def _build_credentials_from_entry(entry: ConfigEntry) -> TuyaBLEDeviceCredential
         product_name=data.get(CONF_PRODUCT_NAME),
         functions=data.get(CONF_FUNCTIONS),
         status_range=data.get(CONF_STATUS_RANGE),
+        connection_profile=(
+            ConnectionProfile(data[CONF_CONNECTION_PROFILE])
+            if data.get(CONF_CONNECTION_PROFILE) is not None
+            else None
+        ),
     )
 
 

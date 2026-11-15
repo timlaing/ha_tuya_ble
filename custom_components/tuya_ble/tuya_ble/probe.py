@@ -23,7 +23,8 @@ from bleak_retry_connector import (
 
 from .advertisement import decode_tuya_ble_advertisement
 from .base import TuyaBLEDevice, global_connect_lock
-from .const import CHARACTERISTIC_NOTIFY, CHARACTERISTIC_WRITE, TuyaBLECode
+from .connection_cleanup import set_probe_cleanup_waiter
+from .const import ConnectionProfile, TuyaBLECode
 from .datapoints import TuyaBLEDataPoint
 from .exceptions import TuyaBLEDataFormatError, TuyaBLEDeviceError
 from .manager import TuyaBLEDeviceCredentials
@@ -374,6 +375,7 @@ class _ProbeDevice(TuyaBLEDevice):
         """Create an isolated device with no accepted authentication or status."""
         super().__init__(None, ble_device, advertisement)  # type: ignore[arg-type]
         self.status_accepted = False
+        self._status_result: asyncio.Future[None] | None = None
         self.pair_rejected = False
         self._awaiting_pair = False
         self._connection_lost = False
@@ -413,6 +415,13 @@ class _ProbeDevice(TuyaBLEDevice):
         """Record whether the authenticated status request was accepted."""
         result = super()._handle_device_status_response(data)
         self.status_accepted = result == 0
+        if (
+            result != 0
+            and self._protocol_version == 4
+            and self._status_result is not None
+            and not self._status_result.done()
+        ):
+            self._status_result.set_exception(TuyaBLEDeviceError(result))
         return result
 
     async def _send_response(
@@ -431,6 +440,7 @@ class _ProbeDevice(TuyaBLEDevice):
         self._connection_lost = True
         self._is_paired = False
         self._client = None
+        self._cancel_pending_responses()
 
     @property
     def connection_lost(self) -> bool:
@@ -502,7 +512,7 @@ class _ProbeDevice(TuyaBLEDevice):
         if client is None or not client.is_connected:
             raise TuyaBLEDeviceError(0)
         for packet in packets:
-            await client.write_gatt_char(CHARACTERISTIC_WRITE, packet, False)
+            await client.write_gatt_char(self._write_char, packet, False)
 
     # Explicit early returns keep every unsafe stage from advancing to PAIR.
     # pylint: disable=too-many-return-statements
@@ -510,20 +520,24 @@ class _ProbeDevice(TuyaBLEDevice):
         self, received: asyncio.Future[None], enable_status: Callable[[], None]
     ) -> ProbeOutcome:
         """Execute only the three read/authentication protocol commands."""
+        self._status_result = received
         client = await self._try_establish_connection()
         if client is None:
             return ProbeOutcome.INCONCLUSIVE
         self._client = client
-        await client.start_notify(
-            CHARACTERISTIC_NOTIFY, self._safe_notification_handler
-        )
+        self._select_characteristics(client)
+        await client.start_notify(self._notify_char, self._safe_notification_handler)
+        self._configure_packet_size(client)
         if not await self._send_packet_while_connected(
-            TuyaBLECode.FUN_SENDER_DEVICE_INFO, b"", 0, True
+            TuyaBLECode.FUN_SENDER_DEVICE_INFO,
+            self._build_device_info_request(),
+            0,
+            True,
         ):
             return ProbeOutcome.RETRYABLE
         if self._session_key is None:
             return ProbeOutcome.INCONCLUSIVE
-        if not self._is_bound or self._protocol_version not in (2, 3):
+        if not self._is_bound or self._protocol_version not in (2, 3, 4):
             return ProbeOutcome.INCONCLUSIVE
         self._awaiting_pair = True
         try:
@@ -539,10 +553,10 @@ class _ProbeDevice(TuyaBLEDevice):
             return self._failed_pair_outcome()
         enable_status()
         if not await self._send_packet_while_connected(
-            TuyaBLECode.FUN_SENDER_DEVICE_STATUS, b"", 0, True
+            TuyaBLECode.FUN_SENDER_DEVICE_STATUS, b"", 0, self._protocol_version != 4
         ):
             return ProbeOutcome.RETRYABLE
-        if not self.status_accepted:
+        if self._protocol_version != 4 and not self.status_accepted:
             return ProbeOutcome.INCONCLUSIVE
         await received
         return ProbeOutcome.MATCHED
@@ -601,7 +615,7 @@ async def async_probe_authenticated_status(
     if (
         info is None
         or not info.is_bound
-        or info.protocol_version not in (2, 3)
+        or info.protocol_version not in (2, 3, 4)
         or not expected_dp_ids
     ):
         return ProbeOutcome.INCONCLUSIVE
@@ -659,6 +673,51 @@ async def async_probe_authenticated_status(
         if outcome == ProbeOutcome.INCONCLUSIVE and device.connection_lost:
             outcome = ProbeOutcome.RETRYABLE
         unregister()
-        received.cancel()
+        if received.done() and not received.cancelled():
+            received.exception()
+        else:
+            received.cancel()
         outcome = await _async_close_probe(device, outcome)
     return outcome
+
+
+async def async_detect_v4_profile(
+    ble_device: BLEDevice,
+    advertisement: AdvertisementData,
+    credentials: TuyaBLEDeviceCredentials,
+    expected_dp_ids: frozenset[int],
+) -> ConnectionProfile | None:
+    """Try bounded read-only profiles, releasing each link before the next.
+
+    A cloud match alone is not verification. Never provision an unbound device,
+    write datapoints or accept a profile without authenticated status data.
+    """
+    info = decode_tuya_ble_advertisement(advertisement)
+    if (
+        info is None
+        or info.protocol_version != 4
+        or not info.is_bound
+        or not expected_dp_ids
+    ):
+        return None
+    for profile in ConnectionProfile:
+        _LOGGER.debug(
+            "%s: Verifying connection profile %s", ble_device.address, profile
+        )
+        candidate = replace(credentials, connection_profile=profile)
+        outcome = await async_probe_authenticated_status(
+            ble_device, advertisement, candidate, credentials.uuid, expected_dp_ids
+        )
+        if outcome == ProbeOutcome.MATCHED:
+            return profile
+        if outcome == ProbeOutcome.REJECTED:
+            break
+    return None
+
+
+async def _runtime_probe_cleanup(address: str) -> bool:
+    """Share the current probe barrier with runtime without importing devices."""
+    return await _async_wait_for_previous_cleanup(address)
+
+
+set_probe_cleanup_waiter(_runtime_probe_cleanup)

@@ -18,7 +18,8 @@ from homeassistant.data_entry_flow import AbortFlow, FlowResultType
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.tuya_ble.config_flow import TuyaBLEConfigFlow, _probe_state
+from custom_components.tuya_ble.config_flow import TuyaBLEConfigFlow
+from custom_components.tuya_ble.config_flow_state import probe_state as _probe_state
 from custom_components.tuya_ble.const import (
     CONF_ADVERTISED_UUID,
     CONF_CLOUD_UUID,
@@ -97,7 +98,7 @@ def _flow(
     flow = build_flow(hass)
     flow._manager = cast(Any, CandidateManager(candidates))
     discovery = FakeDiscovery()
-    discovery.device = FakeBLEAddress()  # type: ignore[attr-defined]
+    discovery.device = FakeBLEAddress()
     flow._discovered_devices[discovery.address] = discovery  # type: ignore[assignment]
     return flow, discovery
 

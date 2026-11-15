@@ -18,9 +18,10 @@ from bleak_retry_connector import (
 from Crypto.Cipher import AES
 
 from .const import (
-    GATT_MTU,
     PAIRING_REQUEST_LENGTH,
     RESPONSE_WAIT_TIMEOUT,
+    V4_VALUE_WIDTHS,
+    ConnectionProfile,
     TuyaBLECode,
 )
 from .datapoints import TuyaBLEDataPoint, TuyaBLEDataPoints
@@ -45,6 +46,8 @@ class TuyaBLEProtocolSendMixin:
 
     # Instance attributes expected by protocol methods (set by TuyaBLEDevice.__init__).
     _protocol_version: int
+    _connection_profile: ConnectionProfile | None
+    _packet_size: int
     _device_info: TuyaBLEDeviceCredentials | None
     _local_key: bytes | None
     _login_key: bytes | None
@@ -62,6 +65,8 @@ class TuyaBLEProtocolSendMixin:
     _input_expected_length: int
     _input_reassembly_deadline: float
     _input_expected_responses: dict[int, asyncio.Future[int]]
+    _input_expected_codes: dict[int, TuyaBLECode]
+    _v4_write_headers: dict[int, bytes]
     _seq_num_lock: asyncio.Lock
     _current_seq_num: int
     _operation_lock: asyncio.Lock
@@ -72,6 +77,12 @@ class TuyaBLEProtocolSendMixin:
     _reconnect_task: asyncio.Task[None] | None
     _resend_task: asyncio.Task[None] | None
     _send_response_tasks: set[asyncio.Task[None]]
+
+    def _initialize_response_state(self) -> None:
+        """Create connection response correlation state without storing secrets."""
+        self._input_expected_responses = {}
+        self._input_expected_codes = {}
+        self._v4_write_headers = {}
 
     @property
     def address(self) -> str:
@@ -138,6 +149,8 @@ class TuyaBLEProtocolSendMixin:
         """Send new values of datapoints to the device."""
         if self._protocol_version == 3:
             await self._send_datapoints_v3(datapoint_ids)
+        elif self._protocol_version == 4:
+            await self._send_datapoints_v4(datapoint_ids)
         else:
             raise TuyaBLEDeviceError(0)
 
@@ -154,7 +167,7 @@ class TuyaBLEProtocolSendMixin:
         per-device write lock, so this batch cannot interleave with another
         write and snapshot its unconfirmed values.
         """
-        if self._protocol_version != 3:
+        if self._protocol_version not in (3, 4):
             raise TuyaBLEDeviceError(0)
 
         updates: list[tuple[TuyaBLEDataPoint, bytes | bool | int | str]] = []
@@ -262,7 +275,10 @@ class TuyaBLEProtocolSendMixin:
     ) -> list[bytes]:
         """Build encrypted BLE packets for the given command."""
         encrypted = self._encrypt_payload(seq_num, code, data, response_to)
-        return self._fragment_into_packets(encrypted)
+        version = self._protocol_version
+        if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO and self._connection_profile:
+            version = self._connection_profile.info_version
+        return self._fragment_into_packets(encrypted, version)
 
     def _select_encryption_key(self, code: TuyaBLECode) -> tuple[bytes, bytes]:
         """Select the encryption key and security flag for the given code."""
@@ -297,7 +313,7 @@ class TuyaBLEProtocolSendMixin:
         encrypted: bytes = security_flag + iv + cipher.encrypt(raw)
         return encrypted
 
-    def _fragment_into_packets(self, encrypted: bytes) -> list[bytes]:
+    def _fragment_into_packets(self, encrypted: bytes, version: int) -> list[bytes]:
         """Fragment encrypted payload into GATT MTU-sized packets."""
         packets: list[bytes] = []
         pos = 0
@@ -308,10 +324,10 @@ class TuyaBLEProtocolSendMixin:
             packet += self._pack_int(packet_num)
             if packet_num == 0:
                 packet += self._pack_int(length)
-                packet += pack(">B", self._protocol_version << 4)
+                packet += pack(">B", version << 4)
             data_part = encrypted[
                 pos : pos
-                + GATT_MTU
+                + self._packet_size
                 - len(
                     packet
                 )  # fmt: skip
@@ -445,6 +461,9 @@ class TuyaBLEProtocolSendMixin:
         if wait_for_response:
             future = asyncio.Future()
             self._input_expected_responses[seq_num] = future
+            self._input_expected_codes[seq_num] = code
+            if code == TuyaBLECode.FUN_SENDER_DPS_V4:
+                self._v4_write_headers[seq_num] = data[:5]
 
         if response_to > 0:
             _LOGGER.debug(
@@ -492,13 +511,29 @@ class TuyaBLEProtocolSendMixin:
         in progress; retrieve that rejection even when the write raises, so
         the future never finishes unretrieved.
         """
-        if not self._is_fingerbot_touch:
-            self._input_expected_responses.pop(seq_num, None)
-            return
         if self._input_expected_responses.get(seq_num) is future:
             self._input_expected_responses.pop(seq_num)
+        self._input_expected_codes.pop(seq_num, None)
+        self._v4_write_headers.pop(seq_num, None)
         if future.done() and not future.cancelled():
             future.exception()
+
+    async def _send_datapoints_v4(self, datapoint_ids: list[int]) -> None:
+        """Encode SDK v4 writes and require a device acknowledgement."""
+        data = bytearray(pack(">BI", 0, await self._get_seq_num()))
+        for dp_id in datapoint_ids:
+            dp = self._datapoints[dp_id]
+            if dp is None:
+                raise TuyaBLEDeviceError(0)
+            value = dp.get_value()
+            if not 0 <= dp.dp_id <= MAX_BYTE or len(value) > 65535:
+                raise TuyaBLEOutgoingDataLengthError(dp_id, protocol=4)
+            widths = V4_VALUE_WIDTHS.get(dp.dp_type)
+            if widths is not None and len(value) not in widths:
+                raise TuyaBLEDataFormatError()
+            data += pack(">BBH", dp.dp_id, dp.dp_type.value, len(value))
+            data += value
+        await self._send_packet(TuyaBLECode.FUN_SENDER_DPS_V4, bytes(data))
 
     async def _int_send_packet_while_connected(
         self,

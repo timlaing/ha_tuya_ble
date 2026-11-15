@@ -15,6 +15,7 @@ from .const import (
     SERVICE_UUID,
     SERVICE_UUID_V4,
     SERVICE_UUIDS,
+    ConnectionProfile,
     DPType,
     TuyaBLEDataPointType,
 )
@@ -23,7 +24,11 @@ from .manager import (
     AbstractTuyaBLEDeviceManager,
     TuyaBLEDeviceCredentials,
 )
-from .probe import ProbeOutcome, async_probe_authenticated_status
+from .probe import (
+    ProbeOutcome,
+    async_detect_v4_profile,
+    async_probe_authenticated_status,
+)
 from .protocol_mixin import BLE_CONNECTION_EXCEPTIONS, BLEAK_EXCEPTIONS
 
 __all__ = [
@@ -31,6 +36,7 @@ __all__ = [
     "BLEAK_EXCEPTIONS",
     "BLE_CONNECTION_EXCEPTIONS",
     "DPType",
+    "ConnectionProfile",
     "ProbeOutcome",
     "MANUFACTURER_DATA_ID",
     "SERVICE_UUID",
@@ -45,4 +51,5 @@ __all__ = [
     "TuyaBLEDeviceFunction",
     "decode_tuya_ble_advertisement",
     "async_probe_authenticated_status",
+    "async_detect_v4_profile",
 ]

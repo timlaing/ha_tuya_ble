@@ -2,7 +2,8 @@
   "config": {
     "abort": {
       "no_unconfigured_devices": "No unconfigured devices found.",
-      "unsupported_device": "The Bluetooth advertisement does not contain a supported device identity."
+      "unsupported_device": "The Bluetooth advertisement does not contain a supported device identity.",
+      "reconfigure_successful": "Bluetooth compatibility verified and saved."
     },
     "error": {
       "device_not_registered": "No device in this Tuya account could be verified against the Bluetooth device.",
@@ -11,6 +12,7 @@
       "cloud_refresh_failed": "Could not refresh the Tuya cloud device list. Try again later.",
       "probe_setup_failed": "Could not prepare device verification. Try again later.",
       "device_verification_expired": "Device verification expired or was claimed by another setup. Please retry.",
+      "v4_verification_failed": "Could not authenticate and read this protocol-4 device with the supported Bluetooth profiles. Make sure it is bound in Smart Life, close the app to release its Bluetooth connection, and retry nearby. No compatibility profile was saved.",
       "bluetooth_scan_failed": "The complete Bluetooth advertisement was not received. Move the device closer and try again.",
       "identity_not_decoded": "The identity in the Bluetooth advertisement could not be decoded.",
       "invalid_auth": "Invalid authentication",
@@ -18,9 +20,12 @@
     },
     "flow_title": "{name}",
     "progress": {
-      "verify_device": "Checking cloud credentials against the Bluetooth device..."
+      "verify_device": "Verifying Bluetooth credentials and connection compatibility..."
     },
     "step": {
+      "reconfigure": {
+        "description": "Automatically verify this device's Bluetooth connection profile. The integration will briefly disconnect while testing, then resume using the verified profile. Keep the device nearby and close Smart Life. Entity IDs and credentials are retained."
+      },
       "user": {
         "data": {
           "user_code": "User Code"

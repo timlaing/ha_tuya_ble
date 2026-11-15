@@ -35,7 +35,7 @@ from custom_components.tuya_ble.const import (
 )
 from custom_components.tuya_ble.tuya_ble import SERVICE_UUID, TuyaBLEDeviceCredentials
 from custom_components.tuya_ble.tuya_ble.const import MANUFACTURER_DATA_ID
-from tests.conftest import FakeAdvertisementData
+from tests.conftest import FakeAdvertisementData, make_device
 
 _SCAN_PATCH = (
     "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements"
@@ -117,6 +117,7 @@ class FakeDiscovery:
         rssi: int = -50,
     ) -> None:
         self.address = address
+        self.device: Any = make_device(address=address, name=name)._ble_device
         self.name = name
         self.rssi = rssi
         self.service_data: dict[str, bytes] | None = (
