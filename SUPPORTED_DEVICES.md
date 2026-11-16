@@ -112,6 +112,7 @@ Entities: on/off, brightness, color temperature, RGB color.
 - Curtain Controller (product_id `kcy0x4pi`).
 - AOK AM24 Venetian Blinds Motor (product_id `dy4dh1q0`).
 - Battery BLE Roller (product_id `jetlwvfm`). Cloud-schema-based mapping for open/close/stop and position (DPs 1–3), battery percentage (DP 13), and last operation duration (DP 10). Hardware operation is not yet verified; this descriptor does not resolve the cloud identity matching error in #39.
+- Maxmarr Tubular Motor (product_id `mnet9kgf`). Open/close/stop (DP 1), target/current position (DPs 2/3, inverted because the device reports 0 = fully open), battery percentage (DP 13), motor fault (DP 12), motor direction (DP 5, Forward/Back), and a disabled-by-default work-state sensor (DP 7, opening/closing). Based on the device report in #145; hardware testing is pending. Limit calibration (DP 16) and undocumented DPs 101, 103 and 105 are not exposed.
 - Unnamed curtain motor (product_id `qqdxfdht`). Identical coverage to `kcy0x4pi`: open/close/stop via the `_category_cl.yaml` cover default (state DP 1, position set DP 2, position DP 3), plus battery, work state and speed (DP 105).
 
 Entities: open/close/stop, battery, work state and cover speed.
