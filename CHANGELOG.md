@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+## [2.10.0-beta.4] - 2026-11-16
+
+> **Beta — for testing only.** This build supersedes beta.3 with automatic protocol-4 compatibility verification and additional device support. Fresh affected-device hardware testing remains necessary; this beta does not claim to resolve every report in #39 or support every protocol-4 firmware.
+
+### Added
+
+- **Automatic protocol-4 compatibility verification** (#147): setup tests bounded read/authentication-only connection profiles and saves a profile only after authenticated pairing and a mapped datapoint report. Restore verified profiles offline after Home Assistant restarts, recalculate packet capacity on each connection, and support acknowledged protocol-4 control writes. Existing entries can use **Reconfigure** to verify compatibility while preserving entity IDs.
+- **Maxmarr tubular blind motor (`cl` / `mnet9kgf`)** (#149, fixes #145): add a cover with position control, battery and fault sensors, a disabled-by-default work-state sensor, and a motor-direction select.
+- **Simart Akilli Parmak Fingerbot (`kg` / `gnpbj0bq`)** (#150, fixes #148): add battery, push, position, hold-time, Push/Switch mode, switch and manual-control entities. Omit the reverse-position switch because DP104 is an enum, and omit unsupported program controls because DP109 is absent.
+
+### Fixed
+
+- **Simart Fingerbot reconnects** (#150): enable the reporter-tested Fingerbot Touch reconnect handling for this model, tolerating duplicate notification fragments and rejecting stale-client callbacks and queued writes.
+- **Protocol-4 connection and control recovery** (#147): bound reconnect attempts, fail pending requests on disconnect, preserve datapoint rollback on rejected writes, and publish cover movement only after a successful command. Correct the Battery BLE Roller's ENUM controls and serialize reconfiguration with runtime ownership.
+
 ## [2.10.0-beta.3] - 2026-11-15
 
 > **Beta — for testing only.** This build supersedes beta.2 with runtime connection recovery after setup. UUID selection and storage are unchanged, and this beta does not claim to resolve every report in #39. Fresh affected-device hardware testing remains necessary.
