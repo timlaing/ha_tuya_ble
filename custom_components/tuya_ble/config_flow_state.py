@@ -12,7 +12,7 @@ from .const import DOMAIN
 from .tuya_ble import MANUFACTURER_DATA_ID, SERVICE_UUIDS
 
 PROBE_CLAIM_TTL = 120
-_PROBE_STATE = f"{DOMAIN}_probe_state"
+_PROBE_STATE = "probe_state"
 ProbeClaim = tuple[object, str, float]
 
 
@@ -26,7 +26,9 @@ def probe_state(
     hass: HomeAssistant,
 ) -> tuple[asyncio.Lock, dict[str, ProbeClaim]]:
     """Serialise probes and reserve matched cloud IDs until entry creation or TTL."""
-    state = hass.data.setdefault(_PROBE_STATE, {"lock": asyncio.Lock(), "claims": {}})
+    state = hass.data.setdefault(DOMAIN, {}).setdefault(
+        _PROBE_STATE, {"lock": asyncio.Lock(), "claims": {}}
+    )
     return state["lock"], state["claims"]
 
 
