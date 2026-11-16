@@ -24,7 +24,7 @@ from bleak_retry_connector import (
 from .advertisement import decode_tuya_ble_advertisement
 from .base import TuyaBLEDevice, global_connect_lock
 from .connection_cleanup import set_probe_cleanup_waiter
-from .const import ConnectionProfile, TuyaBLECode
+from .const import SUPPORTED_PROTOCOL_VERSIONS, ConnectionProfile, TuyaBLECode
 from .datapoints import TuyaBLEDataPoint
 from .exceptions import TuyaBLEDataFormatError, TuyaBLEDeviceError
 from .manager import TuyaBLEDeviceCredentials
@@ -375,6 +375,7 @@ class _ProbeDevice(TuyaBLEDevice):
         """Create an isolated device with no accepted authentication or status."""
         super().__init__(None, ble_device, advertisement)  # type: ignore[arg-type]
         self.status_accepted = False
+        self.status_refused = False
         self._status_result: asyncio.Future[None] | None = None
         self.pair_rejected = False
         self._awaiting_pair = False
@@ -415,6 +416,8 @@ class _ProbeDevice(TuyaBLEDevice):
         """Record whether the authenticated status request was accepted."""
         result = super()._handle_device_status_response(data)
         self.status_accepted = result == 0
+        if result != 0:
+            self.status_refused = True
         if (
             result != 0
             and self._protocol_version == 4
@@ -527,7 +530,7 @@ class _ProbeDevice(TuyaBLEDevice):
         self._client = client
         self._select_characteristics(client)
         await client.start_notify(self._notify_char, self._safe_notification_handler)
-        self._configure_packet_size(client)
+        await self._configure_packet_size(client)
         if not await self._send_packet_while_connected(
             TuyaBLECode.FUN_SENDER_DEVICE_INFO,
             self._build_device_info_request(),
@@ -537,7 +540,10 @@ class _ProbeDevice(TuyaBLEDevice):
             return ProbeOutcome.RETRYABLE
         if self._session_key is None:
             return ProbeOutcome.INCONCLUSIVE
-        if not self._is_bound or self._protocol_version not in (2, 3, 4):
+        if (
+            not self._is_bound
+            or self._protocol_version not in SUPPORTED_PROTOCOL_VERSIONS
+        ):
             return ProbeOutcome.INCONCLUSIVE
         self._awaiting_pair = True
         try:
@@ -559,6 +565,8 @@ class _ProbeDevice(TuyaBLEDevice):
         if self._protocol_version != 4 and not self.status_accepted:
             return ProbeOutcome.INCONCLUSIVE
         await received
+        if self.status_refused:
+            return ProbeOutcome.INCONCLUSIVE
         return ProbeOutcome.MATCHED
 
     # pylint: enable=too-many-return-statements
@@ -612,12 +620,9 @@ async def async_probe_authenticated_status(
     uses a fresh connection and ephemeral credentials.
     """
     info = decode_tuya_ble_advertisement(advertisement)
-    if (
-        info is None
-        or not info.is_bound
-        or info.protocol_version not in (2, 3, 4)
-        or not expected_dp_ids
-    ):
+    # The decoder validates advertisement layouts. A classic v2 marker can
+    # bootstrap a v3 device; enforce supported device versions after DEVICE_INFO.
+    if info is None or not info.is_bound or not expected_dp_ids:
         return ProbeOutcome.INCONCLUSIVE
 
     device = _ProbeDevice(ble_device, advertisement)
@@ -675,6 +680,8 @@ async def async_probe_authenticated_status(
         unregister()
         _release_probe_future(received)
         outcome = await _async_close_probe(device, outcome)
+    if outcome == ProbeOutcome.MATCHED and device.status_refused:
+        return ProbeOutcome.INCONCLUSIVE
     return outcome
 
 

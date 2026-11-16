@@ -34,6 +34,8 @@ MANUFACTURER_DATA_ID = 0x07D0
 RESPONSE_WAIT_TIMEOUT = 60
 
 PROTOCOL_VERSION_V4 = 4
+# Confirmed device protocols, not the initial advertisement/handshake marker.
+SUPPORTED_PROTOCOL_VERSIONS = (3, 4)
 
 # The pairing request is a fixed-size frame holding uuid + local_key + device_id,
 # zero-padded to the end. The field widths below are the protocol's own limits and

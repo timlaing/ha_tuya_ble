@@ -864,7 +864,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
         try:
             self._select_characteristics(client)
             await client.start_notify(self._notify_char, handle_notification)
-            self._configure_packet_size(client)
+            await self._configure_packet_size(client)
             return True
         except BLE_CONNECTION_EXCEPTIONS as err:
             self._client = None

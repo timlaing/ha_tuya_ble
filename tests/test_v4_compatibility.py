@@ -140,6 +140,21 @@ class ProfileFirmware(FakeV4Firmware):
             super()._answer(seq_num, code, data, flag)
 
 
+class NegotiatingServices(ProfileServices):
+    """Expose a temporary capacity and signal when the write limit is read."""
+
+    def __init__(self, characteristics: set[str]) -> None:
+        super().__init__(characteristics, 20)
+        self.capacity_read = asyncio.Event()
+        self.write_lookups = 0
+
+    def get_characteristic(self, specifier: str) -> Any:
+        if specifier == CHARACTERISTIC_WRITE_V4:
+            self.write_lookups += 1
+            self.capacity_read.set()
+        return super().get_characteristic(specifier)
+
+
 @pytest.mark.parametrize("profile", list(ConnectionProfile))
 @pytest.mark.parametrize("status_ack", [True, False])
 async def test_detect_profile_over_real_encrypted_handshakes(
@@ -270,7 +285,14 @@ async def test_large_profile_never_exceeds_supported_capacity(capacity: Any) -> 
     )
     device = make_device()
     firmware = ProfileFirmware(ConnectionProfile.V2_MTU, capacity=capacity)
-    with patch(PROBE_CONNECT, return_value=firmware):
+    with (
+        patch(PROBE_CONNECT, return_value=firmware),
+        patch(
+            "custom_components.tuya_ble.tuya_ble.connection_profile."
+            "MTU_NEGOTIATION_TIMEOUT",
+            0.01,
+        ),
+    ):
         result = await async_probe_authenticated_status(
             device._ble_device,
             v4_advertisement(),
@@ -295,6 +317,125 @@ async def test_capacity_is_capped_at_tuya_sdk_limit() -> None:
         await asyncio.wait_for(firmware.acknowledged.wait(), 1)
         await device.stop()
     assert firmware.received[0][2] == pack(">H", 244)
+
+
+@pytest.mark.parametrize("phase", ["probe", "runtime"])
+async def test_mtu_profile_waits_for_delayed_capacity_before_writing(
+    phase: str,
+) -> None:
+    """A transient 20-byte limit must not reject an otherwise usable profile."""
+    profile = ConnectionProfile.V2_MTU
+    credentials = replace(make_credentials(), connection_profile=profile)
+    device = make_device()
+    device.initialize_with_credentials(credentials)
+    firmware = ProfileFirmware(profile, capacity=20)
+    services = NegotiatingServices(firmware.services.characteristics)
+    firmware.services = services
+
+    async def run() -> ProbeOutcome | None:
+        if phase == "probe":
+            return await async_probe_authenticated_status(
+                device._ble_device,
+                v4_advertisement(),
+                credentials,
+                credentials.uuid,
+                frozenset({13}),
+            )
+        await device.update()
+        await asyncio.wait_for(firmware.acknowledged.wait(), 1)
+        return None
+
+    with (
+        patch(PROBE_CONNECT, return_value=firmware),
+        patch(RUNTIME_CONNECT, return_value=firmware),
+        patch(
+            "custom_components.tuya_ble.tuya_ble.connection_profile."
+            "MTU_NEGOTIATION_POLL_INTERVAL",
+            0.005,
+        ),
+    ):
+        task = asyncio.create_task(run())
+        await services.capacity_read.wait()
+        assert not firmware.writes
+        assert not task.done()
+        firmware.capacity = 244
+        services.capacity = 244
+        result = await task
+        if phase == "runtime":
+            await drain_responses(device)
+            await device.stop()
+
+    assert services.write_lookups > 2
+    assert firmware.received[0][2] == pack(">H", 244)
+    assert result == (ProbeOutcome.MATCHED if phase == "probe" else None)
+    assert firmware.closed
+
+
+@pytest.mark.parametrize("termination", ["disconnect", "cancel"])
+async def test_mtu_probe_wait_stops_without_writes(termination: str) -> None:
+    """Disconnect and cancellation do not wait for the full negotiation timeout."""
+    credentials = replace(
+        make_credentials(), connection_profile=ConnectionProfile.V2_MTU
+    )
+    firmware = ProfileFirmware(ConnectionProfile.V2_MTU, capacity=20)
+    services = NegotiatingServices(firmware.services.characteristics)
+    firmware.services = services
+    with (
+        patch(PROBE_CONNECT, return_value=firmware),
+        patch(
+            "custom_components.tuya_ble.tuya_ble.connection_profile."
+            "MTU_NEGOTIATION_POLL_INTERVAL",
+            0.005,
+        ),
+    ):
+        task = asyncio.create_task(
+            async_probe_authenticated_status(
+                make_device()._ble_device,
+                v4_advertisement(),
+                credentials,
+                credentials.uuid,
+                frozenset({13}),
+            )
+        )
+        await services.capacity_read.wait()
+        if termination == "cancel":
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert firmware.closed
+        else:
+            firmware._is_connected = False
+            assert await asyncio.wait_for(task, 0.5) == ProbeOutcome.RETRYABLE
+    assert not firmware.writes
+    assert not firmware.is_connected
+
+
+async def test_mtu_runtime_wait_stops_on_shutdown() -> None:
+    """An intentional stop releases the link without waiting out negotiation."""
+    device = make_device()
+    device.initialize_with_credentials(
+        replace(
+            make_credentials(),
+            connection_profile=ConnectionProfile.V2_MTU,
+        )
+    )
+    firmware = ProfileFirmware(ConnectionProfile.V2_MTU, capacity=20)
+    services = NegotiatingServices(firmware.services.characteristics)
+    firmware.services = services
+    with (
+        patch(RUNTIME_CONNECT, return_value=firmware),
+        patch(
+            "custom_components.tuya_ble.tuya_ble.connection_profile."
+            "MTU_NEGOTIATION_POLL_INTERVAL",
+            0.005,
+        ),
+    ):
+        update = asyncio.create_task(device.update())
+        await services.capacity_read.wait()
+        await asyncio.wait_for(device.stop(), 0.5)
+        await update
+    assert not firmware.writes
+    assert firmware.closed
 
 
 @pytest.mark.parametrize("outcome", [ProbeOutcome.INCONCLUSIVE, ProbeOutcome.REJECTED])
@@ -497,6 +638,47 @@ async def test_v4_large_raw_write_uses_two_byte_length() -> None:
     assert send.call_args.args[1][5:] == klv(9, TuyaBLEDataPointType.DT_RAW, value)
 
 
+@pytest.mark.parametrize(
+    ("lengths", "accepted"),
+    [
+        ((65526,), True),
+        ((65527,), False),
+        ((65535,), False),
+        ((32761, 32761), True),
+        ((32761, 32762), False),
+    ],
+)
+async def test_v4_complete_payload_bounds_and_batch_rollback(
+    lengths: tuple[int, ...], accepted: bool
+) -> None:
+    """Prefixes and all record headers count toward the frame's 16-bit length."""
+    device = make_device()
+    device._protocol_version = 4
+    updates: dict[int, bytes | bool | int | str] = {}
+    original: dict[int, bytes] = {}
+    for dp_id, size in enumerate(lengths, start=1):
+        original[dp_id] = bytes([dp_id])
+        updates[dp_id] = bytes(size)
+        device.datapoints.get_or_create(
+            dp_id, TuyaBLEDataPointType.DT_RAW, original[dp_id]
+        )
+
+    with patch.object(device, "_send_packet", new=AsyncMock()) as send:
+        if accepted:
+            await device.set_multiple_values(updates)
+            send.assert_awaited_once()
+            assert len(send.call_args.args[1]) == 65535
+        else:
+            with pytest.raises(TuyaBLEOutgoingDataLengthError):
+                await device.set_multiple_values(updates)
+            send.assert_not_called()
+
+    for dp_id, requested in updates.items():
+        datapoint = device.datapoints[dp_id]
+        assert datapoint is not None
+        assert datapoint.value == (requested if accepted else original[dp_id])
+
+
 @pytest.mark.parametrize("advertisement", [None, "unbound", "classic", "empty_mapping"])
 async def test_profile_detection_rejects_ineligible_input(
     advertisement: str | None,
@@ -544,6 +726,65 @@ async def test_explicit_status_refusal_cannot_verify_profile() -> None:
             v4_advertisement(),
             make_credentials(),
             make_credentials().uuid,
+            frozenset({13}),
+        )
+    assert result == ProbeOutcome.INCONCLUSIVE
+    assert firmware.closed
+
+
+@pytest.mark.parametrize("status_result", [0, 1])
+async def test_status_reply_after_datapoints_is_not_discarded(
+    status_result: int,
+) -> None:
+    """A completed report future must not hide a queued status refusal."""
+    credentials = make_credentials()
+    firmware = ProfileFirmware(ConnectionProfile.V4_20)
+    original_answer = firmware._answer
+
+    def answer(seq_num: int, code: int, data: bytes, flag: int) -> None:
+        if code == TuyaBLECode.FUN_SENDER_DEVICE_STATUS.value:
+            firmware._reply(0x8006, 0, firmware._report, 5)
+            firmware._reply(code, seq_num, bytes([status_result]), 5)
+        else:
+            original_answer(seq_num, code, data, flag)
+
+    with (
+        patch(PROBE_CONNECT, return_value=firmware),
+        patch.object(firmware, "_answer", side_effect=answer),
+    ):
+        result = await async_probe_authenticated_status(
+            make_device()._ble_device,
+            v4_advertisement(),
+            credentials,
+            credentials.uuid,
+            frozenset({13}),
+        )
+    assert result == (
+        ProbeOutcome.MATCHED if status_result == 0 else ProbeOutcome.INCONCLUSIVE
+    )
+    assert firmware.closed
+
+
+async def test_status_refusal_during_probe_cleanup_prevents_match() -> None:
+    """A late queued refusal during teardown still invalidates verification."""
+    credentials = make_credentials()
+    firmware = ProfileFirmware(ConnectionProfile.V4_20, status_ack=False)
+    original_stop = firmware.stop_notify
+
+    async def refuse_during_stop(gatt_char: str) -> None:
+        firmware._reply(TuyaBLECode.FUN_SENDER_DEVICE_STATUS.value, 0, b"\x01", 5)
+        await asyncio.sleep(0)
+        await original_stop(gatt_char)
+
+    with (
+        patch(PROBE_CONNECT, return_value=firmware),
+        patch.object(firmware, "stop_notify", side_effect=refuse_during_stop),
+    ):
+        result = await async_probe_authenticated_status(
+            make_device()._ble_device,
+            v4_advertisement(),
+            credentials,
+            credentials.uuid,
             frozenset({13}),
         )
     assert result == ProbeOutcome.INCONCLUSIVE

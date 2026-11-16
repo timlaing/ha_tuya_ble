@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any
 
@@ -142,6 +143,8 @@ class TuyaBLECover(TuyaBLEEntity, CoverEntity):
     ) -> None:
         super().__init__(hass, coordinator, device, product, cover_mapping.description)
         self._mapping = cover_mapping
+        self._control_command_lock = asyncio.Lock()
+        self._control_command_pending = False
 
     @property
     def supported_features(self) -> CoverEntityFeature:
@@ -178,7 +181,9 @@ class TuyaBLECover(TuyaBLEEntity, CoverEntity):
         """Read current datapoint values and update entity attributes."""
         if self._mapping.state_dp_id != 0:
             datapoint = self.device.datapoints[self._mapping.state_dp_id]
-            if datapoint is not None:
+            if datapoint is not None and (
+                not self._control_command_pending or datapoint.changed_by_device
+            ):
                 self._attr_is_opening, self._attr_is_closing = self._state_from_value(
                     int(datapoint.value)
                 )
@@ -272,13 +277,21 @@ class TuyaBLECover(TuyaBLEEntity, CoverEntity):
     async def _update_cover_state(self, state: int) -> None:
         """Send a state command (open/close/stop) to the device."""
         if self._mapping.state_dp_id != 0:
-            datapoint = self.device.datapoints.get_or_create(
-                self._mapping.state_dp_id,
-                self._mapping.state_dp_type,
-                1,  # No prior report: start stopped, not optimistically moving.
-            )
-            await datapoint.set_value(state)
-            self._update_ha_state_for_cover_state(state)
+            async with self._control_command_lock:
+                datapoint = self.device.datapoints.get_or_create(
+                    self._mapping.state_dp_id,
+                    self._mapping.state_dp_type,
+                    1,  # No prior report: start stopped, not optimistically moving.
+                )
+                self._control_command_pending = True
+                try:
+                    await datapoint.set_value(state)
+                finally:
+                    self._control_command_pending = False
+                if datapoint.changed_by_device:
+                    self._handle_coordinator_update()
+                else:
+                    self._update_ha_state_for_cover_state(state)
 
     def _update_ha_state_for_cover_state(self, state: int) -> None:
         """Force-update HA state after sending a command."""

@@ -429,7 +429,7 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             self._get_device_info_error = True
         if self._probe_source_step == "reconfigure":
             await self._async_restore_entry()
-            return await self.async_step_reconfigure()
+            return await self._async_reconfigure_locked(None)
         if self._probe_source_step == "discovered_device":
             return await self.async_step_discovered_device()
         return await self.async_step_device()
@@ -464,8 +464,7 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         pairing_uuid: str,
     ) -> ConfigFlowResult | None:
         """Atomically validate ownership and create an entry on the event loop."""
-        # No awaits: claim validation and entry creation cannot interleave with
-        # another flow, and need not wait behind an unrelated Bluetooth probe.
+        # Claim validation and creation are atomic: no awaits or unrelated probe waits.
         claims = _probe_state(self.hass)[1]
         claim = claims.get(credentials.device_id)
         still_owned = (
@@ -670,6 +669,14 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Verify compatibility for an existing entry without changing entity IDs."""
+        async with self._setup_lock:
+            return await self._async_reconfigure_locked(user_input)
+
+    async def _async_reconfigure_locked(
+        self, user_input: dict[str, Any] | None
+    ) -> ConfigFlowResult:
+        """Keep the task check and all awaited setup stages under one flow lock."""
+        self._abort_if_flow_removed()
         errors: dict[str, str] = {}
         if self._probe_error is not None:
             errors["base"], self._probe_error = self._probe_error, None
@@ -678,8 +685,10 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         if user_input is not None:
             entry = self._get_reconfigure_entry()
             await self.async_set_unique_id(entry.unique_id)
+            self._abort_if_flow_removed()
             self._abort_if_unique_id_mismatch()
             discovery = await self._async_scan_device(entry.data[CONF_ADDRESS])
+            self._abort_if_flow_removed()
             if discovery is None:
                 errors["base"] = "bluetooth_scan_failed"
             elif (
@@ -689,9 +698,13 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             elif advertisement.protocol_version != 4:
                 return self.async_abort(reason="unsupported_device")
             elif not await self.hass.config_entries.async_unload(entry.entry_id):
+                self._abort_if_flow_removed()
                 errors["base"] = "v4_verification_failed"
             else:
                 self._reconfigure_unloaded = True
+                if self._flow_removed:
+                    await self._async_restore_entry()
+                    self._abort_if_flow_removed()
                 self._probe_source_step = "reconfigure"
                 self._probe_discovery = discovery
                 self._probe_advertisement = advertisement

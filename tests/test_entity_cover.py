@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from homeassistant.components.cover import (
     ATTR_POSITION,
@@ -127,6 +127,162 @@ async def test_shade_services_use_acknowledged_enum_commands(
     ]
     expected.append(klv(2, TuyaBLEDataPointType.DT_VALUE, (75).to_bytes(4, "big")))
     assert writes == (expected[:1] if reject else expected)
+
+
+@pytest.mark.parametrize("outcome", ["accepted", "rejected", "cancelled"])
+async def test_pending_cover_command_does_not_leak_through_battery_updates(
+    hass: HomeAssistant, outcome: str
+) -> None:
+    """An unrelated report must not expose a locally assigned value before ACK."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(hass, device, coordinator, product)
+    add_dp(device, 1, TuyaBLEDataPointType.DT_ENUM, 1)
+    add_dp(device, 3, TuyaBLEDataPointType.DT_VALUE, 60)
+    send_started = asyncio.Event()
+    acknowledge = asyncio.Event()
+
+    async def send(_dp_ids: list[int]) -> None:
+        send_started.set()
+        await acknowledge.wait()
+        if outcome == "rejected":
+            raise TuyaBLEDeviceError(1)
+
+    with (
+        patch.object(device, "send_datapoints", new=AsyncMock(side_effect=send)),
+        patch.object(entity, "async_write_ha_state"),
+    ):
+        entity._handle_coordinator_update()
+        assert not entity.is_opening
+        command = asyncio.create_task(entity.async_open_cover())
+        await send_started.wait()
+        control = device.datapoints[1]
+        assert control is not None
+        assert control.value == 0
+        assert entity._control_command_pending
+        add_dp(device, 13, TuyaBLEDataPointType.DT_VALUE, 88)
+        entity._handle_coordinator_update()
+        assert not entity.is_opening
+        assert not entity.is_closing
+        assert entity.current_cover_position == 40
+        if outcome == "cancelled":
+            command.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await command
+        else:
+            acknowledge.set()
+            if outcome == "rejected":
+                with pytest.raises(TuyaBLEDeviceError):
+                    await command
+            else:
+                await command
+        assert not entity._control_command_pending
+        entity._handle_coordinator_update()
+        assert entity.is_opening is (outcome == "accepted")
+        assert not entity.is_closing
+
+
+async def test_cover_controls_are_serialised_while_acknowledgements_are_pending(
+    hass: HomeAssistant,
+) -> None:
+    """A queued second command cannot clear the first command's pending guard."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(hass, device, coordinator, product)
+    add_dp(device, 1, TuyaBLEDataPointType.DT_ENUM, 1)
+    add_dp(device, 3, TuyaBLEDataPointType.DT_VALUE, 60)
+    first_started = asyncio.Event()
+    second_started = asyncio.Event()
+    first_ack = asyncio.Event()
+    second_ack = asyncio.Event()
+    submitted = asyncio.Event()
+    commands: list[int] = []
+
+    async def send(_dp_ids: list[int]) -> None:
+        control = device.datapoints[1]
+        assert control is not None
+        commands.append(int(control.value))
+        if len(commands) == 1:
+            first_started.set()
+            await first_ack.wait()
+        else:
+            second_started.set()
+            await second_ack.wait()
+
+    async def submit_close() -> None:
+        submitted.set()
+        await entity.async_close_cover()
+
+    with (
+        patch.object(device, "send_datapoints", new=AsyncMock(side_effect=send)),
+        patch.object(entity, "async_write_ha_state"),
+    ):
+        entity._handle_coordinator_update()
+        opening = asyncio.create_task(entity.async_open_cover())
+        await first_started.wait()
+        closing = asyncio.create_task(submit_close())
+        await submitted.wait()
+        assert commands == [0]
+        assert entity._control_command_pending
+        first_ack.set()
+        await opening
+        await second_started.wait()
+        assert commands == [0, 2]
+        assert entity._control_command_pending
+        add_dp(device, 13, TuyaBLEDataPointType.DT_VALUE, 87)
+        entity._handle_coordinator_update()
+        assert entity.is_opening
+        assert not entity.is_closing
+        second_ack.set()
+        await closing
+    assert not entity._control_command_pending
+    assert entity.is_closing
+    assert not entity.is_opening
+
+
+@pytest.mark.parametrize("accepted", [True, False])
+async def test_device_stop_report_supersedes_open_command_before_ack(
+    hass: HomeAssistant, accepted: bool
+) -> None:
+    """A newer stopped report must survive both ACK acceptance and rejection."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(hass, device, coordinator, product)
+    add_dp(device, 1, TuyaBLEDataPointType.DT_ENUM, 1)
+    add_dp(device, 3, TuyaBLEDataPointType.DT_VALUE, 60)
+    started = asyncio.Event()
+    acknowledge = asyncio.Event()
+
+    async def send(_dp_ids: list[int]) -> None:
+        started.set()
+        await acknowledge.wait()
+        if not accepted:
+            raise TuyaBLEDeviceError(1)
+
+    with (
+        patch.object(device, "send_datapoints", new=AsyncMock(side_effect=send)),
+        patch.object(entity, "async_write_ha_state"),
+    ):
+        entity._handle_coordinator_update()
+        command = asyncio.create_task(entity.async_open_cover())
+        await started.wait()
+        add_dp(device, 1, TuyaBLEDataPointType.DT_ENUM, 1)
+        add_dp(device, 3, TuyaBLEDataPointType.DT_VALUE, 65)
+        entity._handle_coordinator_update()
+        assert not entity.is_opening
+        assert not entity.is_closing
+        assert entity.current_cover_position == 35
+        acknowledge.set()
+        if accepted:
+            await command
+        else:
+            with pytest.raises(TuyaBLEDeviceError):
+                await command
+        assert not entity._control_command_pending
+        assert not entity.is_opening
+        assert not entity.is_closing
+        assert entity.current_cover_position == 35
+        control = device.datapoints[1]
+        assert control is not None
+        assert control.value == 1
+        assert control.changed_by_device
 
 
 # --- Position / state reading ---

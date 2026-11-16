@@ -31,7 +31,9 @@ Each attempt uses a fresh connection and ephemeral session keys, with a
 
 The two-byte device-info payload advertises the selected safe data capacity,
 not a hardcoded `00 f3`. Larger profiles are rejected without sending packets
-if the backend cannot provide a capacity above 20 bytes. After device-info,
+if the backend cannot provide a capacity above 20 bytes within a bounded
+two-second negotiation wait. Capacity is re-read every 50 ms; disconnect,
+shutdown and cancellation stop the wait without sending a handshake. After device-info,
 the firmware's reported protocol version controls subsequent frame markers.
 
 A profile is saved only after encrypted device-info, accepted pairing, and a

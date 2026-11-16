@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from abc import abstractmethod
+import asyncio
 import logging
 from struct import pack
+from typing import Any
 
 from bleak_retry_connector import BleakClientWithServiceCache
 
@@ -20,6 +22,8 @@ from .const import (
 from .exceptions import TuyaBLEDeviceError
 
 _LOGGER = logging.getLogger(__name__)
+MTU_NEGOTIATION_TIMEOUT = 2.0
+MTU_NEGOTIATION_POLL_INTERVAL = 0.05
 
 
 class TuyaBLEConnectionProfile:
@@ -30,6 +34,8 @@ class TuyaBLEConnectionProfile:
     _packet_size: int
     _notify_char: str
     _write_char: str
+    _client: Any
+    _expected_disconnect: bool
 
     @property
     @abstractmethod
@@ -68,20 +74,41 @@ class TuyaBLEConnectionProfile:
             return pack(">H", self._packet_size)
         return b""
 
-    def _configure_packet_size(self, client: BleakClientWithServiceCache) -> None:
+    async def _configure_packet_size(self, client: BleakClientWithServiceCache) -> None:
         """Recompute safe write capacity on every connection, never from cache."""
         self._packet_size = GATT_MTU
         profile = self._connection_profile
         if profile is not None and profile.negotiated_mtu:
-            characteristic = client.services.get_characteristic(self._write_char)
-            capacity = getattr(characteristic, "max_write_without_response_size", 20)
-            if not isinstance(capacity, int) or capacity <= GATT_MTU:
-                raise TuyaBLEDeviceError(0)
-            # The documented Tuya BLE SDK ATT data limit is 244 bytes.
-            self._packet_size = min(capacity, 244)
+            self._packet_size = await self._wait_for_packet_capacity(client)
         _LOGGER.debug(
             "%s: Connection profile %s, fragment capacity %s",
             self.address,
             profile or "default",
             self._packet_size,
         )
+
+    async def _wait_for_packet_capacity(
+        self, client: BleakClientWithServiceCache
+    ) -> int:
+        """Wait briefly for negotiation, without writing or exceeding ATT limits."""
+        try:
+            async with asyncio.timeout(MTU_NEGOTIATION_TIMEOUT):
+                while True:
+                    if (
+                        self._expected_disconnect
+                        or self._client is not client
+                        or not client.is_connected
+                    ):
+                        raise TuyaBLEDeviceError(0)
+                    characteristic = client.services.get_characteristic(
+                        self._write_char
+                    )
+                    capacity = getattr(
+                        characteristic, "max_write_without_response_size", GATT_MTU
+                    )
+                    if isinstance(capacity, int) and capacity > GATT_MTU:
+                        # The documented Tuya BLE SDK ATT data limit is 244 bytes.
+                        return min(capacity, 244)
+                    await asyncio.sleep(MTU_NEGOTIATION_POLL_INTERVAL)
+        except TimeoutError:
+            raise TuyaBLEDeviceError(0) from None

@@ -20,6 +20,7 @@ from Crypto.Cipher import AES
 from .const import (
     PAIRING_REQUEST_LENGTH,
     RESPONSE_WAIT_TIMEOUT,
+    SUPPORTED_PROTOCOL_VERSIONS,
     V4_VALUE_WIDTHS,
     ConnectionProfile,
     TuyaBLECode,
@@ -167,7 +168,7 @@ class TuyaBLEProtocolSendMixin:
         per-device write lock, so this batch cannot interleave with another
         write and snapshot its unconfirmed values.
         """
-        if self._protocol_version not in (3, 4):
+        if self._protocol_version not in SUPPORTED_PROTOCOL_VERSIONS:
             raise TuyaBLEDeviceError(0)
 
         updates: list[tuple[TuyaBLEDataPoint, bytes | bool | int | str]] = []
@@ -526,7 +527,7 @@ class TuyaBLEProtocolSendMixin:
             if dp is None:
                 raise TuyaBLEDeviceError(0)
             value = dp.get_value()
-            if not 0 <= dp.dp_id <= MAX_BYTE or len(value) > 65535:
+            if not 0 <= dp.dp_id <= MAX_BYTE or len(data) + 4 + len(value) > 65535:
                 raise TuyaBLEOutgoingDataLengthError(dp_id, protocol=4)
             widths = V4_VALUE_WIDTHS.get(dp.dp_type)
             if widths is not None and len(value) not in widths:

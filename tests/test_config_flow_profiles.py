@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.data_entry_flow import AbortFlow, FlowResultType
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -30,6 +32,75 @@ from tests.test_config_flow import FakeDiscovery, FakeManager, build_flow
 from tests.test_config_flow_v4 import discovery
 
 DETECT = "custom_components.tuya_ble.config_flow.async_detect_v4_profile"
+
+
+@dataclass
+class ReconfigureRemovalGate:
+    """Pause one form-stage await without cancelling the executing form task."""
+
+    stage: str
+    unload_success: bool
+    original_set_unique_id: Callable[[str | None], Awaitable[Any]]
+    started: asyncio.Event = field(default_factory=asyncio.Event)
+    resume: asyncio.Event = field(default_factory=asyncio.Event)
+    loaded: bool = True
+
+    async def pause_at(self, current_stage: str) -> None:
+        """Block only the selected stage until the test resumes its caller."""
+        if current_stage == self.stage:
+            self.started.set()
+            await self.resume.wait()
+
+    async def set_unique_id(self, unique_id: str | None) -> None:
+        """Preserve unique-ID setup before pausing its completion."""
+        await self.original_set_unique_id(unique_id)
+        await self.pause_at("unique_id")
+
+    async def scan(self, _address: str) -> Any:
+        """Return a supported advertisement after any scan-stage pause."""
+        await self.pause_at("scan")
+        return discovery()
+
+    async def unload(self, _entry_id: str) -> bool:
+        """Model successful or failed unloading after the selected wait."""
+        await self.pause_at("unload")
+        if self.unload_success:
+            self.loaded = False
+        return self.unload_success
+
+    async def reload_entry(self, _entry_id: str) -> bool:
+        """Record restoration of runtime ownership."""
+        self.loaded = True
+        return True
+
+
+@dataclass
+class ReconfigureSubmissionGate:
+    """Hold the first scan and the sole probe while a second submission queues."""
+
+    flow: TuyaBLEConfigFlow
+    scan_started: asyncio.Event = field(default_factory=asyncio.Event)
+    resume_scan: asyncio.Event = field(default_factory=asyncio.Event)
+    second_started: asyncio.Event = field(default_factory=asyncio.Event)
+    probe_started: asyncio.Event = field(default_factory=asyncio.Event)
+    hold_probe: asyncio.Event = field(default_factory=asyncio.Event)
+
+    async def scan(self, _address: str) -> Any:
+        """Hold the first scan while another submission queues."""
+        self.scan_started.set()
+        await self.resume_scan.wait()
+        return discovery()
+
+    async def detect(self, *_args: Any) -> ConnectionProfile:
+        """Keep the sole verification task pending until cancelled."""
+        self.probe_started.set()
+        await self.hold_probe.wait()
+        return ConnectionProfile.V2_MTU
+
+    async def submit_again(self) -> Any:
+        """Signal that the overlapping submission has entered the flow."""
+        self.second_started.set()
+        return await self.flow.async_step_reconfigure({})
 
 
 async def setup_flow(
@@ -244,6 +315,93 @@ async def test_cancelled_reconfigure_restores_runtime_after_probe(
         flow.async_remove()
         await hass.async_block_till_done()
     assert ended.is_set()
+    reload_mock.assert_awaited_once_with(entry.entry_id)
+
+
+@pytest.mark.parametrize(
+    ("stage", "unload_success"),
+    [("unique_id", True), ("scan", True), ("unload", True), ("unload", False)],
+)
+async def test_removed_reconfigure_during_setup_waits_restores_runtime(
+    hass: HomeAssistant, stage: str, unload_success: bool
+) -> None:
+    """An executing form step must not unload or probe after flow removal."""
+    flow, entry = await configured_flow(hass)
+    gate = ReconfigureRemovalGate(stage, unload_success, flow.async_set_unique_id)
+
+    with (
+        patch.object(flow, "async_set_unique_id", side_effect=gate.set_unique_id),
+        patch.object(flow, "_async_scan_device", side_effect=gate.scan),
+        patch.object(
+            hass.config_entries, "async_unload", side_effect=gate.unload
+        ) as unload_mock,
+        patch.object(
+            hass.config_entries, "async_reload", side_effect=gate.reload_entry
+        ) as reload_mock,
+        patch(DETECT, new=AsyncMock()) as detect,
+    ):
+        task = asyncio.create_task(flow.async_step_reconfigure({}))
+        await gate.started.wait()
+        flow.async_remove()
+        assert not task.done()
+        gate.resume.set()
+        with pytest.raises(AbortFlow):
+            await task
+        await hass.async_block_till_done()
+
+    detect.assert_not_called()
+    if stage == "unload":
+        unload_mock.assert_awaited_once_with(entry.entry_id)
+    else:
+        unload_mock.assert_not_awaited()
+    if stage == "unload" and unload_success:
+        reload_mock.assert_awaited_once_with(entry.entry_id)
+    else:
+        reload_mock.assert_not_awaited()
+    assert gate.loaded
+    assert not flow._reconfigure_unloaded
+    assert flow._probe_task is None
+
+
+async def test_overlapping_reconfigure_submissions_share_one_probe(
+    hass: HomeAssistant,
+) -> None:
+    """The second form submission cannot repeat scanning/unload or replace a task."""
+    flow, entry = await configured_flow(hass)
+    gate = ReconfigureSubmissionGate(flow)
+
+    with (
+        patch.object(flow, "_async_scan_device", side_effect=gate.scan) as scan_mock,
+        patch(DETECT, side_effect=gate.detect) as detect_mock,
+        patch.object(
+            hass.config_entries, "async_unload", return_value=True
+        ) as unload_mock,
+        patch.object(
+            hass.config_entries, "async_reload", return_value=True
+        ) as reload_mock,
+    ):
+        first = asyncio.create_task(flow.async_step_reconfigure({}))
+        await gate.scan_started.wait()
+        second = asyncio.create_task(gate.submit_again())
+        await gate.second_started.wait()
+        assert not second.done()
+        assert scan_mock.call_count == 1
+        unload_mock.assert_not_awaited()
+        gate.resume_scan.set()
+        first_result, second_result = await asyncio.gather(first, second)
+        await gate.probe_started.wait()
+        assert first_result["type"] == FlowResultType.SHOW_PROGRESS
+        assert second_result["type"] == FlowResultType.SHOW_PROGRESS
+        probe_task = flow._probe_task
+        assert probe_task is not None
+        assert not probe_task.done()
+        scan_mock.assert_awaited_once()
+        unload_mock.assert_awaited_once_with(entry.entry_id)
+        detect_mock.assert_awaited_once()
+        # Removal cancels the sole probe, then restoration waits for that task.
+        flow.async_remove()
+        await hass.async_block_till_done()
+    assert probe_task.cancelled()
     reload_mock.assert_awaited_once_with(entry.entry_id)
 
 
