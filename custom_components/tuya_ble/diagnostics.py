@@ -174,6 +174,7 @@ def _device_section(device: TuyaBLEDevice | None) -> dict[str, Any]:
         "device_version": device.device_version,
         "hardware_version": device.hardware_version,
         "protocol_version": device.protocol_version,
+        "connection_profile": device.connection_profile,
     }
 
 

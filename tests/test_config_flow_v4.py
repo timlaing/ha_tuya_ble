@@ -11,8 +11,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 import pytest
 
-from custom_components.tuya_ble.tuya_ble import SERVICE_UUID_V4
-from tests.conftest import make_credentials
+from custom_components.tuya_ble.tuya_ble import SERVICE_UUID_V4, ConnectionProfile
+from tests.conftest import make_credentials, make_device
 from tests.test_advertisement import v4_advertisement
 from tests.test_config_flow import FakeDiscovery, FakeManager, build_flow
 
@@ -24,6 +24,7 @@ def discovery(version: int = 4) -> FakeDiscovery:
     info.service_data = adv.service_data
     info.manufacturer_data = adv.manufacturer_data
     info.advertisement = cast(Any, adv)
+    info.device = make_device()._ble_device
     return info
 
 
@@ -67,11 +68,23 @@ async def test_fd50_setup(hass: HomeAssistant, version: int) -> None:
             raise TimeoutError
         return info
 
-    with patch(
-        "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements",
-        side_effect=process_advertisements,
+    with (
+        patch(
+            "custom_components.tuya_ble.config_flow."
+            "bluetooth.async_process_advertisements",
+            side_effect=process_advertisements,
+        ),
+        patch(
+            "custom_components.tuya_ble.config_flow.async_detect_v4_profile",
+            return_value=ConnectionProfile.V4_20,
+        ),
     ):
         result = await flow.async_step_discovered_device({})
+        if version == 4:
+            assert result["type"] == FlowResultType.SHOW_PROGRESS
+            assert flow._probe_task is not None
+            await flow._probe_task
+            result = await flow.async_step_probe_finish()
     if version == 4:
         assert result["type"] == FlowResultType.CREATE_ENTRY
         assert manager.calls == [("1234567890abcdef", False)]
@@ -399,6 +412,10 @@ async def test_partial_candidates_are_resolved_concurrently(
         ),
         patch.object(flow, "_async_current_ids", return_value=set()),
         patch.object(flow, "_async_scan_device", side_effect=scan),
+        patch(
+            "custom_components.tuya_ble.config_flow.async_detect_v4_profile",
+            return_value=ConnectionProfile.V4_20,
+        ),
     ):
         step = asyncio.create_task(flow.async_step_device())
         try:
@@ -616,6 +633,10 @@ async def test_deferred_device_is_selectable_but_requires_validated_setup(
         ),
         patch.object(flow, "_async_current_ids", return_value=set()),
         patch.object(flow, "_async_scan_device", side_effect=scan),
+        patch(
+            "custom_components.tuya_ble.config_flow.async_detect_v4_profile",
+            return_value=ConnectionProfile.V4_20,
+        ),
     ):
         form = await asyncio.wait_for(flow.async_step_device(), 0.5)
         schema = cast(Any, form["data_schema"])
@@ -626,6 +647,11 @@ async def test_deferred_device_is_selectable_but_requires_validated_setup(
         result = await asyncio.wait_for(
             flow.async_step_device({CONF_ADDRESS: partial.address}), 0.5
         )
+        if selected_result == "valid":
+            assert result["type"] == FlowResultType.SHOW_PROGRESS
+            assert flow._probe_task is not None
+            await flow._probe_task
+            result = await flow.async_step_probe_finish()
     assert selected_scans == [partial.address]
     if selected_result == "valid":
         assert result["type"] == FlowResultType.CREATE_ENTRY

@@ -241,7 +241,7 @@ async def test_setup_address_inconclusive_probe_uses_safe_error(
         return_value=(1, iter([credentials]))
     )
     discovery = captured_irrigation_discovery()
-    discovery.device = object()  # type: ignore[attr-defined]
+    discovery.device = object()
     flow.discovery_info = cast(Any, discovery)
     with (
         patch.object(flow, "_async_scan_device", return_value=discovery),

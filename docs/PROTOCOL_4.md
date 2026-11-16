@@ -1,5 +1,7 @@
 # Tuya BLE protocol 4 connection and datapoint reports
 
+<!-- cspell:ignore Raykube -->
+
 [BLE_ADVERTISEMENT_DECODING.md](BLE_ADVERTISEMENT_DECODING.md) covers how an
 FD50 advertisement identifies a protocol-4 device. This page covers what happens
 after that: the GATT characteristics, the handshake, and the datapoint reports
@@ -8,8 +10,54 @@ not from observed traffic alone, and are implemented strictly: a frame that does
 not match is logged and dropped, not guessed at. The one exception is key
 derivation, noted below.
 
-Protocol 4 support is **read-only**. Datapoint writes (`0x0027`) are not
-implemented, so `send_datapoints` still raises for any protocol other than 3.
+Protocol 4 supports datapoint reports and acknowledged control writes (`0x0027`).
+Setup automatically verifies connection compatibility before creating a new v4
+entry. This does not claim support for every firmware or encryption scheme.
+
+## Automatic setup and reboot recovery
+
+After the QR login and device selection, the existing verification progress
+screen tests a bounded set of read/authentication-only profiles. There is no
+opt-in setting and setup never sends a motor, valve, reset or unbind command.
+Each attempt uses a fresh connection and ephemeral session keys, with a
+12-second overall deadline and bounded, confirmed cleanup before the next one.
+
+| Saved profile | Initial device-info marker | ATT fragment capacity                                     |
+| ------------- | -------------------------- | --------------------------------------------------------- |
+| `v4_20`       | `0x40`                     | 20 bytes (existing sensor behaviour)                      |
+| `v2_20`       | `0x20`                     | 20 bytes                                                  |
+| `v4_mtu`      | `0x40`                     | Negotiated write-without-response capacity, capped at 244 |
+| `v2_mtu`      | `0x20`                     | Negotiated write-without-response capacity, capped at 244 |
+
+The two-byte device-info payload advertises the selected safe data capacity,
+not a hardcoded `00 f3`. Larger profiles are rejected without sending packets
+if the backend cannot provide a capacity above 20 bytes within a bounded
+two-second negotiation wait. Capacity is re-read every 50 ms; disconnect,
+shutdown and cancellation stop the wait without sending a handshake. After device-info,
+the firmware's reported protocol version controls subsequent frame markers.
+
+A profile is saved only after encrypted device-info, accepted pairing, and a
+status report containing a mapped datapoint. A cloud UUID match, GATT write
+success, or pairing reply alone is not enough. No verified profile means a
+retryable setup error rather than a silently unavailable entry. Unbound devices
+are never provisioned; bind them in Smart Life first and close the app before
+verification. Devices with no known datapoint mapping cannot be verified this way.
+
+The saved profile lives with the credentials in config-entry data. Runtime
+restores the v4 handshake even before an advertisement callback arrives after
+a reboot, without logging into the cloud. Capacity is recalculated and session
+keys are regenerated for every connection. Disconnects immediately fail pending
+requests; verified profiles use three connection attempts per batch followed by
+reconnect backoff, capped at 60 seconds. Failed writes retain datapoint rollback.
+
+For an existing entry created before profile detection, use the integration's
+**Reconfigure** menu. It tests automatically, preserves credentials/schema and
+entity IDs, and restores runtime ownership after success, failure or cancellation.
+Existing entries without a saved profile retain their previous handshake defaults.
+
+The compatibility variants have real-device precedent in
+[Raykube FD50 app-traffic notes](https://github.com/ShonP40/Tuya-BLE/blob/master/docs/raykube-a1-ultra-fd50.md).
+That is not evidence that a particular variant works on the `jetlwvfm` shade.
 
 ## GATT characteristics
 
@@ -82,6 +130,10 @@ Classic advertisements never wait.
 | Pair (`0x0001`)         | Session key (flag 5), 44-byte pairing request                                       | A bound device replies `2` and switches the link to the bonded state                                                                       |
 | Status query (`0x0003`) | Empty payload: query every datapoint                                                | Replies `0` and hands the query to the device application, which reports its datapoints as `0x8006`/`0x8007`                               |
 
+Some observed firmware reports datapoints without acknowledging the status
+query. Verification and runtime with a saved profile do not require that ACK;
+verification still requires authenticated datapoints after pairing.
+
 Pairing is required even for a device that is already bound. Until the device
 has handled a pair request on the current link, it drops every command except
 the handshake ones, including the status query and report acknowledgements.
@@ -129,11 +181,37 @@ followed by the usual `Received DP` line for each datapoint.
 
 ## Not supported
 
-- Datapoint writes (`0x0027`).
 - Advanced-encryption authentication (`0x0015`–`0x0017`). Device-info flag
   bits 1 and 3 announce it. The flags appear in the `Device info` debug line.
 - `0x8013` app local-time requests. They are logged as an unknown message and
   dropped.
+- SecKey-based security modes `0x0e`/`0x0f`; a profile does not invent missing
+  credentials or downgrade an encryption scheme.
+
+## Control writes
+
+The SDK v4 write command `0x0027` carries version `0`, a four-byte big-endian
+datapoint sequence, then records with `id (1)`, `type (1)`, `length (2)` and
+value bytes. Its six-byte response echoes the five-byte header and adds a
+result byte. Both the command/response correlation and echoed header are checked;
+non-zero results and timeouts fail the write and restore unconfirmed values.
+
+The `jetlwvfm` cover descriptor marks its control DP as ENUM, including when no
+control report has arrived yet. Open/close/stop await the command result before
+publishing optimistic movement state. Position control retains its existing
+Home Assistant/Tuya percentage conversion.
+
+## Hardware acceptance still required
+
+Synthetic firmware tests are not physical-device validation. For the shade:
+
+1. Bind in Smart Life, close the app, and complete setup or Reconfigure nearby.
+2. Confirm a saved profile in diagnostics and live battery/position reports.
+3. Test open, close, stop, and target position; check actual motor behaviour.
+4. Reload the integration, then reboot HA with the app closed; confirm automatic
+   reconnection and the same entity IDs, without a new cloud login.
+5. Move the device out of range and back, or power-cycle it; confirm recovery.
+6. Stop HA during a connection attempt; confirm the BLE link is released.
 
 ## Evidence
 

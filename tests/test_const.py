@@ -11,6 +11,7 @@ from custom_components.tuya_ble.tuya_ble.const import (
     MANUFACTURER_DATA_ID,
     RESPONSE_WAIT_TIMEOUT,
     SERVICE_UUID,
+    SUPPORTED_PROTOCOL_VERSIONS,
     TuyaBLECode,
     TuyaBLEDataPointType,
 )
@@ -24,6 +25,7 @@ def test_protocol_constants() -> None:
     assert RESPONSE_WAIT_TIMEOUT == 60
     assert CHARACTERISTIC_NOTIFY == "00002b10-0000-1000-8000-00805f9b34fb"
     assert CHARACTERISTIC_WRITE == "00002b11-0000-1000-8000-00805f9b34fb"
+    assert SUPPORTED_PROTOCOL_VERSIONS == (3, 4)
 
 
 @pytest.mark.parametrize(

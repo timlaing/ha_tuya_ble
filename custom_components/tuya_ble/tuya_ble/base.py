@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 import hashlib
 import json
 import logging
-from struct import pack
 import time
 from typing import Any
 
@@ -23,17 +22,17 @@ from bleak_retry_connector import (
 )
 
 from .advertisement import decode_fd50_identity_record, decode_tuya_ble_advertisement
-from .connection_cleanup import _ConnectionCleanup
+from .connection_cleanup import _ConnectionCleanup, async_wait_for_probe_cleanup
+from .connection_profile import TuyaBLEConnectionProfile
 from .const import (
     CHARACTERISTIC_NOTIFY,
-    CHARACTERISTIC_NOTIFY_V4,
     CHARACTERISTIC_WRITE,
-    CHARACTERISTIC_WRITE_V4,
     GATT_MTU,
     INPUT_REASSEMBLY_TIMEOUT,
     MANUFACTURER_DATA_ID,
     PROTOCOL_VERSION_V4,
     SERVICE_UUID_V4,
+    ConnectionProfile,
     DPType,
     TuyaBLECode,
     TuyaBLEDataPointType,
@@ -82,7 +81,7 @@ class TuyaBLEDeviceFunction:
         super().__setattr__(name, value)
 
 
-class TuyaBLEDevice(TuyaBLEProtocol):
+class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
     """Represents a Tuya BLE device and manages its BLE connection."""
 
     def __init__(
@@ -111,6 +110,8 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         self._is_bound = False
         self._flags = 0
         self._protocol_version = 2
+        self._connection_profile: ConnectionProfile | None = None
+        self._packet_size = GATT_MTU
 
         self._device_version: str = ""
         self._protocol_version_str: str = ""
@@ -127,7 +128,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         self._input_expected_packet_num = 0
         self._input_expected_length = 0
         self._input_reassembly_deadline = 0.0
-        self._input_expected_responses: dict[int, asyncio.Future[int]] = {}
+        self._initialize_response_state()
         self._uuid: str = ""
 
         self._datapoints = TuyaBLEDataPoints(self)
@@ -136,6 +137,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
 
         self._reconnect_task: asyncio.Task[None] | None = None
         self._resend_task: asyncio.Task[None] | None = None
+        self._reconnect_delay = BLEAK_BACKOFF_TIME
         self._send_response_tasks: set[asyncio.Task[None]] = set()
 
         self._awaiting_fd50_identity = False
@@ -181,6 +183,9 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         """Initialize the device with pre-built credentials (no cloud needed)."""
         _LOGGER.debug("%s: Initializing with stored credentials", self.address)
         self._device_info = credentials
+        self._connection_profile = credentials.connection_profile
+        if self._connection_profile is not None:
+            self._protocol_version = PROTOCOL_VERSION_V4
         local_key = credentials.local_key.encode()
         if len(local_key) < 6:
             raise TuyaBLEDeviceError(0)
@@ -201,7 +206,11 @@ class TuyaBLEDevice(TuyaBLEProtocol):
     async def update(self) -> None:
         """Request the current device status."""
         _LOGGER.debug("%s: Updating", self.address)
-        await self._send_packet(TuyaBLECode.FUN_SENDER_DEVICE_STATUS, b"")
+        await self._send_packet(
+            TuyaBLECode.FUN_SENDER_DEVICE_STATUS,
+            b"",
+            wait_for_response=self._connection_profile is None,
+        )
 
     async def _update_device_info(self) -> bool:
         if self._device_info is None:
@@ -210,19 +219,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
                     self._ble_device.address
                 )
             if self._device_info:
-                local_key = self._device_info.local_key.encode()
-                if len(local_key) < 6:
-                    raise TuyaBLEDeviceError(0)
-                self._local_key = local_key[:6]
-                self._login_key = hashlib.md5(
-                    self._local_key, usedforsecurity=False
-                ).digest()
-                self.append_functions(
-                    self._device_info.functions if self._device_info.functions else [],
-                    self._device_info.status_range
-                    if self._device_info.status_range
-                    else [],
-                )
+                self.initialize_with_credentials(self._device_info)
 
         return self._device_info is not None
 
@@ -510,7 +507,9 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             )
             return
         fingerbot_touch = self._is_fingerbot_touch
-        if fingerbot_touch and self._client is not client:
+        if (
+            fingerbot_touch or self._connection_profile is not None
+        ) and self._client is not client:
             return
         was_paired = self._is_paired
         self._is_paired = False
@@ -527,6 +526,10 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             )
             return
         self._client = None
+        self._session_key = None
+        self._auth_key = None
+        self._clean_input()
+        self._cancel_pending_responses()
         _LOGGER.warning(
             "%s: Device unexpectedly disconnected; RSSI: %s",
             self.address,
@@ -645,6 +648,8 @@ class TuyaBLEDevice(TuyaBLEProtocol):
 
     async def _try_connect_and_configure(self) -> bool:
         """Try one connection + handshake cycle. Returns True on success."""
+        if not await async_wait_for_probe_cleanup(self.address):
+            return False
         if not await self._cleanup_discarded_clients():
             return False
         client = await self._try_establish_connection()
@@ -671,6 +676,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             )
             if configured:
                 self._connection_cleanup.release_source(client)
+                self._reconnect_delay = BLEAK_BACKOFF_TIME
             return configured
         finally:
             if not configured:
@@ -693,7 +699,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
 
     async def _connect_with_retries(self) -> None:
         """Try connecting up to 100 times, raising on failure."""
-        for _ in range(100):
+        for _ in range(3 if self._connection_profile is not None else 100):
             if self._expected_disconnect:
                 return
             if await self._try_connect_and_configure():
@@ -714,6 +720,11 @@ class TuyaBLEDevice(TuyaBLEProtocol):
             self.address,
             self.rssi,
         )
+        if (
+            self._connection_profile is not None
+            and self._reconnect_task is not asyncio.current_task()
+        ):
+            self._schedule_reconnect()
         raise BleakNotFoundError()
 
     async def _try_establish_connection(
@@ -818,37 +829,6 @@ class TuyaBLEDevice(TuyaBLEProtocol):
                 )
                 await asyncio.sleep(BLEAK_BACKOFF_TIME)
 
-    def _select_characteristics(self, client: BleakClientWithServiceCache) -> None:
-        """Use the FD50 pair only for v4 devices offering both, otherwise classic."""
-        self._notify_char = CHARACTERISTIC_NOTIFY
-        self._write_char = CHARACTERISTIC_WRITE
-        if self._protocol_version != PROTOCOL_VERSION_V4:
-            return
-        services = client.services
-        if (
-            services.get_characteristic(CHARACTERISTIC_NOTIFY_V4) is not None
-            and services.get_characteristic(CHARACTERISTIC_WRITE_V4) is not None
-        ):
-            self._notify_char = CHARACTERISTIC_NOTIFY_V4
-            self._write_char = CHARACTERISTIC_WRITE_V4
-        _LOGGER.debug(
-            "%s: Using notify %s and write %s for protocol %s",
-            self.address,
-            self._notify_char,
-            self._write_char,
-            self._protocol_version,
-        )
-
-    def _build_device_info_request(self) -> bytes:
-        """Return v4's two-byte fragment length, or an empty v2/v3 request.
-
-        The advertisement or previous device-info response supplies the version.
-        Protocol 4 firmware disconnects on any other request length.
-        """
-        if self._protocol_version == PROTOCOL_VERSION_V4:
-            return pack(">H", GATT_MTU)
-        return b""
-
     async def _try_start_notifications(self) -> bool:
         """Start GATT notifications. Returns True on success."""
         client = self._client
@@ -884,6 +864,7 @@ class TuyaBLEDevice(TuyaBLEProtocol):
         try:
             self._select_characteristics(client)
             await client.start_notify(self._notify_char, handle_notification)
+            await self._configure_packet_size(client)
             return True
         except BLE_CONNECTION_EXCEPTIONS as err:
             self._client = None
@@ -991,7 +972,9 @@ class TuyaBLEDevice(TuyaBLEProtocol):
                 self.address,
                 exc_info=True,
             )
-            await asyncio.sleep(BLEAK_BACKOFF_TIME)
+            await asyncio.sleep(self._reconnect_delay)
+            if self._connection_profile is not None:
+                self._reconnect_delay = min(self._reconnect_delay * 2, 60)
             if self._expected_disconnect:
                 return
             _LOGGER.debug("%s: Reconnecting again", self.address)

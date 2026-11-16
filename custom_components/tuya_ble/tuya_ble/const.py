@@ -34,6 +34,8 @@ MANUFACTURER_DATA_ID = 0x07D0
 RESPONSE_WAIT_TIMEOUT = 60
 
 PROTOCOL_VERSION_V4 = 4
+# Confirmed device protocols, not the initial advertisement/handshake marker.
+SUPPORTED_PROTOCOL_VERSIONS = (3, 4)
 
 # The pairing request is a fixed-size frame holding uuid + local_key + device_id,
 # zero-padded to the end. The field widths below are the protocol's own limits and
@@ -44,6 +46,25 @@ MAX_DEVICE_ID_LENGTH = 20
 # Observed wire length: uuid (16) + local_key (6) + device_id (20) = 42, plus the
 # two trailing pad bytes the device expects.
 PAIRING_REQUEST_LENGTH = 44
+
+
+class ConnectionProfile(StrEnum):
+    """Verified FD50 handshake variants, independent of the report version."""
+
+    V4_20 = "v4_20"
+    V2_20 = "v2_20"
+    V4_MTU = "v4_mtu"
+    V2_MTU = "v2_mtu"
+
+    @property
+    def info_version(self) -> int:
+        """Return the initial device-info frame's protocol marker."""
+        return 2 if self in (self.V2_20, self.V2_MTU) else 4
+
+    @property
+    def negotiated_mtu(self) -> bool:
+        """Return whether this profile needs larger negotiated ATT writes."""
+        return self in (self.V4_MTU, self.V2_MTU)
 
 
 class DPType(StrEnum):
@@ -97,3 +118,11 @@ class TuyaBLEDataPointType(Enum):
     DT_STRING = 3
     DT_ENUM = 4
     DT_BITMAP = 5
+
+
+V4_VALUE_WIDTHS = {
+    TuyaBLEDataPointType.DT_BOOL: (1,),
+    TuyaBLEDataPointType.DT_VALUE: (4,),
+    TuyaBLEDataPointType.DT_ENUM: (1,),
+    TuyaBLEDataPointType.DT_BITMAP: (1, 2, 4),
+}

@@ -11,6 +11,7 @@ import time
 from Crypto.Cipher import AES
 
 from .const import (
+    V4_VALUE_WIDTHS,
     TuyaBLECode,
     TuyaBLEDataPointType,
 )
@@ -42,13 +43,6 @@ V4_REPORT_ACK_SUCCESS = 0
 V4_DATAPOINT_HEADER_LENGTH = 4
 
 type DataPointValue = bytes | bool | int | str
-
-V4_VALUE_WIDTHS = {
-    TuyaBLEDataPointType.DT_BOOL: (1,),
-    TuyaBLEDataPointType.DT_VALUE: (4,),
-    TuyaBLEDataPointType.DT_ENUM: (1,),
-    TuyaBLEDataPointType.DT_BITMAP: (1, 2, 4),
-}
 
 
 class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
@@ -223,6 +217,12 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
         self, seq_num: int, response_to: int, code: TuyaBLECode, data: bytes
     ) -> None:
         """Dispatch an incoming command or response to its handler."""
+        expected = self._input_expected_codes.get(response_to)
+        if expected is not None and expected != code:
+            raise TuyaBLEDataFormatError()
+        header = self._v4_write_headers.get(response_to)
+        if header is not None and data[:5] != header:
+            raise TuyaBLEDataFormatError()
         result = self._dispatch_command(code, seq_num, data)
         self._resolve_expected_response(response_to, result)
 
@@ -236,6 +236,8 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
                 result = self._handle_pair_response(data)
             case TuyaBLECode.FUN_SENDER_DEVICE_STATUS:
                 result = self._handle_device_status_response(data)
+            case TuyaBLECode.FUN_SENDER_DPS_V4:
+                result = self._handle_v4_write_response(data)
             case TuyaBLECode.FUN_RECEIVE_TIME1_REQ:
                 self._handle_time1_request(seq_num)
             case TuyaBLECode.FUN_RECEIVE_TIME2_REQ:
@@ -253,6 +255,15 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
             case TuyaBLECode.FUN_RECEIVE_TIME_DP_V4:
                 self._handle_receive_time_dp_v4(seq_num, data)
         return result
+
+    @staticmethod
+    def _handle_v4_write_response(data: bytes) -> int:
+        """Validate the SDK write response's five-byte header and result."""
+        if len(data) != 6:
+            raise TuyaBLEDataLengthError()
+        if data[0] != 0:
+            raise TuyaBLEDataFormatError()
+        return data[5]
 
     def _handle_device_info_response(self, data: bytes) -> None:
         """Handle FUN_SENDER_DEVICE_INFO response: extract version and session key."""

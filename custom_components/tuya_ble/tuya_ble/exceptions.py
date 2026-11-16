@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from bleak_retry_connector import BLEAK_RETRY_EXCEPTIONS
 
 
@@ -38,18 +40,39 @@ class TuyaBLEDataLengthError(TuyaBLEError):
 
 
 class TuyaBLEOutgoingDataLengthError(TuyaBLEError):
-    """Raised when an outgoing datapoint does not fit the v3 DP envelope.
+    """Raised when an outgoing datapoint does not fit its protocol envelope.
 
     The v3 envelope encodes each datapoint as ``(dp_id, dp_type, length)`` in
     three single-byte fields, so both the id and the serialized value are capped
     at 255. Validating up front keeps ``struct.error`` out of the entity layer.
+    Protocol 4 uses the same ID limit and a two-byte value length.
     """
 
-    def __init__(self, dp_id: int) -> None:
-        super().__init__(
-            f"Outgoing datapoint {dp_id} exceeds the maximum id or value length "
-            "of 255 bytes for the v3 protocol envelope"
-        )
+    def __init__(
+        self,
+        dp_id: int,
+        protocol: int = 3,
+        *,
+        kind: Literal["id", "payload"] | None = None,
+    ) -> None:
+        if kind == "id":
+            message = (
+                f"Outgoing datapoint ID {dp_id} is outside the supported range "
+                f"0-255 for the v{protocol} protocol envelope"
+            )
+        elif kind == "payload":
+            message = (
+                "Outgoing aggregate payload length exceeds the maximum of "
+                f"65535 bytes for the v{protocol} protocol envelope "
+                f"while encoding datapoint {dp_id}"
+            )
+        else:
+            limit = 65535 if protocol == 4 else 255
+            message = (
+                f"Outgoing datapoint {dp_id} exceeds the maximum id or value length "
+                f"of {limit} bytes for the v{protocol} protocol envelope"
+            )
+        super().__init__(message)
 
 
 class TuyaBLEDeviceError(TuyaBLEError):

@@ -93,6 +93,8 @@ async def test_probe_without_expected_dp_or_binding(bound: bool) -> None:
         ("info", ProbeOutcome.RETRYABLE),
         ("missing_session", ProbeOutcome.INCONCLUSIVE),
         ("unbound_info", ProbeOutcome.INCONCLUSIVE),
+        ("protocol_2_info", ProbeOutcome.INCONCLUSIVE),
+        ("unsupported_info", ProbeOutcome.INCONCLUSIVE),
         ("pair", ProbeOutcome.REJECTED),
         ("pair_uncorrelated", ProbeOutcome.INCONCLUSIVE),
         ("pair_timeout", ProbeOutcome.RETRYABLE),
@@ -128,7 +130,10 @@ async def test_probe_stages(
                 return True
             reply = bytearray(46)
             reply[5] = 0 if failure == "unbound_info" else 1
-            reply[2] = 3
+            reply[2] = {
+                "protocol_2_info": 2,
+                "unsupported_info": 5,
+            }.get(failure, 3)
             device._handle_device_info_response(bytes(reply))
         elif code == TuyaBLECode.FUN_SENDER_PAIR:
             pairing.append(data)
@@ -166,7 +171,7 @@ async def test_probe_stages(
     )
     assert result == expected
     assert client.is_connected is False if failure != "connect" else True
-    if failure == "unbound_info":
+    if failure in ("unbound_info", "protocol_2_info", "unsupported_info"):
         assert codes == [TuyaBLECode.FUN_SENDER_DEVICE_INFO]
     assert all(
         code
