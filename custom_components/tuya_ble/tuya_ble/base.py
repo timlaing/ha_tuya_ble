@@ -565,8 +565,8 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
 
     @property
     def _is_fingerbot_touch(self) -> bool:
-        """Return whether this device needs the Fingerbot Touch reconnect fix."""
-        return self.category == "kg" and self.product_id == "bs3ubslo"
+        """Enable Touch reconnect handling for the verified Touch and Simart models."""
+        return self.category == "kg" and self.product_id in ("bs3ubslo", "gnpbj0bq")
 
     async def _close_fingerbot_touch_client(
         self, client: BleakClientWithServiceCache

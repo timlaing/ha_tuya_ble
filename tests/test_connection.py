@@ -37,11 +37,15 @@ from tests.conftest import (
 )
 from tests.protocol_harness import (
     ProtocolHarness,
+    decode_frame,
     device_info_data,
     encrypt_payload,
     frame_packet0,
     make_raw,
     pack_varint,
+)
+from tests.protocol_harness import (
+    fragment as fragment_frame,
 )
 
 pytestmark = pytest.mark.filterwarnings(
@@ -1135,10 +1139,10 @@ async def test_ensure_connected_returns_when_connected_while_waiting() -> None:
     attempt.assert_not_called()
 
 
-@pytest.fixture(name="fingerbot_touch")
-def fixture_fingerbot_touch() -> TuyaBLEDevice:
-    """Return an initialized Fingerbot Touch with fake credentials."""
-    credentials = make_credentials(category="kg", product_id="bs3ubslo")
+@pytest.fixture(name="fingerbot_touch", params=["bs3ubslo", "gnpbj0bq"])
+def fixture_fingerbot_touch(request: pytest.FixtureRequest) -> TuyaBLEDevice:
+    """Run the reconnect regressions against Touch and Simart Fingerbots."""
+    credentials = make_credentials(category="kg", product_id=request.param)
     dev = make_device(manager=FakeBLEManager(credentials))
     dev.initialize_with_credentials(credentials)
     return dev
@@ -1242,7 +1246,8 @@ async def test_fingerbot_touch_accepts_a_fragmented_reply_with_duplicates(
 
 
 @pytest.mark.parametrize(
-    ("category", "product_id"), [("kg", "6jcvqwh0"), ("wk", "bs3ubslo")]
+    ("category", "product_id"),
+    [("kg", "6jcvqwh0"), ("wk", "bs3ubslo"), ("wk", "gnpbj0bq")],
 )
 async def test_other_devices_close_failed_handshakes_without_deduplicating(
     category: str, product_id: str
@@ -1274,6 +1279,82 @@ async def test_other_devices_close_failed_handshakes_without_deduplicating(
     assert dev._client is None
     await dev.stop()
     assert not client.stopped
+
+
+async def test_fingerbots_reconnect_repeatedly_with_duplicate_fragments(
+    fingerbot_touch: TuyaBLEDevice, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Public update/reconnect completes encrypted handshakes despite duplicates."""
+    dev = fingerbot_touch
+    clients = [FakeBleakClient() for _ in range(4)]
+    commands: list[TuyaBLECode] = []
+    login_key = dev._login_key
+    assert login_key is not None
+
+    async def reply(packets: list[bytes]) -> None:
+        keys = {4: login_key, 5: dev._session_key or bytes(16)}
+        seq_num, _, code, _, security_flag = decode_frame(keys, packets)
+        command = TuyaBLECode(code)
+        commands.append(command)
+        payload = (
+            device_info_data()
+            if command is TuyaBLECode.FUN_SENDER_DEVICE_INFO
+            else b"\x00"
+        )
+        response = encrypt_payload(
+            keys[security_flag], security_flag, 1, seq_num, command, payload
+        )
+        current = clients[establish.await_count - 1]
+        notify = current.notify_handler
+        assert notify is not None
+        for part in fragment_frame(response, 3):
+            # Old BlueZ callbacks may still fire alongside duplicates on the live link.
+            for old_client in clients[: establish.await_count - 1]:
+                assert old_client.notify_handler is not None
+                old_client.notify_handler(CHARACTERISTIC_NOTIFY, bytearray(part))
+            for _ in range(2):
+                notify(CHARACTERISTIC_NOTIFY, bytearray(part))
+
+    with (
+        patch(
+            "custom_components.tuya_ble.tuya_ble.base.establish_connection",
+            side_effect=clients,
+        ) as establish,
+        patch.object(dev, "_int_send_packet_while_connected", side_effect=reply),
+        patch(
+            "custom_components.tuya_ble.tuya_ble.protocol_send.RESPONSE_WAIT_TIMEOUT",
+            0.05,
+        ),
+    ):
+        try:
+            for index, client in enumerate(clients):
+                await dev.update()
+                assert dev._is_ready()
+                assert cast(object, dev._client) is client
+                assert not dev._input_expected_responses
+                if index < len(clients) - 1:
+                    await client.disconnect()
+                    # Invoke the actual callback passed to the BLE backend.
+                    establish.call_args.args[3](client)
+                    reconnect = dev._reconnect_task
+                    assert reconnect is not None
+                    await asyncio.wait_for(reconnect, 1)
+        finally:
+            await dev.stop()
+
+    assert establish.await_count == len(clients)
+    assert commands == [
+        code
+        for _ in clients
+        for code in (
+            TuyaBLECode.FUN_SENDER_DEVICE_INFO,
+            TuyaBLECode.FUN_SENDER_PAIR,
+            TuyaBLECode.FUN_SENDER_DEVICE_STATUS,
+        )
+    ]
+    assert "Unexpected packet" not in caplog.text
+    assert "Missing packet" not in caplog.text
+    assert "Timed out" not in caplog.text
 
 
 async def test_fingerbot_touch_write_failure_keeps_new_client(
@@ -1413,12 +1494,18 @@ async def test_fingerbot_touch_logs_error_closing_failed_client(
 
 @pytest.mark.parametrize(
     ("category", "product_id", "reject_stale_write"),
-    [("kg", "bs3ubslo", True), ("kg", "6jcvqwh0", False), ("wk", "bs3ubslo", False)],
+    [
+        ("kg", "bs3ubslo", True),
+        ("kg", "gnpbj0bq", True),
+        ("kg", "6jcvqwh0", False),
+        ("wk", "bs3ubslo", False),
+        ("wk", "gnpbj0bq", False),
+    ],
 )
 async def test_waiting_write_handles_client_replacement_by_product(
     category: str, product_id: str, reject_stale_write: bool
 ) -> None:
-    """Only Fingerbot Touch rejects a queued write when its client changes."""
+    """The verified Fingerbots reject queued writes when their client changes."""
     credentials = make_credentials(category=category, product_id=product_id)
     dev = make_device(manager=FakeBLEManager(credentials))
     dev.initialize_with_credentials(credentials)

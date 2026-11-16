@@ -238,7 +238,12 @@ def test_remove_legacy_sensor_entities(hass: HomeAssistant) -> None:
 
 @pytest.mark.parametrize(
     ("category", "product_id", "remove_retired"),
-    [("kg", "bs3ubslo", True), ("kg", "6jcvqwh0", False), ("szjqr", "bs3ubslo", False)],
+    [
+        ("kg", "bs3ubslo", True),
+        ("kg", "gnpbj0bq", False),
+        ("kg", "6jcvqwh0", False),
+        ("szjqr", "bs3ubslo", False),
+    ],
 )
 async def test_setup_removes_only_retired_fingerbot_touch_controls(
     hass: HomeAssistant, category: str, product_id: str, remove_retired: bool
