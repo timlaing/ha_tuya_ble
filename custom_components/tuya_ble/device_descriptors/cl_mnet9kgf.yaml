@@ -1,0 +1,48 @@
+# DP IDs, types and enum order reported in issue #145.
+category: cl
+product_id: mnet9kgf
+device_name: Tubular Motor
+model_name: mnet9kgf
+manufacturer: Maxmarr
+entities:
+  cover:
+    # Keep the generic cover key so existing entities retain their unique ID.
+    - translation_key: ble_cover
+      name: Cover
+      state_dp_id: 1
+      dp_type: 4 # ENUM: open, stop, close, continue.
+      position_set_dp_id: 2
+      position_dp_id: 3 # Device 0 = open; the cover platform inverts both positions.
+  sensor:
+    - dp_id: 13
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+    - dp_id: 7
+      translation_key: cover_work_state
+      name: Work state
+      device_class: enum
+      entity_category: diagnostic
+      enabled_by_default: false
+      options:
+        - opening
+        - closing
+  binary_sensor:
+    - dp_id: 12
+      dp_type: 5
+      translation_key: motor_fault
+      name: Motor fault
+      device_class: problem
+      entity_category: diagnostic
+  select:
+    - dp_id: 5
+      dp_type: 4
+      translation_key: motor_direction
+      name: Motor direction
+      icon: mdi:swap-vertical
+      entity_category: config
+      options:
+        - Forward
+        - Back
