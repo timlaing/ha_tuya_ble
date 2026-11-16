@@ -527,8 +527,10 @@ class TuyaBLEProtocolSendMixin:
             if dp is None:
                 raise TuyaBLEDeviceError(0)
             value = dp.get_value()
-            if not 0 <= dp.dp_id <= MAX_BYTE or len(data) + 4 + len(value) > 65535:
-                raise TuyaBLEOutgoingDataLengthError(dp_id, protocol=4)
+            if not 0 <= dp.dp_id <= MAX_BYTE:
+                raise TuyaBLEOutgoingDataLengthError(dp_id, protocol=4, kind="id")
+            if len(data) + 4 + len(value) > 65535:
+                raise TuyaBLEOutgoingDataLengthError(dp_id, protocol=4, kind="payload")
             widths = V4_VALUE_WIDTHS.get(dp.dp_type)
             if widths is not None and len(value) not in widths:
                 raise TuyaBLEDataFormatError()

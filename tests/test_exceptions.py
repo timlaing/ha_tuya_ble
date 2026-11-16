@@ -11,6 +11,7 @@ from custom_components.tuya_ble.tuya_ble.exceptions import (
     TuyaBLEDeviceError,
     TuyaBLEEnumValueError,
     TuyaBLEError,
+    TuyaBLEOutgoingDataLengthError,
 )
 
 
@@ -58,3 +59,32 @@ def test_device_error_message_contains_code() -> None:
     """Assert the device error message embeds the error code."""
     with pytest.raises(TuyaBLEDeviceError, match="error code 7"):
         raise TuyaBLEDeviceError(7)
+
+
+@pytest.mark.parametrize("protocol", [3, 4])
+def test_outgoing_length_error_preserves_legacy_message(protocol: int) -> None:
+    """Existing exception callers retain their exact original diagnostics."""
+    limit = 65535 if protocol == 4 else 255
+    error = TuyaBLEOutgoingDataLengthError(7, protocol)
+    assert str(error) == (
+        "Outgoing datapoint 7 exceeds the maximum id or value length "
+        f"of {limit} bytes for the v{protocol} protocol envelope"
+    )
+
+
+@pytest.mark.parametrize("dp_id", [-1, 256])
+def test_outgoing_id_error_reports_range_without_byte_units(dp_id: int) -> None:
+    """An ID is an integer range, not a payload length measured in bytes."""
+    error = TuyaBLEOutgoingDataLengthError(dp_id, protocol=4, kind="id")
+    assert f"datapoint ID {dp_id}" in str(error)
+    assert "0-255" in str(error)
+    assert "bytes" not in str(error)
+    assert "65535" not in str(error)
+
+
+def test_outgoing_payload_error_reports_aggregate_byte_limit() -> None:
+    """Overflow of a combined frame is not blamed on one individual value."""
+    error = TuyaBLEOutgoingDataLengthError(2, protocol=4, kind="payload")
+    assert "aggregate payload length" in str(error)
+    assert "65535 bytes" in str(error)
+    assert "id or value length" not in str(error)

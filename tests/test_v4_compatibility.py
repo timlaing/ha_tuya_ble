@@ -646,6 +646,7 @@ async def test_v4_large_raw_write_uses_two_byte_length() -> None:
         ((65535,), False),
         ((32761, 32761), True),
         ((32761, 32762), False),
+        ((32762, 32762), False),
     ],
 )
 async def test_v4_complete_payload_bounds_and_batch_rollback(
@@ -669,14 +670,38 @@ async def test_v4_complete_payload_bounds_and_batch_rollback(
             send.assert_awaited_once()
             assert len(send.call_args.args[1]) == 65535
         else:
-            with pytest.raises(TuyaBLEOutgoingDataLengthError):
+            with pytest.raises(TuyaBLEOutgoingDataLengthError) as error:
                 await device.set_multiple_values(updates)
             send.assert_not_called()
+            assert "aggregate payload length" in str(error.value)
+            assert "65535 bytes" in str(error.value)
+            assert "id or value length" not in str(error.value)
 
     for dp_id, requested in updates.items():
         datapoint = device.datapoints[dp_id]
         assert datapoint is not None
         assert datapoint.value == (requested if accepted else original[dp_id])
+
+
+@pytest.mark.parametrize("dp_id", [-1, 256])
+async def test_v4_invalid_id_reports_its_own_limit_and_rolls_back(dp_id: int) -> None:
+    """The transport reports the ID range, not the aggregate payload bound."""
+    device = make_device()
+    device._protocol_version = 4
+    datapoint = device.datapoints.get_or_create(
+        dp_id, TuyaBLEDataPointType.DT_RAW, b"old"
+    )
+    with (
+        patch.object(device, "_send_packet", new=AsyncMock()) as send,
+        pytest.raises(TuyaBLEOutgoingDataLengthError) as error,
+    ):
+        await device.set_multiple_values({dp_id: b"new"})
+    send.assert_not_called()
+    assert "datapoint ID" in str(error.value)
+    assert "0-255" in str(error.value)
+    assert "bytes" not in str(error.value)
+    assert "65535" not in str(error.value)
+    assert datapoint.value == b"old"
 
 
 @pytest.mark.parametrize("advertisement", [None, "unbound", "classic", "empty_mapping"])

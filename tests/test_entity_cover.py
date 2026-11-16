@@ -239,8 +239,9 @@ async def test_cover_controls_are_serialised_while_acknowledgements_are_pending(
 
 
 @pytest.mark.parametrize("accepted", [True, False])
+@pytest.mark.parametrize("reports", [1, 2, 3])
 async def test_device_stop_report_supersedes_open_command_before_ack(
-    hass: HomeAssistant, accepted: bool
+    hass: HomeAssistant, accepted: bool, reports: int
 ) -> None:
     """A newer stopped report must survive both ACK acceptance and rejection."""
     device, coordinator, product = build_context(hass)
@@ -263,9 +264,10 @@ async def test_device_stop_report_supersedes_open_command_before_ack(
         entity._handle_coordinator_update()
         command = asyncio.create_task(entity.async_open_cover())
         await started.wait()
-        add_dp(device, 1, TuyaBLEDataPointType.DT_ENUM, 1)
-        add_dp(device, 3, TuyaBLEDataPointType.DT_VALUE, 65)
-        entity._handle_coordinator_update()
+        for _ in range(reports):
+            add_dp(device, 1, TuyaBLEDataPointType.DT_ENUM, 1)
+            add_dp(device, 3, TuyaBLEDataPointType.DT_VALUE, 65)
+            entity._handle_coordinator_update()
         assert not entity.is_opening
         assert not entity.is_closing
         assert entity.current_cover_position == 35
@@ -282,7 +284,45 @@ async def test_device_stop_report_supersedes_open_command_before_ack(
         control = device.datapoints[1]
         assert control is not None
         assert control.value == 1
-        assert control.changed_by_device
+        assert control.changed_by_device is (reports == 1)
+
+
+async def test_same_value_device_report_confirms_pending_cover_movement(
+    hass: HomeAssistant,
+) -> None:
+    """A report matching local intent is fresh even without a value change."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(hass, device, coordinator, product)
+    add_dp(device, 1, TuyaBLEDataPointType.DT_ENUM, 1)
+    add_dp(device, 3, TuyaBLEDataPointType.DT_VALUE, 60)
+    started = asyncio.Event()
+    acknowledge = asyncio.Event()
+
+    async def send(_dp_ids: list[int]) -> None:
+        started.set()
+        await acknowledge.wait()
+
+    with (
+        patch.object(device, "send_datapoints", new=AsyncMock(side_effect=send)),
+        patch.object(entity, "async_write_ha_state"),
+    ):
+        entity._handle_coordinator_update()
+        command = asyncio.create_task(entity.async_open_cover())
+        await started.wait()
+        assert not entity.is_opening
+        add_dp(device, 1, TuyaBLEDataPointType.DT_ENUM, 0)
+        entity._handle_coordinator_update()
+        control = device.datapoints[1]
+        assert control is not None
+        assert not control.changed_by_device
+        assert entity.is_opening
+        command.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await command
+        assert not entity._control_command_pending
+        entity._handle_coordinator_update()
+        assert entity.is_opening
+        assert control.value == 0
 
 
 # --- Position / state reading ---

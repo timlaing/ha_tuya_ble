@@ -45,6 +45,7 @@ class TuyaBLEDataPoint:
         self._changed_by_device = False
         self._raw_value = raw_value
         self._revision = 0
+        self._report_revision = 0
         self.update_from_device(timestamp, flags, dp_type, value, raw_value)
 
     def update_from_device(
@@ -78,6 +79,7 @@ class TuyaBLEDataPoint:
         self._value = value
         self._raw_value = raw_value
         self._revision += 1
+        self._report_revision += 1
 
     @staticmethod
     def _pack_enum(value: int) -> bytes:
@@ -170,6 +172,16 @@ class TuyaBLEDataPoint:
         applied its own value.
         """
         return self._revision
+
+    @property
+    def report_revision(self) -> int:
+        """Return the device-update counter, including equal-valued reports.
+
+        Local writes and rollback do not advance this counter. Consumers can
+        distinguish a fresh report from a locally assigned value without
+        relying on value inequality or wall-clock timestamps.
+        """
+        return self._report_revision
 
     def set_value_no_notify(self, value: TuyaBLEDataPointValue) -> None:
         """Set the value without sending an update to the device."""

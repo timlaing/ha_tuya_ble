@@ -49,6 +49,43 @@ def test_properties(datapoints: TuyaBLEDataPoints) -> None:
     assert dp.changed_by_device is False
 
 
+def test_report_revision_counts_repeated_reports_not_local_writes(
+    datapoints: TuyaBLEDataPoints,
+) -> None:
+    """Report freshness is independent of equality, timestamps and local intent."""
+    dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_ENUM, value=1)
+    initial = dp.report_revision
+    dp.set_value_no_notify(0)
+    assert dp.report_revision == initial
+    dp.update_from_device(1.0, 0, TuyaBLEDataPointType.DT_ENUM, 1)
+    assert dp.report_revision == initial + 1
+    dp.update_from_device(1.0, 0, TuyaBLEDataPointType.DT_ENUM, 1)
+    assert dp.report_revision == initial + 2
+    assert not dp.changed_by_device
+    dp.set_value_no_notify(0)
+    assert dp.report_revision == initial + 2
+
+
+@pytest.mark.parametrize("failure", [BleakError(), asyncio.CancelledError()])
+async def test_report_revision_is_unchanged_by_failed_local_write(
+    datapoints: TuyaBLEDataPoints,
+    datapoints_owner: FakeDatapointsOwner,
+    failure: BaseException,
+) -> None:
+    """Rollback and cancellation change local revisions, not report revisions."""
+    dp = datapoints.get_or_create(1, TuyaBLEDataPointType.DT_ENUM, 1)
+    before = dp.report_revision
+    with (
+        patch.object(
+            datapoints_owner, "send_datapoints", new=AsyncMock(side_effect=failure)
+        ),
+        pytest.raises(type(failure)),
+    ):
+        await dp.set_value(0)
+    assert dp.value == 1
+    assert dp.report_revision == before
+
+
 def test_update_from_device_changed(datapoints: TuyaBLEDataPoints) -> None:
     """Assert a device update changes the value and flags."""
     dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_BOOL, value=False)

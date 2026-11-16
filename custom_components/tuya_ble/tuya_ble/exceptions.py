@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from bleak_retry_connector import BLEAK_RETRY_EXCEPTIONS
 
 
@@ -46,12 +48,31 @@ class TuyaBLEOutgoingDataLengthError(TuyaBLEError):
     Protocol 4 uses the same ID limit and a two-byte value length.
     """
 
-    def __init__(self, dp_id: int, protocol: int = 3) -> None:
-        limit = 65535 if protocol == 4 else 255
-        super().__init__(
-            f"Outgoing datapoint {dp_id} exceeds the maximum id or value length "
-            f"of {limit} bytes for the v{protocol} protocol envelope"
-        )
+    def __init__(
+        self,
+        dp_id: int,
+        protocol: int = 3,
+        *,
+        kind: Literal["id", "payload"] | None = None,
+    ) -> None:
+        if kind == "id":
+            message = (
+                f"Outgoing datapoint ID {dp_id} is outside the supported range "
+                f"0-255 for the v{protocol} protocol envelope"
+            )
+        elif kind == "payload":
+            message = (
+                "Outgoing aggregate payload length exceeds the maximum of "
+                f"65535 bytes for the v{protocol} protocol envelope "
+                f"while encoding datapoint {dp_id}"
+            )
+        else:
+            limit = 65535 if protocol == 4 else 255
+            message = (
+                f"Outgoing datapoint {dp_id} exceeds the maximum id or value length "
+                f"of {limit} bytes for the v{protocol} protocol envelope"
+            )
+        super().__init__(message)
 
 
 class TuyaBLEDeviceError(TuyaBLEError):
