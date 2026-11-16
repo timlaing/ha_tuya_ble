@@ -15,6 +15,7 @@ Programming (series of actions) is implemented for Fingerbot Plus. Exposed entit
 - **Fingerbot Plus** (product_ids `mknd4lci`, `riecov42`, `6jcvqwh0`): uses kg DP IDs.
 - **Fingerbot Touch** (product_id `bs3ubslo`): two independent capacitive touch channels, each controlled by one switch. In **Switch** mode, the switch sends ON and OFF to the device. In **Push** mode, ON sends one press and Home Assistant returns the switch to OFF after the configured touch duration. Each channel has its own mode, touch duration, double-tap interval, touch input, and switch inversion settings. OFF touch duration is available in Switch mode. The device reports battery percentage.
 - **Switch Robot** (product_id `4ctjfrzq`).
+- **Simart Akilli Parmak** (product_id `gnpbj0bq`): battery (DP 105), push button (DP 108), down/up position (DPs 102/106), hold time (DP 103), Push/Switch mode (DP 101), switch (DP 1), and manual control (DP 107). Uses the verified Fingerbot Touch reconnect handling to tolerate duplicate notification fragments and stale clients. DP 104 is an enum, so no reverse-position switch is exposed; no program controls or Program mode are offered because DP 109 is absent. Other undocumented datapoints remain unmapped. Based on the reporter-tested descriptor and reconnect fix in #148, with the unverified Program mode omitted.
 
 ## Temperature and humidity sensors (category_id `wsdcg`)
 

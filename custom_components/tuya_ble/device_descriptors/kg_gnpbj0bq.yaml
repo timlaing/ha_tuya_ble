@@ -1,0 +1,70 @@
+# Based on the working descriptor and datapoint list supplied in issue #148.
+# DP104 is ENUM, not a reverse-position BOOL; DP109 is not reported.
+category: kg
+product_id: gnpbj0bq
+device_name: Akilli Parmak
+model_name: gnpbj0bq
+manufacturer: Simart
+entities:
+  sensor:
+    - dp_id: 105
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+  button:
+    - dp_id: 108
+      translation_key: push
+      handlers:
+        when: fingerbot.mode.in_push_mode
+  number:
+    - dp_id: 102
+      translation_key: down_position
+      mode: box
+      handlers:
+        when: fingerbot.mode.not_in_program_mode
+      min_value: 50
+      max_value: 100
+      step: 1
+      icon: mdi:arrow-down-bold
+      unit: "%"
+      entity_category: config
+    - dp_id: 103
+      translation_key: hold_time
+      mode: box
+      handlers:
+        when: fingerbot.mode.in_push_mode
+      min_value: 0
+      max_value: 10
+      step: 1
+      icon: mdi:timer
+      unit: s
+      entity_category: config
+    - dp_id: 106
+      translation_key: up_position
+      mode: box
+      handlers:
+        when: fingerbot.mode.not_in_program_mode
+      min_value: 0
+      max_value: 50
+      step: 1
+      icon: mdi:arrow-up-bold
+      unit: "%"
+      entity_category: config
+  select:
+    - dp_id: 101
+      translation_key: fingerbot_mode
+      entity_category: config
+      options:
+        - push
+        - switch
+  switch:
+    - dp_id: 1
+      translation_key: switch
+      handlers:
+        when: fingerbot.mode.in_switch_mode
+    - dp_id: 107
+      translation_key: manual_control
+      icon: mdi:gesture-tap-box
+      entity_category: config
