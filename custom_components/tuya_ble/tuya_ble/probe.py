@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+import copy
 from dataclasses import replace
 from enum import StrEnum
 from functools import partial
@@ -746,7 +747,10 @@ def _probe_credentials(
         return None
     if not info.security_v2 and credentials.sec_key is not None:
         # Only an advertised Security V2 channel may use the cloud sec_key.
-        return replace(credentials, sec_key=None)
+        # A shallow copy keeps the caller's record intact.
+        classic = copy.copy(credentials)
+        classic.sec_key = None
+        return classic
     return credentials
 
 
