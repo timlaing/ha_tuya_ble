@@ -224,7 +224,7 @@ async def test_returns_false_on_start_notify_error(
         raise BleakError("test")
 
     client.start_notify = fail  # type: ignore[method-assign]
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.DEBUG):
         assert await dev._try_start_notifications() is False
     assert dev._client is None
     assert "starting notifications failed" in caplog.text
@@ -376,7 +376,7 @@ async def test_reconnect_with_bleak_error() -> None:
 
 
 async def test_raises_after_all_retries_fail() -> None:
-    """Raise BleakNotFoundError after 100 failed attempts."""
+    """Raise BleakNotFoundError after a bounded connection batch."""
     dev = make_device(manager=FakeBLEManager(make_credentials()))
     with (
         patch.object(dev, "_try_connect_and_configure", return_value=False),
@@ -1012,7 +1012,7 @@ async def test_stop_does_not_wait_for_connect_loop() -> None:
 
 
 async def test_connect_with_retries_aborts_on_expected_disconnect() -> None:
-    """The 100-attempt loop must bail out as soon as a stop is requested."""
+    """The connection batch must bail out as soon as a stop is requested."""
     dev = make_device(manager=FakeBLEManager(make_credentials()))
     attempts = 0
 
@@ -1080,14 +1080,14 @@ async def test_connect_with_retries_aborts_after_last_attempt() -> None:
     async def attempt() -> bool:
         nonlocal attempts
         attempts += 1
-        if attempts == 100:
+        if attempts == 3:
             dev._expected_disconnect = True
         return False
 
     with patch.object(dev, "_try_connect_and_configure", side_effect=attempt):
         await dev._connect_with_retries()
 
-    assert attempts == 100
+    assert attempts == 3
 
 
 async def test_cancel_pending_responses_skips_settled_future() -> None:

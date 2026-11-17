@@ -47,6 +47,9 @@ from .protocol_mixin import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+_CONNECT_ATTEMPTS = 3
+_RECONNECT_INITIAL_DELAY = 5.0
+_RECONNECT_MAX_DELAY = 60.0
 _FINGERBOT_TOUCH_DISCONNECT_TIMEOUT = 5.0
 # ESPHome's default acknowledgement timeout is 20s, followed by up to 5s
 # settling the proxy slot. Leave headroom without making teardown unbounded.
@@ -137,7 +140,8 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
 
         self._reconnect_task: asyncio.Task[None] | None = None
         self._resend_task: asyncio.Task[None] | None = None
-        self._reconnect_delay = BLEAK_BACKOFF_TIME
+        self._reconnect_delay = _RECONNECT_INITIAL_DELAY
+        self._connection_failure_reported = False
         self._send_response_tasks: set[asyncio.Task[None]] = set()
 
         self._awaiting_fd50_identity = False
@@ -530,7 +534,8 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
         self._auth_key = None
         self._clean_input()
         self._cancel_pending_responses()
-        _LOGGER.warning(
+        _LOGGER.log(
+            logging.WARNING if was_paired else logging.DEBUG,
             "%s: Device unexpectedly disconnected; RSSI: %s",
             self.address,
             self.rssi,
@@ -624,7 +629,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
         if self._expected_disconnect:
             return
         if self._connect_lock.locked():
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "%s: Connection already in progress,"
                 " waiting for it to complete; RSSI: %s",
                 self.address,
@@ -676,7 +681,8 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
             )
             if configured:
                 self._connection_cleanup.release_source(client)
-                self._reconnect_delay = BLEAK_BACKOFF_TIME
+                self._reconnect_delay = _RECONNECT_INITIAL_DELAY
+                self._connection_failure_reported = False
             return configured
         finally:
             if not configured:
@@ -698,8 +704,8 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
         )
 
     async def _connect_with_retries(self) -> None:
-        """Try connecting up to 100 times, raising on failure."""
-        for _ in range(3 if self._connection_profile is not None else 100):
+        """Bound handshake cycles; the connector already retries each connection."""
+        for _ in range(_CONNECT_ATTEMPTS):
             if self._expected_disconnect:
                 return
             if await self._try_connect_and_configure():
@@ -715,11 +721,16 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
             if self._reconnect_task is not asyncio.current_task():
                 self._schedule_reconnect()
             raise TuyaBLEDeviceError(0)
-        _LOGGER.error(
-            "%s: Connecting, all attempts failed; RSSI: %s",
-            self.address,
-            self.rssi,
-        )
+        if not self._connection_failure_reported:
+            self._connection_failure_reported = True
+            _LOGGER.warning(
+                "%s: Unable to connect after %s connection cycles; RSSI: %s. "
+                "Check device power, Bluetooth range and proxy availability; "
+                "enable debug logging for retry details",
+                self.address,
+                _CONNECT_ATTEMPTS,
+                self.rssi,
+            )
         if (
             self._connection_profile is not None
             and self._reconnect_task is not asyncio.current_task()
@@ -743,7 +754,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
                     ble_device_callback=lambda: self._ble_device,
                 )
         except BleakNotFoundError:
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "%s: device not found, not in range, or poor RSSI: %s",
                 self.address,
                 self.rssi,
@@ -751,10 +762,10 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
             )
             return None
         except BLEAK_EXCEPTIONS:
-            _LOGGER.warning("%s: communication failed", self.address, exc_info=True)
+            _LOGGER.debug("%s: communication failed", self.address, exc_info=True)
             return None
         except BLE_CONNECTION_EXCEPTIONS:
-            _LOGGER.warning("%s: unexpected error", self.address, exc_info=True)
+            _LOGGER.debug("%s: unexpected error", self.address, exc_info=True)
             return None
 
         if client and client.is_connected:
@@ -817,6 +828,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
 
         Firmware drops the link if sequence numbers do not increase.
         """
+        delay = _RECONNECT_INITIAL_DELAY
         while not self._expected_disconnect:
             try:
                 await self._ensure_connected()
@@ -827,7 +839,8 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
                     self.address,
                     exc_info=True,
                 )
-                await asyncio.sleep(BLEAK_BACKOFF_TIME)
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, _RECONNECT_MAX_DELAY)
 
     async def _try_start_notifications(self) -> bool:
         """Start GATT notifications. Returns True on success."""
@@ -868,10 +881,11 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
             return True
         except BLE_CONNECTION_EXCEPTIONS as err:
             self._client = None
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "%s: starting notifications failed, retrying: %s",
                 self.address,
                 err,
+                exc_info=True,
             )
             return False
 
@@ -888,7 +902,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
                 True,
             ):
                 self._client = None
-                _LOGGER.error(
+                _LOGGER.debug(
                     "%s: Sending device info request failed",
                     self.address,
                 )
@@ -896,7 +910,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
             return True
         except BLE_CONNECTION_EXCEPTIONS:
             self._client = None
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "%s: Sending device info request failed",
                 self.address,
                 exc_info=True,
@@ -916,7 +930,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
                 True,
             ):
                 self._client = None
-                _LOGGER.error(
+                _LOGGER.debug(
                     "%s: Sending pairing request failed",
                     self.address,
                 )
@@ -924,7 +938,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
             return True
         except BLE_CONNECTION_EXCEPTIONS:
             self._client = None
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "%s: Sending pairing request failed",
                 self.address,
                 exc_info=True,
@@ -967,14 +981,13 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
             # Includes TuyaBLEError, e.g. no session key or no device info: the
             # device stays unreachable until those are resolved, so keep retrying
             # rather than leaving it permanently disconnected.
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "%s: Reconnect failed, retrying",
                 self.address,
                 exc_info=True,
             )
             await asyncio.sleep(self._reconnect_delay)
-            if self._connection_profile is not None:
-                self._reconnect_delay = min(self._reconnect_delay * 2, 60)
+            self._reconnect_delay = min(self._reconnect_delay * 2, _RECONNECT_MAX_DELAY)
             if self._expected_disconnect:
                 return
             _LOGGER.debug("%s: Reconnecting again", self.address)

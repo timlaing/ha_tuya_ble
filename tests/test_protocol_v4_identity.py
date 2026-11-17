@@ -227,15 +227,15 @@ async def test_failed_identity_connection_retries_without_new_advertisement() ->
     device._current_seq_num = 20
     with (
         patch(
-            ESTABLISH, new_callable=AsyncMock, side_effect=[None] * 100 + [firmware]
+            ESTABLISH, new_callable=AsyncMock, side_effect=[None] * 3 + [firmware]
         ) as connect,
-        patch("custom_components.tuya_ble.tuya_ble.base.BLEAK_BACKOFF_TIME", 0),
+        patch("custom_components.tuya_ble.tuya_ble.base._RECONNECT_INITIAL_DELAY", 0),
     ):
         device.set_ble_device_and_advertisement_data(device._ble_device, identity)
         first = device._identity_connect_task
         assert first is not None
         await asyncio.wait_for(first, 1)
-        assert connect.await_count == 101
+        assert connect.await_count == 4
         assert device._current_seq_num > 20
         assert not device._awaiting_fd50_identity
         device.set_ble_device_and_advertisement_data(device._ble_device, identity)
@@ -346,7 +346,7 @@ async def test_waiting_device_does_not_connect_until_the_identity_arrives(
     attempts_exhausted = asyncio.Event()
 
     async def unavailable(*_args: object, **_kwargs: object) -> None:
-        if connect.await_count == 100:
+        if connect.await_count == 3:
             attempts_exhausted.set()
 
     with (
@@ -367,11 +367,11 @@ async def test_waiting_device_does_not_connect_until_the_identity_arrives(
         task = device._identity_connect_task
         assert task is not None
         await asyncio.wait_for(attempts_exhausted.wait(), 1)
-        assert connect.await_count == 100
+        assert connect.await_count == 3
         assert "Connecting after the FD50 identity arrived failed" in caplog.text
         await device.stop()
         assert task.cancelled()
-        assert connect.await_count == 100
+        assert connect.await_count == 3
 
 
 async def test_identity_connect_runs_once_and_never_after_stop() -> None:
@@ -412,7 +412,7 @@ async def test_identity_retry_exits_when_stop_is_requested_during_failure() -> N
         patch.object(
             device, "_ensure_connected", side_effect=fail_while_stopping
         ) as ensure,
-        patch("custom_components.tuya_ble.tuya_ble.base.BLEAK_BACKOFF_TIME", 0),
+        patch("custom_components.tuya_ble.tuya_ble.base._RECONNECT_INITIAL_DELAY", 0),
     ):
         device.set_ble_device_and_advertisement_data(
             device._ble_device, v4_advertisement()
