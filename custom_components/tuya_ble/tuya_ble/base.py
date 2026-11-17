@@ -738,7 +738,10 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
                 self.rssi,
             )
         current_task = asyncio.current_task()
-        if current_task not in (self._reconnect_task, self._identity_connect_task):
+        identity_task = self._identity_connect_task
+        if current_task is not self._reconnect_task and (
+            identity_task is None or identity_task.done()
+        ):
             self._schedule_reconnect()
         raise BleakNotFoundError()
 

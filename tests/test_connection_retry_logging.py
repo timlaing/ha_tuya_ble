@@ -286,3 +286,81 @@ async def test_recovery_during_backoff_preserves_initial_delay(
         device._is_paired = False
         await device._reconnect()
     sleep.assert_awaited_once_with(5)
+
+
+async def test_foreground_failure_does_not_duplicate_sleeping_identity_retry() -> None:
+    """A foreground request cannot add another owner during identity backoff."""
+    device = make_device()
+    credentials = make_credentials()
+    device.initialize_with_credentials(credentials)
+    device._awaiting_fd50_identity = True
+    sleeping = asyncio.Event()
+    release = asyncio.Event()
+
+    async def backoff(_delay: float) -> None:
+        sleeping.set()
+        await release.wait()
+
+    with (
+        patch(f"{BASE}.establish_connection", side_effect=BleakAbortedError) as connect,
+        patch(f"{BASE}.asyncio.sleep", side_effect=backoff),
+    ):
+        try:
+            device.set_ble_device_and_advertisement_data(
+                device._ble_device, v4_advertisement(uuid=credentials.uuid.encode())
+            )
+            await sleeping.wait()
+            identity_task = device._identity_connect_task
+            assert identity_task is not None
+            assert not identity_task.done()
+            assert connect.await_count == 3
+
+            with pytest.raises(BleakNotFoundError):
+                await device.update()
+
+            assert connect.await_count == 6
+            assert device._identity_connect_task is identity_task
+            assert not identity_task.done()
+            assert device._reconnect_task is None
+        finally:
+            await device.stop()
+    assert identity_task.cancelled()
+
+
+async def test_completed_identity_task_does_not_block_later_recovery() -> None:
+    """A finished identity retry must not suppress recovery from a later outage."""
+    device = make_device()
+    credentials = make_credentials()
+    device.initialize_with_credentials(credentials)
+    device._awaiting_fd50_identity = True
+    client = FakeBleakClient(is_connected=True)
+
+    async def configure() -> bool:
+        device._is_paired = True
+        return True
+
+    with (
+        patch(f"{BASE}.establish_connection", return_value=client),
+        patch.object(device, "_configure_client", side_effect=configure),
+    ):
+        try:
+            device.set_ble_device_and_advertisement_data(
+                device._ble_device, v4_advertisement(uuid=credentials.uuid.encode())
+            )
+            identity_task = device._identity_connect_task
+            assert identity_task is not None
+            await identity_task
+            assert device._is_paired
+
+            device._client = None
+            device._is_paired = False
+            with (
+                patch(f"{BASE}.establish_connection", side_effect=BleakAbortedError),
+                pytest.raises(BleakNotFoundError),
+            ):
+                await device.update()
+
+            assert identity_task.done()
+            assert device._reconnect_task is not None
+        finally:
+            await device.stop()
