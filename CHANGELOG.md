@@ -7,17 +7,22 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+## [2.10.0-beta.6] - 2026-11-17
+
+> **Beta — for testing only.** This build supersedes beta.5 with support for Tuya BLE protocol v4 devices that use the newer "Security V2" login, and lets you add a device even when the Bluetooth check fails so its diagnostics can be shared. It has not yet been tested on a Security V2 device; if a device was added with an earlier beta, remove it and add it again so the new login details are fetched.
+
 ### Added
 
-- **FD50 Security V2 channel** (#39): devices advertising Security V2, such as the Battery BLE Roller (`cl` / `jetlwvfm`), authenticate with the cloud `sec_key` (security flags 14/15 and a 76-byte pair request). The key is stored only for such devices and never logged or exported.
-- **Unverified protocol-4 setup**: when Bluetooth verification fails, setup shows the error and offers to add the device anyway, so its diagnostics can be collected.
-- **Diagnostics**: report whether the cloud record carries a `sec_key`, whether one is stored and whether the runtime uses Security V2. `cloud_info.fields` lists every field of the raw cloud record, with values only for allowlisted fields and type/size descriptions for all others.
+- **Newer Bluetooth login (Security V2)** (#39): devices that announce Security V2, such as the Battery BLE Roller (`cl` / `jetlwvfm`), now log in with the extra security key from the Tuya cloud (`sec_key`). The key is only stored for these devices and is never logged or included in diagnostics.
+- **Add a device anyway**: when the Bluetooth check for a Tuya BLE protocol v4 device fails, setup shows the error and lets you add the device anyway, so its diagnostics can be collected. It may show as unavailable until support is added.
+- **Diagnostics**: show whether the Tuya cloud sent a `sec_key`, whether it is stored and whether the device uses Security V2. `cloud_info.fields` lists every field the cloud sends for the device; only product and version fields show their values, all others show just their type and length.
 
 ### Fixed
 
-- **Protocol-4 verification of unbound-looking advertisements** (#39): setup no longer gives up before connecting when the FD50 advertisement omits the bound flag; the encrypted device-info reply decides before any pair request.
-- **Protocol-4 one- and two-byte values** (#39): VALUE datapoints of one or two bytes are decoded instead of rejecting the whole report, restoring SRB-PM01 humidity and battery readings.
-- **Verification logging**: each authenticated probe logs its outcome, the handshake stage reached, the security channel and protocol version, and the exception type of a failure.
+- **Bluetooth check stopped before connecting** (#39): setup no longer gives up on Tuya BLE protocol v4 devices that do not advertise themselves as added to an account; the device's own encrypted reply now decides.
+- **Missing readings from Tuya BLE protocol v4 sensors** (#39): one- and two-byte number readings are no longer thrown away, restoring SRB-PM01 humidity and battery values.
+- **Clearer setup messages**: the Bluetooth check and reconfigure messages are shorter and easier to follow.
+- **More useful debug logs**: each Bluetooth check logs how far it got, which login it used and the type of any error.
 
 ## [2.10.0-beta.5] - 2026-11-17
 
