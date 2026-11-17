@@ -136,7 +136,7 @@ class TuyaBLEProtocolSendMixin:
     def _build_pairing_request(self) -> bytes:
         """Serialize pairing identity without reusing session state across links.
 
-        Security V2 appends its 32-byte key material to the classic frame.
+        Security V2 sends the same frame: firmware matches only the UUID.
         """
         result = bytearray()
         if self._device_info is None or self._local_key is None:
@@ -152,10 +152,7 @@ class TuyaBLEProtocolSendMixin:
                 PAIRING_REQUEST_LENGTH,
             )
             raise TuyaBLEDeviceError(0)
-        frame = bytes(result).ljust(PAIRING_REQUEST_LENGTH, b"\x00")
-        if self._security_v2_key is None:
-            return frame
-        return frame + self._security_v2_key
+        return bytes(result).ljust(PAIRING_REQUEST_LENGTH, b"\x00")
 
     async def send_datapoints(self, datapoint_ids: list[int]) -> None:
         """Send new values of datapoints to the device."""

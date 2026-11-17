@@ -28,9 +28,12 @@ Each attempt uses a fresh connection and ephemeral session keys, with a
 | `v2_20`       | `0x20`                     | 20 bytes                                                  |
 | `v4_mtu`      | `0x40`                     | Negotiated write-without-response capacity, capped at 244 |
 | `v2_mtu`      | `0x20`                     | Negotiated write-without-response capacity, capped at 244 |
+| `v2_app`      | `0x20`                     | 20 bytes, announcing the Tuya app's `00 f3` capacity      |
 
-The two-byte device-info payload advertises the selected safe data capacity,
-not a hardcoded `00 f3`. Larger profiles are rejected without sending packets
+The two-byte device-info payload advertises the selected safe data capacity.
+Only `v2_app`, tried last, sends the Tuya app's hardcoded `00 f3`: the
+[ha-tuya-ble YZD02B support](https://github.com/ha-tuya-ble/ha_tuya_ble/pull/256)
+and the Raykube capture show TuyaOS FD50 firmware expecting it. Larger profiles are rejected without sending packets
 if the backend cannot provide a capacity above 20 bytes within a bounded
 two-second negotiation wait. Capacity is re-read every 50 ms; disconnect,
 shutdown and cancellation stop the wait without sending a handshake. After device-info,
@@ -74,6 +77,10 @@ For a protocol-4 device the integration looks both FD50 characteristics up in
 the connected device's GATT services and uses them only when both are present,
 otherwise the classic pair. The choice is made again on every connection and is
 logged at debug level. Protocol 2/3 devices skip the lookup entirely.
+
+Notifications on the FD50 characteristic use BlueZ's `StartNotify` rather than
+`AcquireNotify`, as the YZD02B and Raykube integrations found necessary. Other
+backends, such as ESPHome proxies, ignore the option.
 
 ## Which protocol version is used
 
@@ -164,10 +171,11 @@ key stored beside the local key
 | 14   | Device info | `MD5(local_key + sec_key)`         |
 | 15   | Session     | `MD5(local_key + sec_key + srand)` |
 
-`local_key` is the complete 16-byte key and `srand` is the 6-byte random of the
-device-info reply. The pair request appends `local_key` and `sec_key` to the
-classic 44-byte frame, 76 bytes in total. Framing, reports and writes are
-unchanged.
+`local_key` is the complete local key and `srand` is the 6-byte random of the
+device-info reply. The pair request keeps the classic 44-byte frame: TuyaOpen's
+pair handler compares only the leading 16-byte UUID. Framing, reports and writes
+are unchanged. A reply with any other security flag is logged at debug level
+with the flag it carried, so an unsupported scheme (for example activation key 11) is identifiable.
 
 The channel is used only when the device advertises Security V2 and its cloud
 record carries a `sec_key` of exactly 16 bytes. Setup stores the key only for
@@ -178,10 +186,13 @@ and whether the runtime uses it (`device.security_v2`), never the key itself.
 or refreshed with re-authentication tokens: allowlisted product and version
 fields keep their value, every other field shows only its type and size, for
 example `<redacted str, 16 chars>`.
-The field name in the cloud record (`sec_key` or `secKey`) and the 76-byte pair
-layout follow
+The key derivation and the classic pair frame match
+[ha-tuya-ble SecKey support](https://github.com/ha-tuya-ble/ha_tuya_ble/pull/255),
+validated on a YZD02B irrigation timer. Whether the Home Assistant sharing API
+returns the `sec_key` (`sec_key` or `secKey`) has not been confirmed on a
+Security V2 shade; the mobile-app API used by
 [frankhommers/ha-tuya-ble-access](https://github.com/frankhommers/ha-tuya-ble-access)
-and have not been confirmed on a Security V2 shade.
+returns it.
 
 ## Datapoint reports
 

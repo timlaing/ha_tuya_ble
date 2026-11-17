@@ -63,7 +63,24 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
             if self._session_key is None:
                 raise TuyaBLEDeviceError(0)
             return self._session_key
+        _LOGGER.debug(
+            "%s: Received security flag %s, expected %s or %s",
+            self.address,
+            security_flag,
+            login_flag,
+            session_flag,
+        )
         raise TuyaBLEDataFormatError()
+
+    def _log_unexpected_flag(self, expected: int) -> None:
+        """Log the security flag of a frame the current handshake rejects."""
+        received = self._input_buffer[0] if self._input_buffer else None
+        _LOGGER.debug(
+            "%s: Received security flag %s, expected %s",
+            self.address,
+            received,
+            expected,
+        )
 
     def _parse_timestamp(self, data: bytes, start_pos: int) -> tuple[float, int]:
         """Decode a timestamp field (type 0: ms-string, type 1: 4-byte big-endian)."""

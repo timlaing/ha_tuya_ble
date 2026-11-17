@@ -47,7 +47,9 @@ from custom_components.tuya_ble.tuya_ble import (
     decode_tuya_ble_advertisement,
 )
 from custom_components.tuya_ble.tuya_ble.const import (
-    PAIRING_REQUEST_LENGTH_V2,
+    CHARACTERISTIC_NOTIFY,
+    CHARACTERISTIC_WRITE,
+    PAIRING_REQUEST_LENGTH,
     TuyaBLECode,
     TuyaBLEDataPointType,
 )
@@ -199,14 +201,18 @@ def test_security_v2_login_key() -> None:
     assert device._login_key == _md5((LOCAL_KEY + SEC_KEY).encode())
 
 
+@pytest.mark.parametrize("local_key", ["abcdef", LOCAL_KEY, LOCAL_KEY + "x"])
+def test_security_v2_uses_the_full_local_key(local_key: str) -> None:
+    """Any local key of six or more bytes is used in full with the sec_key."""
+    credentials = replace(make_credentials(local_key=local_key), sec_key=SEC_KEY)
+    device = make_device()
+    device.initialize_with_credentials(credentials)
+    assert device._login_key == _md5((local_key + SEC_KEY).encode())
+
+
 @pytest.mark.parametrize(
     ("local_key", "sec_key"),
-    [
-        ("abcdef", SEC_KEY),
-        (LOCAL_KEY + "x", SEC_KEY),
-        (LOCAL_KEY, "short"),
-        (LOCAL_KEY, SEC_KEY + "x"),
-    ],
+    [("abcde", SEC_KEY), (LOCAL_KEY, "short"), (LOCAL_KEY, SEC_KEY + "x")],
 )
 def test_security_v2_rejects_malformed_key_material(
     local_key: str, sec_key: str
@@ -233,9 +239,10 @@ async def test_session_frames_require_the_channel_flag(
     data = report(klv(3, TuyaBLEDataPointType.DT_VALUE, pack(">i", 7)))
     frame = encrypt_payload(device._session_key, flag, 1, 0, TuyaBLECode(0x8006), data)
 
-    for packet in fragment(frame, protocol_version=4):
-        device._safe_notification_handler(None, bytearray(packet))
-    await drain_responses(device)
+    with caplog.at_level(logging.DEBUG):
+        for packet in fragment(frame, protocol_version=4):
+            device._safe_notification_handler(None, bytearray(packet))
+        await drain_responses(device)
 
     datapoint = device.datapoints[3]
     if accepted:
@@ -244,6 +251,7 @@ async def test_session_frames_require_the_channel_flag(
     else:
         assert datapoint is None
         assert "Ignoring malformed BLE notification" in caplog.text
+        assert f"Received security flag {flag}, expected" in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -273,14 +281,14 @@ async def test_security_v2_session_end_to_end(
     assert flags[0] == 14
     assert set(flags[1:]) == {15}
     assert firmware.received[0][2] == b"\x00\x14"
+    # Firmware matches only the UUID, so Security V2 keeps the classic frame.
     assert firmware.pair_payload == (
         credentials.uuid.encode()
         + LOCAL_KEY[:6].encode()
         + credentials.device_id.encode().ljust(22, b"\x00")
-        + LOCAL_KEY.encode()
-        + SEC_KEY.encode()
     )
-    assert len(firmware.pair_payload) == PAIRING_REQUEST_LENGTH_V2
+    assert len(firmware.pair_payload) == PAIRING_REQUEST_LENGTH
+    assert firmware.notify_kwargs == {"bluez": {"use_start_notify": True}}
     datapoint = device.datapoints[15]
     assert datapoint is not None
     assert datapoint.value == 87
@@ -577,3 +585,64 @@ async def test_diagnostics_report_sec_key_presence_only(
     assert payload["identity"]["sec_key_stored"] is security_v2
     assert payload["device"]["security_v2"] is security_v2
     assert SEC_KEY not in repr(payload)
+
+
+class ActivationOnlyFirmware(SecurityV2Firmware):
+    """Answer device info with an activation-only flag the integration lacks."""
+
+    def __init__(
+        self, credentials: TuyaBLEDeviceCredentials, report_data: bytes
+    ) -> None:
+        super().__init__(credentials, report_data)
+        self._keys[11] = b"K" * 16
+
+    def _reply(self, code: int, response_to: int, data: bytes, flag: int) -> int:
+        if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO.value:
+            flag = 11
+        return super()._reply(code, response_to, data, flag)
+
+
+async def test_unexpected_reply_flag_is_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A reply with a flag the handshake cannot use is named in the log."""
+    credentials = v2_credentials()
+    clients: list[FakeV4Firmware] = []
+    establish = _probe_establish(
+        clients, lambda: ActivationOnlyFirmware(credentials, SHADE_DATA)
+    )
+    stages: list[ProbeStage] = []
+    with (
+        caplog.at_level(logging.DEBUG),
+        patch(PROBE_CONNECT, side_effect=establish),
+        patch("custom_components.tuya_ble.tuya_ble.probe.PROBE_TIMEOUT", 0.2),
+    ):
+        outcome = await async_probe_authenticated_status(
+            make_device()._ble_device,
+            v4_advertisement(uuid=credentials.uuid.encode(), service=V2_SERVICE),
+            credentials,
+            credentials.uuid,
+            frozenset({1, 3}),
+            stages,
+        )
+    assert outcome == ProbeOutcome.RETRYABLE
+    assert stages == [ProbeStage.DEVICE_INFO]
+    assert "Received security flag 11, expected 14" in caplog.text
+
+
+async def test_classic_characteristics_keep_default_notifications() -> None:
+    """Only the FD50 characteristics request BlueZ StartNotify."""
+    credentials = make_credentials()
+    firmware = FakeV4Firmware(
+        credentials,
+        report(soil_sensor_datapoints(), sn=3),
+        characteristics=(CHARACTERISTIC_NOTIFY, CHARACTERISTIC_WRITE),
+    )
+    device = make_device()
+    device.set_ble_device_and_advertisement_data(
+        device._ble_device, v4_advertisement(uuid=credentials.uuid.encode())
+    )
+    device.initialize_with_credentials(credentials)
+    await run_session(device, firmware)
+    assert firmware.notify_char == CHARACTERISTIC_NOTIFY
+    assert not firmware.notify_kwargs

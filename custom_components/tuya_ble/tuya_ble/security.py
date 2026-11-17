@@ -16,9 +16,9 @@ def derive_login_keys(
     """Return the pairing local key, Security V2 key material and login key.
 
     The classic channel uses the first six bytes of the local key. Security V2
-    uses the full 16-byte local key followed by the 16-byte cloud ``sec_key``;
-    keys of any other width would derive keys the device cannot match, so they
-    are rejected rather than truncated.
+    uses the full local key followed by the 16-byte cloud ``sec_key``; a
+    ``sec_key`` of any other width would derive keys the device cannot match,
+    so it is rejected rather than truncated.
     """
     local = local_key.encode()
     if len(local) < CLASSIC_LOCAL_KEY_LENGTH:
@@ -26,7 +26,7 @@ def derive_login_keys(
     security_v2_key: bytes | None = None
     if sec_key is not None:
         sec = sec_key.encode()
-        if len(local) != SECURITY_V2_KEY_LENGTH or len(sec) != SECURITY_V2_KEY_LENGTH:
+        if len(sec) != SECURITY_V2_KEY_LENGTH:
             raise TuyaBLEDeviceError(0)
         security_v2_key = local + sec
     classic = local[:CLASSIC_LOCAL_KEY_LENGTH]

@@ -129,7 +129,14 @@ class ProfileFirmware(FakeV4Firmware):
 
     def _answer(self, seq_num: int, code: int, data: bytes, flag: int) -> None:
         """Answer v4 writes and optionally omit the status-query ACK."""
-        if code == TuyaBLECode.FUN_SENDER_DPS_V4.value:
+        if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO.value and (
+            data == b"\x00\xf3"
+        ) != (self.profile.app_capacity):
+            # Firmware that needs the app's capacity drops any other request.
+            self._is_connected = False
+            if self.on_disconnect is not None:
+                self.on_disconnect(self)
+        elif code == TuyaBLECode.FUN_SENDER_DPS_V4.value:
             self._reply(code, seq_num, data[:5] + bytes([self.write_status]), 5)
         elif code == 3 and self.status_result != 0:
             self._reply(code, seq_num, bytes([self.status_result]), 5)
@@ -457,7 +464,9 @@ async def test_no_verified_profile_is_returned_on_failure(
             )
             is None
         )
-    assert probe.call_count == (1 if outcome == ProbeOutcome.REJECTED else 4)
+    assert probe.call_count == (
+        1 if outcome == ProbeOutcome.REJECTED else len(ConnectionProfile)
+    )
 
 
 async def test_profile_candidate_preserves_credentials_and_schema() -> None:

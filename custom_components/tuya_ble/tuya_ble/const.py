@@ -47,10 +47,12 @@ MAX_DEVICE_ID_LENGTH = 20
 # two trailing pad bytes the device expects.
 PAIRING_REQUEST_LENGTH = 44
 
-# Security V2 ("btScyChannel") appends the full 16-byte local key and the
-# 16-byte cloud sec_key to the classic frame.
+# The cloud sec_key used by Security V2 key derivation.
 SECURITY_V2_KEY_LENGTH = 16
-PAIRING_REQUEST_LENGTH_V2 = PAIRING_REQUEST_LENGTH + 2 * SECURITY_V2_KEY_LENGTH
+
+# The device-info payload the Tuya app sends to TuyaOS FD50 firmware: its
+# receive capacity, 243 bytes, regardless of the negotiated ATT MTU.
+APP_DEVICE_INFO_CAPACITY = 0xF3
 
 # Security flags prefixing each encrypted frame: login and session keys for the
 # classic scheme, and their Security V2 counterparts.
@@ -67,11 +69,19 @@ class ConnectionProfile(StrEnum):
     V2_20 = "v2_20"
     V4_MTU = "v4_mtu"
     V2_MTU = "v2_mtu"
+    # The Tuya app's own handshake (YZD02B and lock app captures): marker 0x20 and
+    # a 243-byte receive capacity, sent in 20-byte fragments.
+    V2_APP = "v2_app"
 
     @property
     def info_version(self) -> int:
         """Return the initial device-info frame's protocol marker."""
-        return 2 if self in (self.V2_20, self.V2_MTU) else 4
+        return 2 if self in (self.V2_20, self.V2_MTU, self.V2_APP) else 4
+
+    @property
+    def app_capacity(self) -> bool:
+        """Return whether device info announces the app's 243-byte capacity."""
+        return self is self.V2_APP
 
     @property
     def negotiated_mtu(self) -> bool:

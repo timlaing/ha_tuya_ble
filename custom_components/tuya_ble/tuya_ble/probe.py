@@ -428,6 +428,7 @@ class _ProbeDevice(TuyaBLEDevice):
         login_flag, session_flag = self._security_flags()
         required_flag = session_flag if self._session_key is not None else login_flag
         if not self._input_buffer or self._input_buffer[0] != required_flag:
+            self._log_unexpected_flag(required_flag)
             raise TuyaBLEDataFormatError()
         return super()._decrypt_input()
 
@@ -549,7 +550,9 @@ class _ProbeDevice(TuyaBLEDevice):
         self._client = client
         self.stage = ProbeStage.NOTIFY
         self._select_characteristics(client)
-        await client.start_notify(self._notify_char, self._safe_notification_handler)
+        await client.start_notify(
+            self._notify_char, self._safe_notification_handler, **self._notify_kwargs()
+        )
         await self._configure_packet_size(client)
         self.stage = ProbeStage.DEVICE_INFO
         if not await self._send_packet_while_connected(

@@ -11,6 +11,7 @@ from typing import Any
 from bleak_retry_connector import BleakClientWithServiceCache
 
 from .const import (
+    APP_DEVICE_INFO_CAPACITY,
     CHARACTERISTIC_NOTIFY,
     CHARACTERISTIC_NOTIFY_V4,
     CHARACTERISTIC_WRITE,
@@ -68,11 +69,23 @@ class TuyaBLEConnectionProfile:
             self._protocol_version,
         )
 
+    def _notify_kwargs(self) -> dict[str, Any]:
+        """Use BlueZ StartNotify on FD50; AcquireNotify can lose its reports.
+
+        Other backends ignore the BlueZ-specific argument.
+        """
+        if self._notify_char == CHARACTERISTIC_NOTIFY_V4:
+            return {"bluez": {"use_start_notify": True}}
+        return {}
+
     def _build_device_info_request(self) -> bytes:
         """v4 requests exactly two bytes specifying safe ATT data capacity."""
-        if self._protocol_version == PROTOCOL_VERSION_V4:
-            return pack(">H", self._packet_size)
-        return b""
+        if self._protocol_version != PROTOCOL_VERSION_V4:
+            return b""
+        profile = self._connection_profile
+        if profile is not None and profile.app_capacity:
+            return pack(">H", APP_DEVICE_INFO_CAPACITY)
+        return pack(">H", self._packet_size)
 
     async def _configure_packet_size(self, client: BleakClientWithServiceCache) -> None:
         """Recompute safe write capacity on every connection, never from cache."""
