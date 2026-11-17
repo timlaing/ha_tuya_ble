@@ -49,6 +49,7 @@ async def test_connection_outage_warns_once_without_traceback(
             with pytest.raises(BleakNotFoundError):
                 await device.update()
 
+    await device.stop()
     assert connect.await_count == 9
     assert len(caplog.records) == 1
     assert caplog.records[0].levelno == logging.WARNING
@@ -73,6 +74,7 @@ async def test_retry_tracebacks_remain_available_at_debug(
     ):
         await device.update()
 
+    await device.stop()
     failures = [record for record in caplog.records if record.exc_info]
     assert len(failures) == 3
     assert all(record.levelno == logging.DEBUG for record in failures)
@@ -117,6 +119,7 @@ async def test_successful_handshake_resets_outage_warning_and_backoff(
         pytest.raises(BleakNotFoundError),
     ):
         await device.update()
+    await device.stop()
     assert len(caplog.records) == 2
     assert all(record.exc_info is None for record in caplog.records)
 
@@ -136,6 +139,7 @@ async def test_unpaired_handshake_does_not_reset_outage_warning(
         for _ in range(2):
             with pytest.raises(BleakNotFoundError):
                 await device.update()
+    await device.stop()
     assert len(caplog.records) == 1
     assert device._connection_failure_reported
 
@@ -202,3 +206,83 @@ async def test_identity_connection_backoff_is_exponential_and_capped() -> None:
         await task
     assert delays == [5, 10, 20, 40, 60, 60]
     await device.stop()
+
+
+async def test_profileless_device_recovers_after_initial_batch_failure() -> None:
+    """Legacy startup failures recover without another advertisement or command."""
+    device = make_device()
+    device.initialize_with_credentials(make_credentials())
+    client = FakeBleakClient(is_connected=True)
+
+    async def configure() -> bool:
+        device._is_paired = True
+        return True
+
+    with (
+        patch(
+            f"{BASE}.establish_connection", side_effect=[None] * 3 + [client]
+        ) as connect,
+        patch.object(device, "_configure_client", side_effect=configure),
+    ):
+        with pytest.raises(BleakNotFoundError):
+            await device.update()
+        task = device._reconnect_task
+        assert task is not None
+        await task
+        assert connect.await_count == 4
+        assert device._is_paired
+        assert not device._connection_failure_reported
+        await device.stop()
+
+
+@pytest.mark.parametrize("disconnect_again", [False, True])
+async def test_recovery_during_backoff_preserves_initial_delay(
+    disconnect_again: bool,
+) -> None:
+    """A stale reconnect cannot increase the delay reset by another handshake."""
+    device = make_device()
+    device.initialize_with_credentials(make_credentials())
+    device._reconnect_delay = 40
+    client = FakeBleakClient(is_connected=True)
+
+    async def configure() -> bool:
+        device._is_paired = True
+        return True
+
+    async def recover(_delay: float) -> None:
+        await device.update()
+        if disconnect_again:
+            device._client = None
+            device._is_paired = False
+
+    original_ensure = device._ensure_connected
+    ensure_calls = 0
+
+    async def ensure() -> None:
+        nonlocal ensure_calls
+        ensure_calls += 1
+        if ensure_calls == 1:
+            raise BleakAbortedError()
+        await original_ensure()
+
+    with (
+        patch.object(device, "_ensure_connected", side_effect=ensure),
+        patch(f"{BASE}.establish_connection", return_value=client),
+        patch.object(device, "_configure_client", side_effect=configure),
+        patch.object(device, "_send_packet_while_connected", return_value=True),
+        patch.object(device, "_schedule_reconnect"),
+        patch(f"{BASE}.asyncio.sleep", side_effect=recover),
+    ):
+        await device._reconnect()
+    assert device._connection_generation == 1
+    assert device._reconnect_delay == 5
+
+    with (
+        patch.object(device, "_ensure_connected", side_effect=BleakAbortedError),
+        patch.object(device, "_schedule_reconnect"),
+        patch(f"{BASE}.asyncio.sleep", new_callable=AsyncMock) as sleep,
+    ):
+        device._client = None
+        device._is_paired = False
+        await device._reconnect()
+    sleep.assert_awaited_once_with(5)

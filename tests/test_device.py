@@ -502,6 +502,8 @@ async def test_connect_failure_raises() -> None:
     ):
         await dev.update()
 
+    await dev.stop()
+
 
 async def test_establish_connection_bleak_error_returns_none() -> None:
     """Verify a connection error during connect is swallowed."""

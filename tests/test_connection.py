@@ -384,6 +384,8 @@ async def test_raises_after_all_retries_fail() -> None:
     ):
         await dev._connect_with_retries()
 
+    await dev.stop()
+
 
 # --- tuya_ble.py additional coverage ---
 

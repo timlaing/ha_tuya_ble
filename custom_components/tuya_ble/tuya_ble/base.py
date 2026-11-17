@@ -140,8 +140,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
 
         self._reconnect_task: asyncio.Task[None] | None = None
         self._resend_task: asyncio.Task[None] | None = None
-        self._reconnect_delay = _RECONNECT_INITIAL_DELAY
-        self._connection_failure_reported = False
+        self._initialize_reconnect_state()
         self._send_response_tasks: set[asyncio.Task[None]] = set()
 
         self._awaiting_fd50_identity = False
@@ -153,6 +152,12 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
         self._advertisement_provider: (
             Callable[[], tuple[BLEDevice, AdvertisementData] | None] | None
         ) = None
+
+    def _initialize_reconnect_state(self) -> None:
+        """Initialise outage logging and background reconnect backoff state."""
+        self._reconnect_delay = _RECONNECT_INITIAL_DELAY
+        self._connection_failure_reported = False
+        self._connection_generation = 0
 
     def set_advertisement_provider(
         self, provider: Callable[[], tuple[BLEDevice, AdvertisementData] | None]
@@ -680,6 +685,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
                 and client.is_connected
             )
             if configured:
+                self._connection_generation += 1
                 self._connection_cleanup.release_source(client)
                 self._reconnect_delay = _RECONNECT_INITIAL_DELAY
                 self._connection_failure_reported = False
@@ -731,10 +737,8 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
                 _CONNECT_ATTEMPTS,
                 self.rssi,
             )
-        if (
-            self._connection_profile is not None
-            and self._reconnect_task is not asyncio.current_task()
-        ):
+        current_task = asyncio.current_task()
+        if current_task not in (self._reconnect_task, self._identity_connect_task):
             self._schedule_reconnect()
         raise BleakNotFoundError()
 
@@ -902,10 +906,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
                 True,
             ):
                 self._client = None
-                _LOGGER.debug(
-                    "%s: Sending device info request failed",
-                    self.address,
-                )
+                _LOGGER.debug("%s: Sending device info request failed", self.address)
                 return False
             return True
         except BLE_CONNECTION_EXCEPTIONS:
@@ -930,10 +931,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
                 True,
             ):
                 self._client = None
-                _LOGGER.debug(
-                    "%s: Sending pairing request failed",
-                    self.address,
-                )
+                _LOGGER.debug("%s: Sending pairing request failed", self.address)
                 return False
             return True
         except BLE_CONNECTION_EXCEPTIONS:
@@ -986,8 +984,12 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
                 self.address,
                 exc_info=True,
             )
+            generation = self._connection_generation
             await asyncio.sleep(self._reconnect_delay)
-            self._reconnect_delay = min(self._reconnect_delay * 2, _RECONNECT_MAX_DELAY)
+            if generation == self._connection_generation:
+                self._reconnect_delay = min(
+                    self._reconnect_delay * 2, _RECONNECT_MAX_DELAY
+                )
             if self._expected_disconnect:
                 return
             _LOGGER.debug("%s: Reconnecting again", self.address)
