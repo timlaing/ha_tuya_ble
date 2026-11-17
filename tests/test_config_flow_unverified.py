@@ -15,7 +15,6 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.tuya_ble.config_flow import TuyaBLEConfigFlow
 from custom_components.tuya_ble.const import (
-    CONF_ADD_UNVERIFIED,
     CONF_CONNECTION_PROFILE,
     CONF_DEVICE_ID,
     CONF_SEC_KEY,
@@ -85,21 +84,24 @@ async def test_failed_verification_shows_error_with_add_option(
         CONF_ADDRESS: info.address,
         "name": info.name,
     }
-    schema = cast(Any, result["data_schema"]).schema
-    assert CONF_ADD_UNVERIFIED in schema
+    # Submitting adds the device; cancelling the flow is the only way out.
+    assert not cast(Any, result["data_schema"]).schema
 
     shown = await flow.async_step_unverified()
     assert shown["step_id"] == "unverified"
     assert shown["errors"] == {"base": "v4_verification_failed"}
 
 
-@pytest.mark.parametrize(("service", "stored"), [(V2_SERVICE, True), (None, False)])
-async def test_add_unverified_creates_entry_without_profile(
-    hass: HomeAssistant, service: bytes | None, stored: bool
+@pytest.mark.parametrize(
+    ("service", "stored", "source"),
+    [(V2_SERVICE, True, "discovered_device"), (None, False, "device")],
+)
+async def test_submit_adds_unverified_entry_without_profile(
+    hass: HomeAssistant, service: bytes | None, stored: bool, source: str
 ) -> None:
-    """An opted-in device is added with no profile, keeping a V2 sec_key."""
-    flow, _, _ = await _fail_verification(hass, service=service)
-    result = await flow.async_step_unverified({CONF_ADD_UNVERIFIED: True})
+    """Submitting the form adds the device with no profile, keeping a V2 sec_key."""
+    flow, _, _ = await _fail_verification(hass, source=source, service=service)
+    result = await flow.async_step_unverified({})
     assert result["type"] == FlowResultType.CREATE_ENTRY
     data = cast(dict[str, Any], result["data"])
     assert CONF_CONNECTION_PROFILE not in data
@@ -107,29 +109,33 @@ async def test_add_unverified_creates_entry_without_profile(
     assert flow._unverified_setup is None
 
 
-@pytest.mark.parametrize("source", ["discovered_device", "device"])
-async def test_declining_retries_setup(hass: HomeAssistant, source: str) -> None:
-    """Submitting without opting in retries setup from the original step."""
-    flow, info, _ = await _fail_verification(hass, source=source)
+@pytest.mark.parametrize("profile", [ConnectionProfile.V4_20])
+async def test_unverified_entry_is_not_offered_after_success(
+    hass: HomeAssistant, profile: ConnectionProfile
+) -> None:
+    """A verified device is created directly, never through the unverified step."""
+    flow = build_flow(hass)
+    info = _discovery()
+    flow.discovery_info = cast(Any, info)
+    flow._manager = cast(Any, FakeManager(make_credentials()))
     with (
         patch.object(flow, "_async_scan_device", return_value=info),
-        patch(DETECT, new=AsyncMock(return_value=ConnectionProfile.V4_20)) as detect,
+        patch(DETECT, new=AsyncMock(return_value=profile)),
     ):
-        result = await flow.async_step_unverified({CONF_ADD_UNVERIFIED: False})
-        assert result["type"] == FlowResultType.SHOW_PROGRESS
+        await flow.async_step_discovered_device({})
         assert flow._probe_task is not None
         await flow._probe_task
         result = await flow.async_step_probe_finish()
-    detect.assert_awaited_once()
     assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_CONNECTION_PROFILE] == ConnectionProfile.V4_20.value
+    assert result["data"][CONF_CONNECTION_PROFILE] == profile.value
+    assert flow._unverified_setup is None
 
 
 async def test_unverified_step_without_pending_setup_aborts(
     hass: HomeAssistant,
 ) -> None:
     """The step cannot be reached without a failed verification."""
-    result = await build_flow(hass).async_step_unverified({CONF_ADD_UNVERIFIED: True})
+    result = await build_flow(hass).async_step_unverified({})
     assert result["type"] == FlowResultType.ABORT
     assert result["reason"] == "unknown"
 
@@ -144,7 +150,7 @@ async def test_add_unverified_rejects_configured_cloud_device(
         unique_id="11:22:33:44:55:66",
         data={CONF_DEVICE_ID: make_credentials().device_id},
     ).add_to_hass(hass)
-    result = await flow.async_step_unverified({CONF_ADD_UNVERIFIED: True})
+    result = await flow.async_step_unverified({})
     assert result["type"] == FlowResultType.ABORT
     assert result["reason"] == "already_configured"
 
@@ -154,4 +160,4 @@ async def test_add_unverified_stops_after_flow_removal(hass: HomeAssistant) -> N
     flow, _, _ = await _fail_verification(hass)
     flow._flow_removed = True
     with pytest.raises(AbortFlow):
-        await flow.async_step_unverified({CONF_ADD_UNVERIFIED: True})
+        await flow.async_step_unverified({})

@@ -14,7 +14,7 @@ from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 import probatio
 
-from .const import CONF_ADD_UNVERIFIED, CONF_DEVICE_ID, DOMAIN
+from .const import CONF_DEVICE_ID, DOMAIN
 from .tuya_ble import TuyaBLEAdvertisementInfo, TuyaBLEDeviceCredentials
 
 _LOGGER = logging.getLogger(__name__)
@@ -29,7 +29,6 @@ class _UnverifiedSetupMixin:
 
     hass: HomeAssistant
     _setup_lock: asyncio.Lock
-    _probe_source_step: str
     _unverified_setup: UnverifiedSetup | None
 
     if TYPE_CHECKING:
@@ -64,25 +63,13 @@ class _UnverifiedSetupMixin:
         ) -> ConfigFlowResult:
             """Provided by the config flow."""
 
-        async def async_step_discovered_device(
-            self, user_input: dict[str, Any] | None = None
-        ) -> ConfigFlowResult:
-            """Provided by the config flow."""
-
-        async def async_step_device(
-            self, user_input: dict[str, Any] | None = None
-        ) -> ConfigFlowResult:
-            """Provided by the config flow."""
-
     def _show_unverified_form(
         self, discovery: BluetoothServiceInfoBleak
     ) -> ConfigFlowResult:
-        """Show the verification failure and offer to add the device anyway."""
+        """Show the verification failure; submitting adds the device anyway."""
         return self.async_show_form(
             step_id="unverified",
-            data_schema=probatio.Schema({
-                probatio.Required(CONF_ADD_UNVERIFIED, default=False): bool,
-            }),
+            data_schema=probatio.Schema({}),
             errors={"base": "v4_verification_failed"},
             description_placeholders={
                 CONF_ADDRESS: discovery.address,
@@ -93,11 +80,12 @@ class _UnverifiedSetupMixin:
     async def async_step_unverified(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Add an unverified protocol-4 device on request, otherwise retry setup.
+        """Add a v4 device whose verification failed once the user submits.
 
         An unverified entry has no saved connection profile, so runtime uses the
         default handshake. It exists so diagnostics can be collected from
-        firmware this integration cannot yet verify.
+        firmware this integration cannot yet verify; cancelling the flow adds
+        nothing.
         """
         pending = self._unverified_setup
         if pending is None:
@@ -105,26 +93,22 @@ class _UnverifiedSetupMixin:
         discovery, advertisement, credentials = pending
         if user_input is None:
             return self._show_unverified_form(discovery)
-        self._unverified_setup = None
-        if user_input.get(CONF_ADD_UNVERIFIED):
-            async with self._setup_lock:
-                self._abort_if_flow_removed()
-                self._abort_if_unique_id_configured()
-                if any(
-                    entry.data.get(CONF_DEVICE_ID) == credentials.device_id
-                    for entry in self.hass.config_entries.async_entries(DOMAIN)
-                ):
-                    return self.async_abort(reason="already_configured")
-                _LOGGER.warning(
-                    "%s: adding device without a verified Bluetooth connection",
-                    discovery.address,
-                )
-                return self._create_device_entry(
-                    discovery,
-                    advertisement,
-                    replace(credentials, connection_profile=None),
-                    None,
-                )
-        if self._probe_source_step == "discovered_device":
-            return await self.async_step_discovered_device({})
-        return await self.async_step_device({CONF_ADDRESS: discovery.address})
+        async with self._setup_lock:
+            self._abort_if_flow_removed()
+            self._unverified_setup = None
+            self._abort_if_unique_id_configured()
+            if any(
+                entry.data.get(CONF_DEVICE_ID) == credentials.device_id
+                for entry in self.hass.config_entries.async_entries(DOMAIN)
+            ):
+                return self.async_abort(reason="already_configured")
+            _LOGGER.warning(
+                "%s: adding device without a verified Bluetooth connection",
+                discovery.address,
+            )
+            return self._create_device_entry(
+                discovery,
+                advertisement,
+                replace(credentials, connection_profile=None),
+                None,
+            )
