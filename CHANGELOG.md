@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+## [2.10.0-beta.5] - 2026-11-17
+
+> **Beta — for testing only.** This build supersedes beta.4 with quieter BLE connection failures and bounded automatic recovery. It does not fix the underlying radio or ESPHome proxy GATT errors, and fresh affected-device hardware testing remains necessary.
+
+### Fixed
+
+- **BLE connection retry and outage log spam** (#153): limit all devices to three connection/handshake cycles per batch while retaining the Bluetooth connector's internal retries. Log one concise warning per device outage, with individual failure tracebacks available at debug level, and reset warning suppression after a successful handshake.
+- **Automatic BLE recovery** (#153): retry background connections with exponential delays from five to sixty seconds, including profile-less devices and FD50 identity recovery. Avoid duplicate retry owners during identity backoff and prevent stale reconnect tasks from overwriting the delay reset after recovery.
+
 ## [2.10.0-beta.4] - 2026-11-16
 
 > **Beta — for testing only.** This build supersedes beta.3 with automatic protocol-4 compatibility verification and additional device support. Fresh affected-device hardware testing remains necessary; this beta does not claim to resolve every report in #39 or support every protocol-4 firmware.
