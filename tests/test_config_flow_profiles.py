@@ -91,7 +91,7 @@ class ReconfigureSubmissionGate:
         await self.resume_scan.wait()
         return discovery()
 
-    async def detect(self, *_args: Any) -> ConnectionProfile:
+    async def detect(self, *_args: Any, **_kwargs: Any) -> ConnectionProfile:
         """Keep the sole verification task pending until cancelled."""
         self.probe_started.set()
         await self.hold_probe.wait()
@@ -292,7 +292,7 @@ async def test_cancelled_reconfigure_restores_runtime_after_probe(
     started = asyncio.Event()
     ended = asyncio.Event()
 
-    async def detect(*_args: Any) -> None:
+    async def detect(*_args: Any, **_kwargs: Any) -> None:
         started.set()
         try:
             await asyncio.Event().wait()

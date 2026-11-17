@@ -32,7 +32,11 @@ from .config_flow_qr import UNKNOWN_ERROR, _QRCodeLoginMixin
 from .config_flow_state import PROBE_CLAIM_TTL, _consume_probe_result
 from .config_flow_state import advertisement_hex as _advertisement_hex
 from .config_flow_state import probe_state as _probe_state
-from .config_flow_unverified import UnverifiedSetup, _UnverifiedSetupMixin
+from .config_flow_unverified import (
+    UnverifiedSetup,
+    _UnverifiedSetupMixin,
+    unverified_error,
+)
 from .const import (
     CONF_ADVERTISED_UUID,
     CONF_CATEGORY,
@@ -66,6 +70,7 @@ from .tuya_ble import (
     SERVICE_UUIDS,
     ConnectionProfile,
     ProbeOutcome,
+    ProbeStage,
     TuyaBLEAdvertisementInfo,
     TuyaBLEDeviceCredentials,
     async_detect_v4_profile,
@@ -119,7 +124,7 @@ class TuyaBLEConfigFlow(
         self._probe_source_step = "device"
         self._probe_error: str | None = None
         self._verified_profile: ConnectionProfile | None = None
-        self._unverified_credentials: TuyaBLEDeviceCredentials | None = None
+        self._unverified_credentials: tuple[TuyaBLEDeviceCredentials, str] | None = None
         self._unverified_setup: UnverifiedSetup | None = None
         self._reconfigure_unloaded = False
         self._qr_user_code: str = ""
@@ -451,13 +456,16 @@ class TuyaBLEConfigFlow(
         unverified, self._unverified_credentials = self._unverified_credentials, None
         if error == "v4_verification_failed":
             self._get_device_info_error = True
+        if unverified is not None:
+            # Only a failed v4 verification leaves these; show why it failed.
+            error = unverified[1]
         if self._probe_source_step == "reconfigure":
             self._probe_error = error
             await self._async_restore_entry()
             return await self._async_reconfigure_locked(None)
-        if error == "v4_verification_failed" and unverified is not None:
-            self._unverified_setup = (discovery, advertisement, unverified)
-            return self._show_unverified_form(discovery)
+        if unverified is not None:
+            self._unverified_setup = (discovery, advertisement, *unverified)
+            return self._show_unverified_form(discovery, error)
         self._probe_error = error
         if self._probe_source_step == "discovered_device":
             return await self.async_step_discovered_device()
@@ -666,11 +674,13 @@ class TuyaBLEConfigFlow(
                 and claim[2] > time.monotonic()
             ):
                 return None, None, "device_verification_expired"
+            stages: list[ProbeStage] = []
             profile = await async_detect_v4_profile(
                 discovery.device,
                 discovery.advertisement,
                 credentials,
                 get_mapped_dp_ids(credentials.category, credentials.product_id),
+                stages=stages,
             )
             self._abort_if_flow_removed()
             if profile is not None:
@@ -682,7 +692,7 @@ class TuyaBLEConfigFlow(
         self._abort_if_flow_removed()
         if profile is None:
             # Kept so the user may still add the device to collect diagnostics.
-            self._unverified_credentials = credentials
+            self._unverified_credentials = (credentials, unverified_error(stages))
             return None, None, "v4_verification_failed"
         return replace(credentials, connection_profile=profile), credentials.uuid, ""
 

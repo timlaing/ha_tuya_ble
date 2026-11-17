@@ -106,6 +106,21 @@ async def _async_wait_for_previous_cleanup(address: str) -> bool:
     return True
 
 
+class ProbeStage(StrEnum):
+    """How far a failed probe got, in handshake order."""
+
+    INELIGIBLE = "ineligible"
+    CREDENTIALS = "credentials"
+    CONNECT = "connect"
+    NOTIFY = "notify"
+    DEVICE_INFO = "device_info"
+    UNBOUND = "unbound"
+    UNSUPPORTED = "unsupported"
+    PAIR = "pair"
+    STATUS = "status"
+    DATAPOINTS = "datapoints"
+
+
 class ProbeOutcome(StrEnum):
     """Result of an authenticated status read (not a cloud-device guess)."""
 
@@ -382,7 +397,7 @@ class _ProbeDevice(TuyaBLEDevice):
         self._connection_lost = False
         self._owned_client: BleakClientWithServiceCache | None = None
         # The last handshake stage reached, logged with the probe outcome.
-        self.stage = "connect"
+        self.stage = ProbeStage.CONNECT
 
     def _capture_client(self, client: BleakClientWithServiceCache) -> None:
         """Keep a constructor-created client even if connect never returns it."""
@@ -531,11 +546,11 @@ class _ProbeDevice(TuyaBLEDevice):
         if client is None:
             return ProbeOutcome.INCONCLUSIVE
         self._client = client
-        self.stage = "notify"
+        self.stage = ProbeStage.NOTIFY
         self._select_characteristics(client)
         await client.start_notify(self._notify_char, self._safe_notification_handler)
         await self._configure_packet_size(client)
-        self.stage = "device_info"
+        self.stage = ProbeStage.DEVICE_INFO
         if not await self._send_packet_while_connected(
             TuyaBLECode.FUN_SENDER_DEVICE_INFO,
             self._build_device_info_request(),
@@ -545,12 +560,13 @@ class _ProbeDevice(TuyaBLEDevice):
             return ProbeOutcome.RETRYABLE
         if self._session_key is None:
             return ProbeOutcome.INCONCLUSIVE
-        if (
-            not self._is_bound
-            or self._protocol_version not in SUPPORTED_PROTOCOL_VERSIONS
-        ):
+        if not self._is_bound:
+            self.stage = ProbeStage.UNBOUND
             return ProbeOutcome.INCONCLUSIVE
-        self.stage = "pair"
+        if self._protocol_version not in SUPPORTED_PROTOCOL_VERSIONS:
+            self.stage = ProbeStage.UNSUPPORTED
+            return ProbeOutcome.INCONCLUSIVE
+        self.stage = ProbeStage.PAIR
         self._awaiting_pair = True
         try:
             if not await self._send_packet_while_connected(
@@ -564,14 +580,14 @@ class _ProbeDevice(TuyaBLEDevice):
         if not self._is_paired:
             return self._failed_pair_outcome()
         enable_status()
-        self.stage = "status"
+        self.stage = ProbeStage.STATUS
         if not await self._send_packet_while_connected(
             TuyaBLECode.FUN_SENDER_DEVICE_STATUS, b"", 0, self._protocol_version != 4
         ):
             return ProbeOutcome.RETRYABLE
         if self._protocol_version != 4 and not self.status_accepted:
             return ProbeOutcome.INCONCLUSIVE
-        self.stage = "datapoints"
+        self.stage = ProbeStage.DATAPOINTS
         await received
         if self.status_refused:
             return ProbeOutcome.INCONCLUSIVE
@@ -619,28 +635,46 @@ async def async_probe_authenticated_status(
     credentials: TuyaBLEDeviceCredentials,
     pairing_uuid: str,
     expected_dp_ids: frozenset[int],
+    stages: list[ProbeStage] | None = None,
 ) -> ProbeOutcome:
     """Match only after encrypted device-info, accepted pair and expected DPs.
 
     Timeouts and silent disconnects return RETRYABLE so the caller can retry
     this identity once before advancing. Other failures remain INCONCLUSIVE;
     neither failure outcome proves that the credentials match. Each invocation
-    uses a fresh connection and ephemeral credentials.
+    uses a fresh connection and ephemeral credentials. When ``stages`` is
+    given, the stage a failed probe reached is appended to it.
     """
+    outcome, stage = await _async_probe(
+        ble_device, advertisement, credentials, pairing_uuid, expected_dp_ids
+    )
+    if stages is not None and outcome != ProbeOutcome.MATCHED:
+        stages.append(stage)
+    return outcome
+
+
+async def _async_probe(
+    ble_device: BLEDevice,
+    advertisement: AdvertisementData,
+    credentials: TuyaBLEDeviceCredentials,
+    pairing_uuid: str,
+    expected_dp_ids: frozenset[int],
+) -> tuple[ProbeOutcome, ProbeStage]:
+    """Run one probe and return its outcome with the stage it reached."""
     probe_credentials = _probe_credentials(advertisement, credentials, expected_dp_ids)
     if probe_credentials is None:
-        return ProbeOutcome.INCONCLUSIVE
+        return ProbeOutcome.INCONCLUSIVE, ProbeStage.INELIGIBLE
 
     device = _ProbeDevice(ble_device, advertisement)
     try:
         # This is a detached copy. Never mutate the SDK's cached cloud record.
         device.prepare(probe_credentials, pairing_uuid)
     except TuyaBLEDeviceError, ValueError:
-        return ProbeOutcome.INCONCLUSIVE
+        return ProbeOutcome.INCONCLUSIVE, ProbeStage.CREDENTIALS
 
     if not await _async_wait_for_previous_cleanup(ble_device.address):
         _LOGGER.debug("Previous BLE probe cleanup has not confirmed disconnection")
-        return ProbeOutcome.RETRYABLE
+        return ProbeOutcome.RETRYABLE, ProbeStage.CONNECT
 
     loop = asyncio.get_running_loop()
     received = loop.create_future()
@@ -689,7 +723,7 @@ async def async_probe_authenticated_status(
     if outcome == ProbeOutcome.MATCHED and device.status_refused:
         outcome = ProbeOutcome.INCONCLUSIVE
     _log_probe_outcome(device, outcome)
-    return outcome
+    return outcome, device.stage
 
 
 def _probe_credentials(
@@ -741,6 +775,7 @@ async def async_detect_v4_profile(
     advertisement: AdvertisementData,
     credentials: TuyaBLEDeviceCredentials,
     expected_dp_ids: frozenset[int],
+    stages: list[ProbeStage] | None = None,
 ) -> ConnectionProfile | None:
     """Try bounded read-only profiles, releasing each link before the next.
 
@@ -751,6 +786,8 @@ async def async_detect_v4_profile(
     # The bound state comes from the encrypted DEVICE_INFO reply, not the
     # advertisement: FD50 firmware may advertise as unbound while bound.
     if info is None or info.protocol_version != 4 or not expected_dp_ids:
+        if stages is not None:
+            stages.append(ProbeStage.INELIGIBLE)
         return None
     for profile in ConnectionProfile:
         _LOGGER.debug(
@@ -773,7 +810,12 @@ async def async_detect_v4_profile(
             sec_key=credentials.sec_key,
         )
         outcome = await async_probe_authenticated_status(
-            ble_device, advertisement, candidate, credentials.uuid, expected_dp_ids
+            ble_device,
+            advertisement,
+            candidate,
+            credentials.uuid,
+            expected_dp_ids,
+            stages,
         )
         if outcome == ProbeOutcome.MATCHED:
             return profile

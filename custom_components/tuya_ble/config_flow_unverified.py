@@ -15,13 +15,39 @@ from homeassistant.core import HomeAssistant
 import probatio
 
 from .const import CONF_DEVICE_ID, DOMAIN
-from .tuya_ble import TuyaBLEAdvertisementInfo, TuyaBLEDeviceCredentials
+from .tuya_ble import ProbeStage, TuyaBLEAdvertisementInfo, TuyaBLEDeviceCredentials
 
 _LOGGER = logging.getLogger(__name__)
 
+# Discovery, advertisement, cloud credentials and the error key to show.
 type UnverifiedSetup = tuple[
-    BluetoothServiceInfoBleak, TuyaBLEAdvertisementInfo, TuyaBLEDeviceCredentials
+    BluetoothServiceInfoBleak, TuyaBLEAdvertisementInfo, TuyaBLEDeviceCredentials, str
 ]
+
+GENERIC_ERROR = "v4_verification_failed"
+
+# The plain-language error for the furthest stage any verification attempt
+# reached; earlier attempts' failures are less informative.
+_STAGE_ERRORS: dict[ProbeStage, str] = {
+    ProbeStage.INELIGIBLE: "v4_failed_unsupported_model",
+    ProbeStage.CREDENTIALS: "v4_failed_credentials",
+    ProbeStage.CONNECT: "v4_failed_connect",
+    ProbeStage.NOTIFY: "v4_failed_connect",
+    ProbeStage.DEVICE_INFO: "v4_failed_no_reply",
+    ProbeStage.UNBOUND: "v4_failed_not_added",
+    ProbeStage.UNSUPPORTED: "v4_failed_unsupported_version",
+    ProbeStage.PAIR: "v4_failed_login",
+    ProbeStage.STATUS: "v4_failed_no_data",
+    ProbeStage.DATAPOINTS: "v4_failed_no_data",
+}
+_STAGE_ORDER = tuple(ProbeStage)
+
+
+def unverified_error(stages: list[ProbeStage]) -> str:
+    """Return the error key explaining why verification failed."""
+    if not stages:
+        return GENERIC_ERROR
+    return _STAGE_ERRORS[max(stages, key=_STAGE_ORDER.index)]
 
 
 class _UnverifiedSetupMixin:
@@ -64,13 +90,13 @@ class _UnverifiedSetupMixin:
             """Provided by the config flow."""
 
     def _show_unverified_form(
-        self, discovery: BluetoothServiceInfoBleak
+        self, discovery: BluetoothServiceInfoBleak, error: str
     ) -> ConfigFlowResult:
-        """Show the verification failure; submitting adds the device anyway."""
+        """Show why verification failed; submitting adds the device anyway."""
         return self.async_show_form(
             step_id="unverified",
             data_schema=probatio.Schema({}),
-            errors={"base": "v4_verification_failed"},
+            errors={"base": error},
             description_placeholders={
                 CONF_ADDRESS: discovery.address,
                 "name": discovery.name or discovery.address,
@@ -90,9 +116,9 @@ class _UnverifiedSetupMixin:
         pending = self._unverified_setup
         if pending is None:
             return self.async_abort(reason="unknown")
-        discovery, advertisement, credentials = pending
+        discovery, advertisement, credentials, error = pending
         if user_input is None:
-            return self._show_unverified_form(discovery)
+            return self._show_unverified_form(discovery, error)
         async with self._setup_lock:
             self._abort_if_flow_removed()
             self._unverified_setup = None

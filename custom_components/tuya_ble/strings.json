@@ -14,6 +14,14 @@
       "probe_setup_failed": "Could not prepare device verification. Try again later.",
       "device_verification_expired": "Device verification expired or was claimed by another setup. Please retry.",
       "v4_verification_failed": "Home Assistant could not connect to this device over Bluetooth. Check that it is added in the Smart Life app, close the app, move the device closer and try again.",
+      "v4_failed_unsupported_model": "This device model is not supported yet, so its Bluetooth connection could not be checked.",
+      "v4_failed_credentials": "The login details from the Tuya cloud cannot be used for this device.",
+      "v4_failed_connect": "Home Assistant could not connect to the device over Bluetooth. Move it closer to Home Assistant or a Bluetooth proxy, close the Smart Life app and try again.",
+      "v4_failed_no_reply": "The device connected but did not reply. It may use a Bluetooth login this integration does not support yet.",
+      "v4_failed_not_added": "The device says it is not added to a Smart Life account. Add it in the Smart Life app and try again.",
+      "v4_failed_unsupported_version": "The device uses a Bluetooth protocol version this integration does not support yet.",
+      "v4_failed_login": "The device did not accept the login details from the Tuya cloud.",
+      "v4_failed_no_data": "The device accepted the login but did not send any readings.",
       "bluetooth_scan_failed": "The complete Bluetooth advertisement was not received. Move the device closer and try again.",
       "identity_not_decoded": "The identity in the Bluetooth advertisement could not be decoded.",
       "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
@@ -41,7 +49,7 @@
       },
       "unverified": {
         "title": "Add the device anyway?",
-        "description": "Home Assistant could not connect to {name} ({address}) over Bluetooth, so it may show as unavailable. You can still add it: select Submit to add the device, or close this window to cancel. Once added, downloading its diagnostics helps add support for it."
+        "description": "You can still add {name} ({address}), but it may show as unavailable. Select Submit to add it, or close this window to cancel. Once added, downloading its diagnostics helps add support for it."
       },
       "scan": {
         "description": "Waiting for QR code scan..."

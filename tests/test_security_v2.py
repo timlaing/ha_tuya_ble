@@ -37,9 +37,13 @@ from custom_components.tuya_ble.const import (
 from custom_components.tuya_ble.devices import TuyaBLEData
 from custom_components.tuya_ble.diagnostics import async_get_config_entry_diagnostics
 from custom_components.tuya_ble.tuya_ble import (
+    SERVICE_UUID,
     ConnectionProfile,
+    ProbeOutcome,
+    ProbeStage,
     TuyaBLEDevice,
     async_detect_v4_profile,
+    async_probe_authenticated_status,
     decode_tuya_ble_advertisement,
 )
 from custom_components.tuya_ble.tuya_ble.const import (
@@ -297,14 +301,17 @@ async def test_v2_verification_with_unbound_advertisement() -> None:
     establish = _probe_establish(
         clients, lambda: SecurityV2Firmware(credentials, SHADE_DATA)
     )
+    stages: list[ProbeStage] = []
     with patch(PROBE_CONNECT, side_effect=establish):
         result = await async_detect_v4_profile(
             make_device()._ble_device,
             v4_advertisement(uuid=credentials.uuid.encode(), service=V2_SERVICE),
             credentials,
             frozenset({1, 3}),
+            stages=stages,
         )
     assert result == ConnectionProfile.V4_20
+    assert not stages
     assert len(clients) == 1
     assert [frame[3] for frame in clients[0].received] == [14, 15, 15]
 
@@ -334,6 +341,7 @@ async def test_unbound_device_info_is_never_paired(
     """The DEVICE_INFO bound flag, not the advert, gates the pair request."""
     credentials = v2_credentials()
     clients: list[FakeV4Firmware] = []
+    stages: list[ProbeStage] = []
     establish = _probe_establish(
         clients, lambda: SecurityV2Firmware(credentials, SHADE_DATA, bound=False)
     )
@@ -351,11 +359,13 @@ async def test_unbound_device_info_is_never_paired(
             v4_advertisement(uuid=credentials.uuid.encode(), service=V2_SERVICE),
             credentials,
             frozenset({1, 3}),
+            stages=stages,
         )
     assert result is None
+    assert stages[0] == ProbeStage.UNBOUND
     assert [frame[0] for frame in clients[0].received] == [0]
     assert (
-        "Authenticated probe inconclusive at stage device_info "
+        "Authenticated probe inconclusive at stage unbound "
         "(security v2, protocol 4.2)" in caplog.text
     )
     assert "Authenticated BLE probe failed: TuyaBLEDeviceError" in caplog.text
@@ -368,15 +378,85 @@ async def test_unbound_device_info_is_never_paired(
 async def test_malformed_sec_key_is_inconclusive() -> None:
     """A sec_key of the wrong width never opens a connection."""
     credentials = v2_credentials("short")
+    stages: list[ProbeStage] = []
     with patch(PROBE_CONNECT, new=AsyncMock()) as connect:
         result = await async_detect_v4_profile(
             make_device()._ble_device,
             v4_advertisement(uuid=credentials.uuid.encode(), service=V2_SERVICE),
             credentials,
             frozenset({1, 3}),
+            stages=stages,
         )
     assert result is None
+    assert set(stages) == {ProbeStage.CREDENTIALS}
     connect.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("advertisement", "expected"),
+    [
+        (CLASSIC_SERVICE, frozenset()),
+        (b"\x41\x00\x00\x08abcdefgh", frozenset()),
+    ],
+)
+async def test_ineligible_detection_reports_its_stage(
+    advertisement: bytes, expected: frozenset[int]
+) -> None:
+    """A device that cannot be checked says so instead of a generic failure."""
+    stages: list[ProbeStage] = []
+    result = await async_detect_v4_profile(
+        make_device()._ble_device,
+        v4_advertisement(service=advertisement),
+        v2_credentials(),
+        expected,
+        stages=stages,
+    )
+    assert result is None
+    assert stages == [ProbeStage.INELIGIBLE]
+
+
+async def test_unbound_classic_probe_reports_ineligible() -> None:
+    """A classic advertisement without the bound flag is never probed."""
+    stages: list[ProbeStage] = []
+    adv = test_advertisement.advertisement(
+        b"\x00abcdefgh", bytes((0x00, 3, 0, 0, 0, 0)) + bytes(16), SERVICE_UUID
+    )
+    outcome = await async_probe_authenticated_status(
+        make_device()._ble_device, adv, v2_credentials(), "uuid", frozenset({1}), stages
+    )
+    assert outcome == ProbeOutcome.INCONCLUSIVE
+    assert stages == [ProbeStage.INELIGIBLE]
+
+
+class UnsupportedVersionFirmware(SecurityV2Firmware):
+    """Reply to device info with a protocol version that is not supported."""
+
+    def _reply(self, code: int, response_to: int, data: bytes, flag: int) -> int:
+        if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO.value:
+            data = data[:2] + b"\x05\x00" + data[4:]
+        return super()._reply(code, response_to, data, flag)
+
+
+async def test_unsupported_device_version_reports_its_stage() -> None:
+    """A device reporting an unsupported version is never paired."""
+    credentials = v2_credentials()
+    clients: list[FakeV4Firmware] = []
+    stages: list[ProbeStage] = []
+    establish = _probe_establish(
+        clients, lambda: UnsupportedVersionFirmware(credentials, SHADE_DATA)
+    )
+    with patch(PROBE_CONNECT, side_effect=establish):
+        outcome = await async_probe_authenticated_status(
+            make_device()._ble_device,
+            v4_advertisement(uuid=credentials.uuid.encode(), service=V2_SERVICE),
+            credentials,
+            credentials.uuid,
+            frozenset({1, 3}),
+            stages,
+        )
+    assert outcome == ProbeOutcome.INCONCLUSIVE
+    assert stages == [ProbeStage.UNSUPPORTED]
+    assert [frame[0] for frame in clients[0].received] == [0]
 
 
 # ---------------------------------------------------------------------------

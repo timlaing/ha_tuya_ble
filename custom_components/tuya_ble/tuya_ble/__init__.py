@@ -26,6 +26,7 @@ from .manager import (
 )
 from .probe import (
     ProbeOutcome,
+    ProbeStage,
     async_detect_v4_profile,
     async_probe_authenticated_status,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "DPType",
     "ConnectionProfile",
     "ProbeOutcome",
+    "ProbeStage",
     "MANUFACTURER_DATA_ID",
     "SERVICE_UUID",
     "SERVICE_UUID_V4",

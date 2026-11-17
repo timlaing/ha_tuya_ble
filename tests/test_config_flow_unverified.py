@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
+from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
@@ -14,13 +16,14 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.tuya_ble.config_flow import TuyaBLEConfigFlow
+from custom_components.tuya_ble.config_flow_unverified import unverified_error
 from custom_components.tuya_ble.const import (
     CONF_CONNECTION_PROFILE,
     CONF_DEVICE_ID,
     CONF_SEC_KEY,
     DOMAIN,
 )
-from custom_components.tuya_ble.tuya_ble import ConnectionProfile
+from custom_components.tuya_ble.tuya_ble import ConnectionProfile, ProbeStage
 from tests import test_advertisement
 from tests.conftest import make_credentials, make_device
 from tests.test_config_flow import FakeManager, build_flow
@@ -161,3 +164,59 @@ async def test_add_unverified_stops_after_flow_removal(hass: HomeAssistant) -> N
     flow._flow_removed = True
     with pytest.raises(AbortFlow):
         await flow.async_step_unverified({})
+
+
+def test_every_stage_has_a_translated_error() -> None:
+    """Each failure reason shown to the user has text in both string files."""
+    for path in ("strings.json", "translations/en.json"):
+        strings = json.loads(
+            (Path("custom_components/tuya_ble") / path).read_text(encoding="utf-8")
+        )
+        errors = strings["config"]["error"]
+        for stage in ProbeStage:
+            assert unverified_error([stage]) in errors
+        assert unverified_error([]) in errors
+
+
+@pytest.mark.parametrize(
+    ("stages", "error"),
+    [
+        ([], "v4_verification_failed"),
+        ([ProbeStage.NOTIFY], "v4_failed_connect"),
+        ([ProbeStage.CONNECT, ProbeStage.DEVICE_INFO], "v4_failed_no_reply"),
+        ([ProbeStage.DATAPOINTS, ProbeStage.NOTIFY], "v4_failed_no_data"),
+        ([ProbeStage.UNBOUND], "v4_failed_not_added"),
+        ([ProbeStage.PAIR, ProbeStage.UNSUPPORTED], "v4_failed_login"),
+    ],
+)
+def test_furthest_stage_explains_the_failure(
+    stages: list[ProbeStage], error: str
+) -> None:
+    """The attempt that got furthest gives the most useful explanation."""
+    assert unverified_error(stages) == error
+
+
+async def _detect_failing_at(*_args: Any, stages: list[ProbeStage], **_kw: Any) -> None:
+    stages.extend((ProbeStage.CONNECT, ProbeStage.DEVICE_INFO))
+
+
+async def test_unverified_form_shows_why_verification_failed(
+    hass: HomeAssistant,
+) -> None:
+    """The add-anyway page shows the reason from the verification step."""
+    flow = build_flow(hass)
+    info = _discovery()
+    flow.discovery_info = cast(Any, info)
+    flow._manager = cast(Any, FakeManager(make_credentials()))
+    with (
+        patch.object(flow, "_async_scan_device", return_value=info),
+        patch(DETECT, side_effect=_detect_failing_at),
+    ):
+        await flow.async_step_discovered_device({})
+        assert flow._probe_task is not None
+        await flow._probe_task
+        result = await flow.async_step_probe_finish()
+    assert result["step_id"] == "unverified"
+    assert result["errors"] == {"base": "v4_failed_no_reply"}
+    shown = await flow.async_step_unverified()
+    assert shown["errors"] == {"base": "v4_failed_no_reply"}
