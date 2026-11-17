@@ -425,6 +425,9 @@ async def _verified_setup(
     monkeypatch.setattr(
         "custom_components.tuya_ble.tuya_ble.base.BLEAK_BACKOFF_TIME", 0.01
     )
+    monkeypatch.setattr(
+        "custom_components.tuya_ble.tuya_ble.base._RECONNECT_INITIAL_DELAY", 0.01
+    )
     flow, discovery = _flow(hass, [credentials])
     discovery.device = ble
     discovery.advertisement = advertisement  # type: ignore[assignment]
