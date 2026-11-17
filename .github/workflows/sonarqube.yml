@@ -88,8 +88,9 @@ jobs:
           SCANNER_SETTINGS: |
             sonar.projectKey=timlaing_ha_tuya_ble
             sonar.organization=timlaing
-            sonar.sources=custom_components/tuya_ble
-            sonar.tests=tests
+            sonar.sources=custom_components/tuya_ble,.github/scripts
+            sonar.tests=tests,.github/scripts
+            sonar.test.inclusions=**/test_*.py,**/*.test.*,**/tests/**
             sonar.python.coverage.reportPaths=.coverage/coverage.xml,.coverage/coverage-workflow/python.xml
             sonar.projectName=ha_tuya_ble
             sonar.python.version=3.14
