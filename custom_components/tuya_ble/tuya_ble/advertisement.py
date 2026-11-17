@@ -15,6 +15,10 @@ from Crypto.Cipher import AES
 
 from .const import MANUFACTURER_DATA_ID, SERVICE_UUID, SERVICE_UUID_V4
 
+# FD50 frame control is big-endian; bit 2 of its low byte (service byte 1)
+# announces the "Security V2" channel, keyed with the cloud sec_key.
+FD50_SECURITY_V2 = 0x04
+
 
 @dataclass(frozen=True)
 class TuyaBLEAdvertisementInfo:
@@ -24,6 +28,7 @@ class TuyaBLEAdvertisementInfo:
     uuid: str
     is_bound: bool
     protocol_version: int
+    security_v2: bool = False
 
 
 @dataclass(frozen=True)
@@ -108,6 +113,7 @@ def _decode_v4(service: bytes, manufacturer: bytes) -> TuyaBLEAdvertisementInfo 
         uuid=uuid,
         is_bound=bound,
         protocol_version=4,
+        security_v2=bool(service[1] & FD50_SECURITY_V2),
     )
 
 

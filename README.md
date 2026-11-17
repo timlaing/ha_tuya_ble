@@ -51,7 +51,9 @@ For protocol-4 devices, setup automatically verifies a compatible Bluetooth
 handshake and saves it for offline reconnects and Home Assistant reboots. Keep
 the device nearby and close Smart Life after login to release its BLE connection.
 No opt-in setting is required. Existing entries can run the same verification
-from **Reconfigure**, without deleting devices or changing entity IDs.
+from **Reconfigure**, without deleting devices or changing entity IDs. If
+verification fails, setup shows the error and offers to add the device anyway;
+such a device may stay unavailable, but its diagnostics help add support.
 See [protocol-4 compatibility and hardware checks](docs/PROTOCOL_4.md).
 
 ## Debug logging

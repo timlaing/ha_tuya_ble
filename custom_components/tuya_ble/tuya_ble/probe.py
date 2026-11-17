@@ -381,6 +381,8 @@ class _ProbeDevice(TuyaBLEDevice):
         self._awaiting_pair = False
         self._connection_lost = False
         self._owned_client: BleakClientWithServiceCache | None = None
+        # The last handshake stage reached, logged with the probe outcome.
+        self.stage = "connect"
 
     def _capture_client(self, client: BleakClientWithServiceCache) -> None:
         """Keep a constructor-created client even if connect never returns it."""
@@ -407,7 +409,8 @@ class _ProbeDevice(TuyaBLEDevice):
 
     def _decrypt_input(self) -> bytes:
         """Require login-key device info, then session-key auth and status."""
-        required_flag = 5 if self._session_key is not None else 4
+        login_flag, session_flag = self._security_flags()
+        required_flag = session_flag if self._session_key is not None else login_flag
         if not self._input_buffer or self._input_buffer[0] != required_flag:
             raise TuyaBLEDataFormatError()
         return super()._decrypt_input()
@@ -528,9 +531,11 @@ class _ProbeDevice(TuyaBLEDevice):
         if client is None:
             return ProbeOutcome.INCONCLUSIVE
         self._client = client
+        self.stage = "notify"
         self._select_characteristics(client)
         await client.start_notify(self._notify_char, self._safe_notification_handler)
         await self._configure_packet_size(client)
+        self.stage = "device_info"
         if not await self._send_packet_while_connected(
             TuyaBLECode.FUN_SENDER_DEVICE_INFO,
             self._build_device_info_request(),
@@ -545,6 +550,7 @@ class _ProbeDevice(TuyaBLEDevice):
             or self._protocol_version not in SUPPORTED_PROTOCOL_VERSIONS
         ):
             return ProbeOutcome.INCONCLUSIVE
+        self.stage = "pair"
         self._awaiting_pair = True
         try:
             if not await self._send_packet_while_connected(
@@ -558,12 +564,14 @@ class _ProbeDevice(TuyaBLEDevice):
         if not self._is_paired:
             return self._failed_pair_outcome()
         enable_status()
+        self.stage = "status"
         if not await self._send_packet_while_connected(
             TuyaBLECode.FUN_SENDER_DEVICE_STATUS, b"", 0, self._protocol_version != 4
         ):
             return ProbeOutcome.RETRYABLE
         if self._protocol_version != 4 and not self.status_accepted:
             return ProbeOutcome.INCONCLUSIVE
+        self.stage = "datapoints"
         await received
         if self.status_refused:
             return ProbeOutcome.INCONCLUSIVE
@@ -619,16 +627,14 @@ async def async_probe_authenticated_status(
     neither failure outcome proves that the credentials match. Each invocation
     uses a fresh connection and ephemeral credentials.
     """
-    info = decode_tuya_ble_advertisement(advertisement)
-    # The decoder validates advertisement layouts. A classic v2 marker can
-    # bootstrap a v3 device; enforce supported device versions after DEVICE_INFO.
-    if info is None or not info.is_bound or not expected_dp_ids:
+    probe_credentials = _probe_credentials(advertisement, credentials, expected_dp_ids)
+    if probe_credentials is None:
         return ProbeOutcome.INCONCLUSIVE
 
     device = _ProbeDevice(ble_device, advertisement)
     try:
         # This is a detached copy. Never mutate the SDK's cached cloud record.
-        device.prepare(credentials, pairing_uuid)
+        device.prepare(probe_credentials, pairing_uuid)
     except TuyaBLEDeviceError, ValueError:
         return ProbeOutcome.INCONCLUSIVE
 
@@ -673,7 +679,7 @@ async def async_probe_authenticated_status(
         # BLE and SDK exception text may contain secrets. Never log it.
         if isinstance(err.__cause__, TimeoutError):
             outcome = ProbeOutcome.RETRYABLE
-        _LOGGER.debug("Authenticated BLE probe failed")
+        _LOGGER.debug("Authenticated BLE probe failed: %s", type(err).__name__)
     finally:
         if outcome == ProbeOutcome.INCONCLUSIVE and device.connection_lost:
             outcome = ProbeOutcome.RETRYABLE
@@ -681,8 +687,45 @@ async def async_probe_authenticated_status(
         _release_probe_future(received)
         outcome = await _async_close_probe(device, outcome)
     if outcome == ProbeOutcome.MATCHED and device.status_refused:
-        return ProbeOutcome.INCONCLUSIVE
+        outcome = ProbeOutcome.INCONCLUSIVE
+    _log_probe_outcome(device, outcome)
     return outcome
+
+
+def _probe_credentials(
+    advertisement: AdvertisementData,
+    credentials: TuyaBLEDeviceCredentials,
+    expected_dp_ids: frozenset[int],
+) -> TuyaBLEDeviceCredentials | None:
+    """Return the credentials a probe may use, or None when it must not run.
+
+    The decoder validates advertisement layouts. A classic v2 marker can
+    bootstrap a v3 device; supported device versions are enforced after
+    DEVICE_INFO. FD50 firmware does not reliably advertise its bound state, so
+    protocol 4 relies on the bound flag of the encrypted DEVICE_INFO reply,
+    which is checked before any pair request is sent.
+    """
+    info = decode_tuya_ble_advertisement(advertisement)
+    if info is None or not expected_dp_ids:
+        return None
+    if info.protocol_version != 4 and not info.is_bound:
+        return None
+    if not info.security_v2 and credentials.sec_key is not None:
+        # Only an advertised Security V2 channel may use the cloud sec_key.
+        return replace(credentials, sec_key=None)
+    return credentials
+
+
+def _log_probe_outcome(device: _ProbeDevice, outcome: ProbeOutcome) -> None:
+    """Log the outcome with the stage reached, never exception text or keys."""
+    _LOGGER.debug(
+        "%s: Authenticated probe %s at stage %s (security %s, protocol %s)",
+        device.address,
+        outcome,
+        device.stage,
+        "v2" if device.security_v2 else "classic",
+        device.protocol_version or "unknown",
+    )
 
 
 def _release_probe_future(received: asyncio.Future[None]) -> None:
@@ -705,12 +748,9 @@ async def async_detect_v4_profile(
     write datapoints or accept a profile without authenticated status data.
     """
     info = decode_tuya_ble_advertisement(advertisement)
-    if (
-        info is None
-        or info.protocol_version != 4
-        or not info.is_bound
-        or not expected_dp_ids
-    ):
+    # The bound state comes from the encrypted DEVICE_INFO reply, not the
+    # advertisement: FD50 firmware may advertise as unbound while bound.
+    if info is None or info.protocol_version != 4 or not expected_dp_ids:
         return None
     for profile in ConnectionProfile:
         _LOGGER.debug(
@@ -730,6 +770,7 @@ async def async_detect_v4_profile(
             local_schema=credentials.local_schema,
             cloud_info=credentials.cloud_info,
             connection_profile=profile,
+            sec_key=credentials.sec_key,
         )
         outcome = await async_probe_authenticated_status(
             ble_device, advertisement, candidate, credentials.uuid, expected_dp_ids

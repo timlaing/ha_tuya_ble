@@ -1,6 +1,6 @@
 # Tuya BLE protocol 4 connection and datapoint reports
 
-<!-- cspell:ignore Raykube -->
+<!-- cspell:ignore Raykube frankhommers -->
 
 [BLE_ADVERTISEMENT_DECODING.md](BLE_ADVERTISEMENT_DECODING.md) covers how an
 FD50 advertisement identifies a protocol-4 device. This page covers what happens
@@ -38,10 +38,14 @@ the firmware's reported protocol version controls subsequent frame markers.
 
 A profile is saved only after encrypted device-info, accepted pairing, and a
 status report containing a mapped datapoint. A cloud UUID match, GATT write
-success, or pairing reply alone is not enough. No verified profile means a
-retryable setup error rather than a silently unavailable entry. Unbound devices
-are never provisioned; bind them in Smart Life first and close the app before
-verification. Devices with no known datapoint mapping cannot be verified this way.
+success, or pairing reply alone is not enough. When no profile verifies, setup
+shows the error and offers to add the device anyway. Such an entry has no saved
+profile, uses the default handshake and may stay unavailable; it exists so its
+diagnostics can be collected. Unbound devices are never provisioned: the bound
+flag in the encrypted device-info reply is checked before any pair request,
+because FD50 firmware does not reliably advertise its bound state. Bind devices
+in Smart Life first and close the app before verification. Devices with no known
+datapoint mapping cannot be verified this way.
 
 The saved profile lives with the credentials in config-entry data. Runtime
 restores the v4 handshake even before an advertisement callback arrives after
@@ -145,6 +149,40 @@ cryptography in a closed library, so key derivation is taken from this
 integration's protocol-3 code and the reference client below, not from SDK
 source.
 
+## Security V2
+
+Bit 2 of the FD50 frame control's low byte (service-data byte 1) announces the
+"Security V2" channel
+([TuyaOpen `ble_mgr.c`](https://github.com/tuya/TuyaOpen/blob/master/src/tuya_cloud_service/ble/ble_mgr.c)).
+Such firmware silently drops frames encrypted with the classic flags 4 and 5,
+then disconnects about 30 seconds later. It needs the cloud `sec_key`, a 16-byte
+key stored beside the local key
+([TuyaOpen `ble_cryption.c`](https://github.com/tuya/TuyaOpen/blob/master/src/tuya_cloud_service/ble/ble_cryption.c)):
+
+| Flag | Used for    | Key                                |
+| ---- | ----------- | ---------------------------------- |
+| 14   | Device info | `MD5(local_key + sec_key)`         |
+| 15   | Session     | `MD5(local_key + sec_key + srand)` |
+
+`local_key` is the complete 16-byte key and `srand` is the 6-byte random of the
+device-info reply. The pair request appends `local_key` and `sec_key` to the
+classic 44-byte frame, 76 bytes in total. Framing, reports and writes are
+unchanged.
+
+The channel is used only when the device advertises Security V2 and its cloud
+record carries a `sec_key` of exactly 16 bytes. Setup stores the key only for
+such a device; diagnostics report whether the cloud record had one
+(`cloud_info.sec_key_present`), whether it is stored (`identity.sec_key_stored`)
+and whether the runtime uses it (`device.security_v2`), never the key itself.
+`cloud_info.fields` names every field of the raw cloud record captured at setup
+or refreshed with re-authentication tokens: allowlisted product and version
+fields keep their value, every other field shows only its type and size, for
+example `<redacted str, 16 chars>`.
+The field name in the cloud record (`sec_key` or `secKey`) and the 76-byte pair
+layout follow
+[frankhommers/ha-tuya-ble-access](https://github.com/frankhommers/ha-tuya-ble-access)
+and have not been confirmed on a Security V2 shade.
+
 ## Datapoint reports
 
 `0x8006` (`FUN_RECEIVE_DP_V4`) and `0x8007` (`FUN_RECEIVE_TIME_DP_V4`) start with
@@ -168,9 +206,11 @@ here. The list must contain at least one entry and end exactly on an entry
 boundary. All entries are decoded before any datapoint is stored, so a malformed
 report changes nothing.
 
-VALUE uses four bytes and remains signed; BOOL and ENUM use one byte, and ENUM is
-unsigned. BITMAP accepts one, two or four bytes. Invalid widths reject the whole
-report without updates or acknowledgement. Protocol-3 decoding is unchanged.
+VALUE accepts one, two or four bytes and remains signed, as in protocol 3: the
+firmware chooses the width, and the SRB-PM01 reports one- and two-byte values.
+BOOL and ENUM use one byte, and ENUM is unsigned. BITMAP accepts one, two or four
+bytes. Invalid widths reject the whole report without updates or
+acknowledgement. Protocol-3 decoding is unchanged.
 
 Each report is acknowledged with the same code: its 7-byte header followed by a
 status byte `0`. The SDK ignores an acknowledgement of any other length. Reports
@@ -185,8 +225,8 @@ followed by the usual `Received DP` line for each datapoint.
   bits 1 and 3 announce it. The flags appear in the `Device info` debug line.
 - `0x8013` app local-time requests. They are logged as an unknown message and
   dropped.
-- SecKey-based security modes `0x0e`/`0x0f`; a profile does not invent missing
-  credentials or downgrade an encryption scheme.
+- Any other security mode; a profile does not invent missing credentials or
+  downgrade an encryption scheme.
 
 ## Control writes
 

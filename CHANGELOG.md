@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+### Added
+
+- **FD50 Security V2 channel** (#39): devices advertising Security V2, such as the Battery BLE Roller (`cl` / `jetlwvfm`), authenticate with the cloud `sec_key` (security flags 14/15 and a 76-byte pair request). The key is stored only for such devices and never logged or exported.
+- **Unverified protocol-4 setup**: when Bluetooth verification fails, setup shows the error and offers to add the device anyway, so its diagnostics can be collected.
+- **Diagnostics**: report whether the cloud record carries a `sec_key`, whether one is stored and whether the runtime uses Security V2. `cloud_info.fields` lists every field of the raw cloud record, with values only for allowlisted fields and type/size descriptions for all others.
+
+### Fixed
+
+- **Protocol-4 verification of unbound-looking advertisements** (#39): setup no longer gives up before connecting when the FD50 advertisement omits the bound flag; the encrypted device-info reply decides before any pair request.
+- **Protocol-4 one- and two-byte values** (#39): VALUE datapoints of one or two bytes are decoded instead of rejecting the whole report, restoring SRB-PM01 humidity and battery readings.
+- **Verification logging**: each authenticated probe logs its outcome, the handshake stage reached, the security channel and protocol version, and the exception type of a failure.
+
 ## [2.10.0-beta.5] - 2026-11-17
 
 > **Beta — for testing only.** This build supersedes beta.4 with quieter BLE connection failures and bounded automatic recovery. It does not fix the underlying radio or ESPHome proxy GATT errors, and fresh affected-device hardware testing remains necessary.

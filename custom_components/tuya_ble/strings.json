@@ -3,7 +3,8 @@
     "abort": {
       "no_unconfigured_devices": "No unconfigured devices found.",
       "unsupported_device": "The Bluetooth advertisement does not contain a supported device identity.",
-      "reconfigure_successful": "Bluetooth compatibility verified and saved."
+      "reconfigure_successful": "Bluetooth compatibility verified and saved.",
+      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
     },
     "error": {
       "device_not_registered": "No device in this Tuya account could be verified against the Bluetooth device.",
@@ -37,6 +38,12 @@
       },
       "discovered_device": {
         "description": "Set up the discovered device {name} ({address}). Submit to retry the Bluetooth scan."
+      },
+      "unverified": {
+        "data": {
+          "add_unverified": "Add the device anyway"
+        },
+        "description": "Setup could not verify a Bluetooth connection with {name} ({address}). Submit to retry, or tick the box to add the device without a verified connection. An unverified device may stay unavailable, but its diagnostics download helps add support for its firmware."
       },
       "scan": {
         "description": "Waiting for QR code scan..."

@@ -16,10 +16,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.tuya_ble.config_flow import (
-    TuyaBLEConfigFlow,
-    TuyaBLEOptionsFlow,
-)
+from custom_components.tuya_ble.config_flow import TuyaBLEConfigFlow
+from custom_components.tuya_ble.config_flow_options import TuyaBLEOptionsFlow
 from custom_components.tuya_ble.const import (
     CONF_ADVERTISED_UUID,
     CONF_CATEGORY,

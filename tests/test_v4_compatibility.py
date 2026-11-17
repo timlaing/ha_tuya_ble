@@ -704,16 +704,12 @@ async def test_v4_invalid_id_reports_its_own_limit_and_rolls_back(dp_id: int) ->
     assert datapoint.value == b"old"
 
 
-@pytest.mark.parametrize("advertisement", [None, "unbound", "classic", "empty_mapping"])
+@pytest.mark.parametrize("advertisement", [None, "classic", "empty_mapping"])
 async def test_profile_detection_rejects_ineligible_input(
     advertisement: str | None,
 ) -> None:
-    """Only bound v4 devices with mapped datapoints enter profile detection."""
-    adv = (
-        v4_advertisement(service=b"\x41\x00\x00\x08abcdefgh")
-        if advertisement == "unbound"
-        else v4_advertisement()
-    )
+    """Only v4 devices with mapped datapoints enter profile detection."""
+    adv = v4_advertisement()
     if advertisement in (None, "classic"):
         adv = cast(
             Any,

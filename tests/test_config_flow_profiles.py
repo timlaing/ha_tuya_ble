@@ -150,9 +150,10 @@ async def test_automatic_setup_persists_verified_profile(
 
 
 async def test_unverified_profile_never_creates_entry(hass: HomeAssistant) -> None:
-    """A cloud match alone no longer creates an unavailable v4 config entry."""
+    """A failed verification shows its error and never creates an entry itself."""
     _, result = await setup_flow(hass, None)
     assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "unverified"
     assert result["errors"] == {"base": "v4_verification_failed"}
 
 

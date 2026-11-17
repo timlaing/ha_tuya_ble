@@ -47,6 +47,18 @@ MAX_DEVICE_ID_LENGTH = 20
 # two trailing pad bytes the device expects.
 PAIRING_REQUEST_LENGTH = 44
 
+# Security V2 ("btScyChannel") appends the full 16-byte local key and the
+# 16-byte cloud sec_key to the classic frame.
+SECURITY_V2_KEY_LENGTH = 16
+PAIRING_REQUEST_LENGTH_V2 = PAIRING_REQUEST_LENGTH + 2 * SECURITY_V2_KEY_LENGTH
+
+# Security flags prefixing each encrypted frame: login and session keys for the
+# classic scheme, and their Security V2 counterparts.
+SECURITY_FLAG_LOGIN = 4
+SECURITY_FLAG_SESSION = 5
+SECURITY_FLAG_V2_LOGIN = 14
+SECURITY_FLAG_V2_SESSION = 15
+
 
 class ConnectionProfile(StrEnum):
     """Verified FD50 handshake variants, independent of the report version."""
@@ -122,7 +134,9 @@ class TuyaBLEDataPointType(Enum):
 
 V4_VALUE_WIDTHS = {
     TuyaBLEDataPointType.DT_BOOL: (1,),
-    TuyaBLEDataPointType.DT_VALUE: (4,),
+    # Firmware chooses the integer width (the SRB-PM01 reports 1 and 2 bytes);
+    # protocol 3 decodes the same widths signed.
+    TuyaBLEDataPointType.DT_VALUE: (1, 2, 4),
     TuyaBLEDataPointType.DT_ENUM: (1,),
     TuyaBLEDataPointType.DT_BITMAP: (1, 2, 4),
 }
