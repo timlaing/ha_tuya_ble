@@ -460,6 +460,39 @@ async def test_async_step_device_setup(hass: HomeAssistant) -> None:
     assert manager.calls == [("1234567890abcdef", False)]
 
 
+async def test_async_step_device_classic_product_key(hass: HomeAssistant) -> None:
+    """Set up a classic product-key record (#158) through the UUID lookup."""
+    flow = build_flow(hass)
+    flow.context = {}
+    manager = FakeManager(
+        credentials=TuyaBLEDeviceCredentials(
+            uuid="1234567890abcdef",
+            local_key="abc",
+            device_id="dev",
+            category="dj",
+            product_id="cloudpid",
+            device_name="Bulb",
+            product_model=None,
+            product_name="Product",
+        )
+    )
+    flow._manager = manager  # type: ignore[assignment]
+    d = FakeDiscovery("AA:BB:CC:DD:EE:FF")
+    d.service_data = {SERVICE_UUID: b"\x01prod"}
+    d.advertisement = FakeAdvertisementData(
+        service_data=d.service_data, manufacturer_data=d.manufacturer_data
+    )
+    flow._discovered_devices[d.address] = d  # type: ignore[assignment]
+    flow._data = {}
+    with patch.object(flow, "_async_scan_device", return_value=d):
+        result = await flow.async_step_device(user_input={CONF_ADDRESS: d.address})
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_ADVERTISED_UUID] == "1234567890abcdef"
+    assert result["data"][CONF_UUID] == "1234567890abcdef"
+    assert result["data"][CONF_PRODUCT_ID] == "cloudpid"
+    assert manager.calls == [("1234567890abcdef", False)]
+
+
 async def test_async_step_device_no_credentials(hass: HomeAssistant) -> None:
     """Test the device step with no credentials returned."""
     flow = build_flow(hass)

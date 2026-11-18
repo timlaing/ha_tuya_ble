@@ -9,7 +9,7 @@ mode.
 | ------------------- | --------------------------------------- | ---------------------------------------------------------------------------- |
 | Protocol version    | Manufacturer byte 1                     | High nibble of service byte 0                                                |
 | Bound flag          | Manufacturer byte 0, bit 7              | Service byte 0, bit 3                                                        |
-| Service record      | Product type + product bytes            | Frame control (2) + product type (1) + length (1) + product/obfuscated bytes |
+| Service record      | Product type (0 or 1) + product bytes   | Frame control (2) + product type (1) + length (1) + product/obfuscated bytes |
 | Manufacturer header | 6 bytes                                 | 4 bytes                                                                      |
 | AES key and IV      | MD5 of service bytes after product type | MD5 of the complete service record                                           |
 | Identity            | AES-CBC decrypted UTF-8 text            | AES-CBC decrypted UTF-8 text                                                 |
@@ -18,6 +18,10 @@ FD50 service byte 0, bit 0 must indicate an identity record. Beacon/data packets
 must not be interpreted as identity advertisements. Bound advertisements contain
 obfuscated product bytes; those bytes are still part of the MD5 input, but are
 not exposed as a readable product ID. Type 1 product keys are not product IDs.
+
+Both formats accept product type 0 (product ID) and type 1 (product key), with
+the same key derivation for each. Classic type-1 records are used by some bound
+Wi-Fi+BLE combo bulbs (#158). Other product types are rejected.
 
 Protocol 5 is explicitly rejected: no verified protocol-5 layout or known-device
 capture was available for this implementation. Changing the version nibble on a

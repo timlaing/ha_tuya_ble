@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
-## [2.10.0-beta.6] - 2026-11-17
+## [2.10.0-beta.6] - 2026-11-18
 
 > **Beta — for testing only.** This build supersedes beta.5 with support for Tuya BLE protocol v4 devices that use the newer "Security V2" login, and lets you add a device even when the Bluetooth check fails so its diagnostics can be shared. It has not yet been tested on a Security V2 device; if a device was added with an earlier beta, remove it and add it again so the new login details are fetched.
 
@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning].
 - **Clearer setup messages**: the Bluetooth check and reconfigure messages are shorter and easier to follow.
 - **More useful debug logs**: each Bluetooth check logs how far it got, which login it used and the type of any error, and a reply using an unexpected security scheme is logged with its security flag.
 - **Bluetooth notifications on the Pi's own adapter**: Tuya BLE protocol v4 devices now use BlueZ's StartNotify, which other integrations found necessary for these devices.
+- **Classic product-key advertisements** (#158): setup now reads older Tuya BLE advertisements that carry a product key instead of a product ID, so bound Wi-Fi and Bluetooth combo bulbs no longer fail with `identity_not_decoded`. Thanks to @zdenax for the report and fix.
 
 ## [2.10.0-beta.5] - 2026-11-17
 

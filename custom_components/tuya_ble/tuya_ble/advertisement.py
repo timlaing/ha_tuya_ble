@@ -64,8 +64,12 @@ def _product_id(raw: bytes) -> str | None:
 def _decode_classic(
     service: bytes, manufacturer: bytes
 ) -> TuyaBLEAdvertisementInfo | None:
-    """Preserve the A201 product-record key derivation for classic devices."""
-    if len(service) <= 1 or service[0] != 0 or len(manufacturer) <= 6:
+    """Preserve the A201 product-record key derivation for classic devices.
+
+    Product type 0 carries a product ID and type 1 a product key; both derive
+    the key from the bytes after the type. Only a product ID is exposed.
+    """
+    if len(service) <= 1 or service[0] not in (0, 1) or len(manufacturer) <= 6:
         return None
     if manufacturer[1] not in (2, 3):
         return None
@@ -73,7 +77,7 @@ def _decode_classic(
     if uuid is None:
         return None
     return TuyaBLEAdvertisementInfo(
-        product_id=_product_id(service[1:]),
+        product_id=_product_id(service[1:]) if service[0] == 0 else None,
         uuid=uuid,
         is_bound=bool(manufacturer[0] & 0x80),
         protocol_version=manufacturer[1],
