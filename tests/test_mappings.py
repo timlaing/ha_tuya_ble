@@ -29,6 +29,7 @@ from custom_components.tuya_ble import (
     sensor,
     switch,
     text,
+    vacuum,
     valve,
 )
 from custom_components.tuya_ble.device_descriptors.handlers.fingerbot import (
@@ -56,6 +57,7 @@ PLATFORMS = {
     "sensor": sensor,
     "switch": switch,
     "text": text,
+    "vacuum": vacuum,
     "valve": valve,
 }
 
@@ -595,6 +597,7 @@ def test_plain_product_has_no_fingerbot_dp_ids() -> None:
         ("text", text._build_text_mapping),
         ("number", number._build_number_mapping),
         ("valve", valve._build_valve_mapping),
+        ("vacuum", vacuum._build_vacuum_mapping),
         ("cover", cover._build_cover_mapping),
         ("light", light._build_light_mapping),
         ("climate", climate._build_climate_mapping),
@@ -625,6 +628,7 @@ def test_build_mapping_entity_name(platform_name: str, builder: Any) -> None:
         ("text", text._build_text_mapping),
         ("number", number._build_number_mapping),
         ("valve", valve._build_valve_mapping),
+        ("vacuum", vacuum._build_vacuum_mapping),
         ("cover", cover._build_cover_mapping),
         ("light", light._build_light_mapping),
         ("climate", climate._build_climate_mapping),
@@ -655,6 +659,7 @@ def test_build_mapping_entity_name_none(platform_name: str, builder: Any) -> Non
         ("number", "co2bj"),
         ("sensor", "co2bj"),
         ("valve", "ggq"),
+        ("vacuum", "ccjqr"),
         ("climate", "wk"),
     ],
 )

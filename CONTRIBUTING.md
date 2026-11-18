@@ -104,6 +104,8 @@ model_name: 16wgjvck
 
 **lock**: `door_dp_id` (DP ID for door status sensor)
 
+**vacuum** (experimental): `dp_id` is the bool data point that starts (`true`) and stops (`false`) cleaning. Optional `status_dp_id` with `status_activities`, a mapping from each status value to a Home Assistant activity (`cleaning`, `docked`, `idle`, `paused`, `returning`, `error`) written in the data point's enum order, and optional `mode_dp_id` with `fan_speeds`, the cleaning modes in enum order. Start and stop are always offered; fan speed only when `mode_dp_id` is set. Pause and return-to-base are not supported yet. Unknown activities, or a `mode_dp_id` without `fan_speeds`, are rejected at load time.
+
 ### 3. Handlers
 
 Handlers are callables referenced by dotted path under `device_descriptors/handlers/`. They customise read, write, or availability (`when`) behaviour for an entity:

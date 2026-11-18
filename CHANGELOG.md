@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning].
 ### Added
 
 - **PARKSIDE Smart battery 12Ah (`dcb`/`fay1puxy`) — experimental** (#175): a descriptor for the 12 Ah pack from the source fork's PR 283 (thanks @kleju00). It exposes the battery's read-only sensors only — battery, temperatures, charge and discharge current and voltage, the cycle and protection-event counters, fault and tool diagnostics. Battery status and the writable settings (switches, numbers, work mode, identify) are left out until a diagnostics download from this battery confirms them.
+- **Vacuum platform and CHYW200.ABIR window cleaner** (#178, experimental): cleaning robots described by a device descriptor now get a Home Assistant vacuum entity that offers only the actions the robot supports. The first is the CHYW200.ABIR window cleaning robot (`ccjqr` / `pnxl0r3l`): start and stop, its activity, and the cleaning mode as fan speed, plus its mode and direction selects, status, cleaning time, fault and automatic water spray. It has not yet been tested on this integration; please report how it works. Thanks to @buliaksk for the device mapping and @CloCkWeRX for the original vacuum platform in the ha-tuya-ble fork.
 
 ### Fixed
 

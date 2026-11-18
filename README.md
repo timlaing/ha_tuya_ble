@@ -167,6 +167,7 @@ use. Review a file before attaching it to a public issue.
 | `sensor`        | Battery, temperature, humidity, usage time, RSSI, work state            |
 | `switch`        | On/off, child lock, window check, antifreeze, Fingerbot switches        |
 | `text`          | Fingerbot program text                                                  |
+| `vacuum`        | Cleaning robots (start/stop, cleaning mode) — experimental              |
 | `valve`         | Water valve controllers (open/close/stop)                               |
 
 ## Supported device categories
@@ -188,6 +189,7 @@ The integration supports a broad range of Tuya BLE devices across the following 
 | Blinds & curtains (`cl`)                 | Blind/curtain controllers, venetian blind motors                          |
 | Plant sensors (`zwjcy`)                  | Soil moisture / plant sensors                                             |
 | Generators (`qt`)                        | MaXpeedingRods MXR4000GT inverter generator                               |
+| Window cleaning robots (`ccjqr`)         | CHYW200.ABIR window cleaner (experimental)                                |
 
 Category codes are Tuya's, and several of them do not mean what their name suggests — `kg` is
 "Switch" and holds Fingerbot Plus, `znhsb` is "Smart glass" but the product is a water bottle.
