@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning].
 ### Fixed
 
 - **Bound classic devices with a misleading product ID** (#182): when an older Tuya BLE device's identity cannot be read, setup now tries the devices from your Tuya account whose product matches the advertisement first, then the other devices, up to four in total. Previously, if the advertised product matched a different device, only that device was tried and setup failed with `device_not_registered`. If more than four devices in your account match the advertised product, setup still stops with `too_many_candidates` without trying any.
+- **Tool current on the older Parkside batteries** (#175): DP 157 on the `z5ztlw3k` (4 Ah) and `ajrhf1aj` (8 Ah) packs was declared as an electric current without a unit, which Home Assistant flags as invalid. It is now a plain measurement, as on the 2026 packs, until a diagnostics download confirms the unit. An audit against the source fork's PR 283 (thanks @kleju00) and the #103 diagnostics (thanks @bip1963) confirmed the existing status order and the charge voltage and current units on `vllfabvs` and `z5ztlw3k`; the conflicting PR 283 status order was not adopted, as it has no device evidence.
 
 ## [2.10.0-beta.6] - 2026-11-18
 

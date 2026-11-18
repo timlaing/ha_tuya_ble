@@ -66,6 +66,7 @@ If a file falls below the threshold, add tests until it passes before committing
 | `tests/test_mappings.py`                                                   | per-platform `get_mapping_by_device` + pure Fingerbot/sensor helpers                               |
 | `tests/test_device_registry.py`                                            | `device_registry.py` (load/validate/resolve, `EntityDescriptor`)                                   |
 | `tests/test_registry_init.py`                                              | off-event-loop registry initialisation, caching, concurrency, failure/retry                        |
+| `tests/test_parkside_batteries.py`                                         | PARKSIDE `dcb` battery descriptors: units, scaling, status order, read paths                       |
 | `tests/test_handlers.py`                                                   | YAML descriptor handler callables (`battery`, `raw`, `rssi`, `water_valve`, Fingerbot)             |
 | `tests/test_entity_binary_sensor.py`                                       | binary_sensor entity methods                                                                       |
 | `tests/test_entity_button.py`                                              | button entity methods                                                                              |

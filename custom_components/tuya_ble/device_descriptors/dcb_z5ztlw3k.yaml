@@ -184,7 +184,6 @@ entities:
     - dp_id: 157
       translation_key: tools_current
       name: Tool current
-      device_class: current
       state_class: measurement
       entity_category: diagnostic
     - dp_id: 158
