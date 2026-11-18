@@ -1,0 +1,64 @@
+# Experimental. DP IDs, scale and ranges from ha-tuya-ble/ha_tuya_ble#238
+# (fixes #216), which follows the tuya-local TH05-BLE definition. No cloud
+# schema has been captured from this integration. The legacy keys keep entity
+# unique IDs from that fork.
+category: wsdcg
+product_id: vyfoip9h
+device_name: TH05 Temperature Humidity Sensor
+model_name: vyfoip9h
+entities:
+  sensor:
+    - dp_id: 1
+      translation_key: temperature
+      legacy_keys: [temp_current]
+      device_class: temperature
+      unit: °C
+      state_class: measurement
+      coefficient: 10.0
+      # The device reports in whichever unit the temperature_unit select holds,
+      # so the sensor follows that select rather than always declaring °C.
+      unit_dp_id: 9
+    - dp_id: 2
+      translation_key: humidity
+      legacy_keys: [humidity_value]
+      device_class: humidity
+      unit: "%"
+      state_class: measurement
+    - dp_id: 4
+      translation_key: battery
+      legacy_keys: [battery_percentage]
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+  number:
+    # Integer, scale 1: raw -20..20 is -2.0..2.0 °C.
+    - dp_id: 23
+      translation_key: temperature_calibration
+      icon: mdi:thermometer-lines
+      unit: °C
+      entity_category: config
+      enabled_by_default: false
+      mode: box
+      coefficient: 10.0
+      min_value: -2.0
+      max_value: 2.0
+      step: 0.1
+    - dp_id: 24
+      translation_key: humidity_calibration
+      icon: mdi:water-check
+      unit: "%"
+      entity_category: config
+      enabled_by_default: false
+      mode: box
+      min_value: -10
+      max_value: 10
+      step: 1
+  select:
+    # ENUM "c" / "f".
+    - dp_id: 9
+      translation_key: temperature_unit
+      options:
+        - °C
+        - °F
+      enabled_by_default: false

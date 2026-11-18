@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -1278,14 +1279,21 @@ def test_sgs01b_jr_descriptor_matches_the_sgs01_plant_sensor() -> None:
     """The ``gpkyrocn`` soil sensor is the SGS01 descriptor under a new product id.
 
     Issue #123 got the device working by copying ``zwjcy_gvygg3m8.yaml`` and
-    changing only the product id, so assert the entity layouts stay identical: a
-    change to one descriptor has to be made to the other.
+    changing only the product id. The cloud schema in ha-tuya-ble#328 added the
+    DP 9 temperature unit, which only ``gpkyrocn`` declares, so the layouts must
+    otherwise stay identical: a change to one descriptor has to be made to the
+    other.
     """
     reference = get_registry().get("zwjcy", "gvygg3m8")
     product = get_registry().get("zwjcy", "gpkyrocn")
     assert reference is not None
     assert product is not None
-    assert product.entities == reference.entities
+    assert set(product.entities) == {"sensor", "select"}
+    assert set(reference.entities) == {"sensor"}
+    assert [desc.dp_id for desc in product.get("select")] == [9]
+    temperature, *others = product.get("sensor")
+    assert temperature.extra == {"unit_dp_id": 9}
+    assert [replace(temperature, extra={}), *others] == reference.get("sensor")
     assert product.device_name == "SGS01B-JR Soil Sensor"
     assert product.model_name == "gpkyrocn"
 

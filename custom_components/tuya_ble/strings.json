@@ -128,8 +128,14 @@
       "hold_time": {
         "name": "Hold time"
       },
+      "humidity_calibration": {
+        "name": "Humidity calibration"
+      },
       "reporting_period": {
         "name": "Reporting period"
+      },
+      "temperature_calibration": {
+        "name": "Temperature calibration"
       },
       "up_position": {
         "name": "Up position"
