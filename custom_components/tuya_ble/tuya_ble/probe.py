@@ -861,7 +861,10 @@ async def _async_detect_with_login(
             profile,
             mode,
         )
-        candidate = replace(credentials, connection_profile=profile, security_mode=mode)
+        # A detached copy: never mutate the caller's or the SDK's cached record.
+        candidate = copy.copy(credentials)
+        candidate.connection_profile = profile
+        candidate.security_mode = mode
         attempt_stages: list[ProbeStage] = []
         outcome = await async_probe_authenticated_status(
             ble_device,
