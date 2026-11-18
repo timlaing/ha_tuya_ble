@@ -41,6 +41,7 @@ from custom_components.tuya_ble.device_descriptors.handlers.water_valve import (
     is_water_valve_in_switch_mode,
 )
 from custom_components.tuya_ble.device_registry import (
+    DeviceRegistryError,
     EntityDescriptor,
     get_mapped_dp_ids,
     get_registry,
@@ -873,3 +874,21 @@ def test_all_product_mappings_use_registered_category() -> None:
                     mismatches.append((platform_name, category, product_id))
 
     assert not mismatches, mismatches
+
+
+@pytest.mark.parametrize("press_value", [True, False, None])
+def test_build_button_mapping_press_value(press_value: bool | None) -> None:
+    """A boolean ``press_value`` is a fixed write; omitting it keeps the toggle."""
+    extra = {} if press_value is None else {"press_value": press_value}
+    desc = EntityDescriptor(platform="button", dp_id=102, extra=extra)
+    assert button._build_button_mapping(desc).press_value is press_value
+
+
+@pytest.mark.parametrize("press_value", ["true", 1, 0])
+def test_build_button_mapping_rejects_non_bool_press_value(press_value: Any) -> None:
+    """A string or integer would be silently coerced, so it is rejected."""
+    desc = EntityDescriptor(
+        platform="button", dp_id=102, extra={"press_value": press_value}
+    )
+    with pytest.raises(DeviceRegistryError, match="press_value must be a boolean"):
+        button._build_button_mapping(desc)

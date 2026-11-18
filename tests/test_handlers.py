@@ -18,9 +18,13 @@ from custom_components.tuya_ble.device_descriptors.handlers.fingerbot import (
     mode as fingerbot_mode,
 )
 from custom_components.tuya_ble.device_descriptors.handlers.fingerbot import (
+    polarity as fingerbot_polarity,
+)
+from custom_components.tuya_ble.device_descriptors.handlers.fingerbot import (
     program as fingerbot_program,
 )
 from custom_components.tuya_ble.devices import TuyaBLEProductInfo
+from custom_components.tuya_ble.tuya_ble import TuyaBLEDataPointType
 from tests.conftest import make_product_info
 
 pytestmark = pytest.mark.filterwarnings("ignore::RuntimeWarning")
@@ -603,3 +607,35 @@ def test_get_program_single_byte_payload() -> None:
     product = make_fingerbot_product()
     owner = make_fake_owner({_program_dp(product): make_datapoint(b"\x05")})
     assert fingerbot_program.get_program(owner, product) is None
+
+
+@pytest.mark.parametrize(
+    ("reported", "expected"), [(False, True), (True, False), (0, True)]
+)
+def test_inverted_switch_reads_opposite_of_report(
+    reported: Any, expected: bool
+) -> None:
+    """The reported switch boolean is inverted."""
+    owner = make_fake_owner({1: make_datapoint(reported)})
+    product = make_product_info(mode=2, switch=1)
+    assert fingerbot_polarity.get_inverted_switch(owner, product) is expected
+
+
+def test_inverted_switch_without_report_or_switch_is_unknown() -> None:
+    """A missing report or a product without a switch yields None, not on."""
+    owner = make_fake_owner({})
+    assert (
+        fingerbot_polarity.get_inverted_switch(owner, make_product_info(switch=1))
+        is None
+    )
+    owner = make_fake_owner({1: make_datapoint(False)})
+    assert fingerbot_polarity.get_inverted_switch(owner, make_product_info()) is None
+
+
+@pytest.mark.parametrize(("value", "written"), [(True, False), (False, True)])
+def test_inverted_switch_writes_opposite_value(value: bool, written: bool) -> None:
+    """The setter sends the inverted boolean to the product's switch DP."""
+    calls: list[tuple[Any, ...]] = []
+    owner: Any = SimpleNamespace(send_dp_value=lambda *args: calls.append(args))
+    fingerbot_polarity.set_inverted_switch(owner, make_product_info(switch=1), value)
+    assert calls == [(1, TuyaBLEDataPointType.DT_BOOL, written)]

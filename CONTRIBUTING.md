@@ -86,7 +86,7 @@ model_name: 16wgjvck
 
 **valve**: `device_class: water` only. A valve writes its own `dp_id` — a dual-zone timer has one valve entity per zone — and the translation key carries the zone (`valve_zone1`, `valve_zone2`). Use `handlers` on the `switch` entity when the value written differs from the one the device expects.
 
-**button**: no platform-specific fields. A button is a momentary press, so it needs no unit, range or options; pressing it writes the `dp_id` unless a `write` handler overrides that.
+**button**: `press_value` (optional YAML boolean). A button is a momentary press, so it needs no unit, range or options; pressing it toggles the boolean `dp_id`. Set `press_value: true` (or `false`) to write that fixed value on every press instead — use it for write-only trigger data points, where a toggle would alternate the value sent.
 
 **number**: `min_value`, `max_value`, `step`, `mode` (`box` or `slider`), `unit`, and `coefficient` to divide a raw reading into its real unit
 

@@ -192,6 +192,7 @@ The integration supports a broad range of Tuya BLE devices across the following 
 | Window cleaning robots (`ccjqr`)         | CHYW200.ABIR window cleaner (experimental)                                |
 | Water meters (`slj`)                     | RESTMO FML026A Bluetooth water meter                                      |
 | Aroma diffusers (`jsq`)                  | Dituo DT-T2190A aroma diffuser                                            |
+| Cooking thermometers (`swtz`)            | GRILLMEISTER / SK-T100, BTH08 meat thermometers                           |
 
 Category codes are Tuya's, and several of them do not mean what their name suggests — `kg` is
 "Switch" and holds Fingerbot Plus, `znhsb` is "Smart glass" but the product is a water bottle.

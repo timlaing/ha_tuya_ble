@@ -90,6 +90,8 @@ If a file falls below the threshold, add tests until it passes before committing
 | `tests/test_diagnostics.py`                                                | config-entry and device diagnostics, redaction, schema refresh and fallback                        |
 | `tests/test_security_v2.py`                                                | FD50 Security V2 keys, flags 14/15, pair frame, verification, cloud `sec_key`, diagnostics         |
 | `tests/test_config_flow_unverified.py`                                     | opt-in setup of protocol-4 devices whose verification failed                                       |
+| `tests/test_cbf02v2_fingerbot.py`                                          | CBF02V2 Finger Robot descriptor: two modes, inverted switch, fixed-value DP102 button, scaling     |
+| `tests/test_swtz_thermometers.py`                                          | `swtz` cooking thermometers: battery and signed 0.1 °C probe readings, incl. wire decoding         |
 
 ### prek
 

@@ -1,0 +1,77 @@
+# CBF02V2 Finger Robot (sold as KKmoon), ported from ha-tuya-ble/ha_tuya_ble#350
+# by @bchevreau. DP layout from the device's Tuya Thing Model:
+#   1 switch bool rw, 2 mode enum rw [click, long_press], 3 click_sustain_time
+#   value rw 3-100 x0.1 s, 4 arm_up_percent / 5 arm_down_percent value rw 0-30
+#   (no unit), 7 charge_status enum ro, 8 battery_percentage value ro 0-100 %,
+#   101 start bool wr (auto adjustment), 102 set_switch_state bool wr.
+# Not the Fingerbot Plus profile: two modes only, no program or reverse DP.
+# DP1 keeps the owner-tested inverted read/write. DP102 flips the displayed
+# on/off state without moving the arm; any written value triggers it, so the
+# button always writes true. DP7 was never reported by the CR2-powered test
+# unit and DP101 is not exposed, so both stay unmapped.
+category: szjqr
+product_id: bo25vaxy
+device_name: Finger Robot CBF02V2
+model_name: bo25vaxy
+entities:
+  sensor:
+    - dp_id: 8
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+  button:
+    - dp_id: 1
+      translation_key: push
+      handlers:
+        when: fingerbot.mode.in_push_mode
+    - dp_id: 102
+      translation_key: invert_switch_status
+      icon: mdi:swap-horizontal
+      entity_category: config
+      press_value: true
+  number:
+    - dp_id: 3
+      translation_key: hold_time
+      coefficient: 10.0
+      mode: box
+      handlers:
+        when: fingerbot.mode.in_push_mode
+      min_value: 0.3
+      max_value: 10
+      step: 0.1
+      icon: mdi:timer
+      unit: s
+      entity_category: config
+    - dp_id: 4
+      translation_key: up_position
+      mode: box
+      min_value: 0
+      max_value: 30
+      step: 1
+      icon: mdi:arrow-up-bold
+      entity_category: config
+    - dp_id: 5
+      translation_key: down_position
+      mode: box
+      min_value: 0
+      max_value: 30
+      step: 1
+      icon: mdi:arrow-down-bold
+      entity_category: config
+  select:
+    # Enum index 0 is the cloud "click" mode, 1 is "long_press" (app: Switch).
+    - dp_id: 2
+      translation_key: fingerbot_mode
+      entity_category: config
+      options:
+        - push
+        - switch
+  switch:
+    # Available in both modes: in Click mode either transition is one press.
+    - dp_id: 1
+      translation_key: switch
+      handlers:
+        read: fingerbot.polarity.get_inverted_switch
+        write: fingerbot.polarity.set_inverted_switch

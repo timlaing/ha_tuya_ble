@@ -14,7 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
-from .device_registry import EntityDescriptor, get_registry
+from .device_registry import DeviceRegistryError, EntityDescriptor, get_registry
 from .devices import TuyaBLECoordinator, TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
@@ -30,6 +30,7 @@ class TuyaBLEButtonMapping:
     force_add: bool = True
     dp_type: TuyaBLEDataPointType | None = None
     is_available: TuyaBLEButtonIsAvailable = None
+    press_value: bool | None = None
 
 
 @dataclass
@@ -50,6 +51,17 @@ def _button_description(desc: EntityDescriptor) -> ButtonEntityDescription:
     )
 
 
+def _press_value(desc: EntityDescriptor) -> bool | None:
+    """Return the fixed boolean a press writes, or None to toggle the value."""
+    press_value = desc.extra.get("press_value")
+    if press_value is not None and not isinstance(press_value, bool):
+        raise DeviceRegistryError(
+            f"Button entity dp_id {desc.dp_id} press_value must be a boolean, "
+            f"got {type(press_value).__name__}"
+        )
+    return press_value
+
+
 def _build_button_mapping(desc: EntityDescriptor) -> TuyaBLEButtonMapping:
     """Construct a button mapping from a registry descriptor."""
     return TuyaBLEButtonMapping(
@@ -60,6 +72,7 @@ def _build_button_mapping(desc: EntityDescriptor) -> TuyaBLEButtonMapping:
             TuyaBLEDataPointType(desc.dp_type) if desc.dp_type is not None else None
         ),
         is_available=desc.resolved_handler("when"),
+        press_value=_press_value(desc),
     )
 
 
@@ -112,7 +125,14 @@ class TuyaBLEButton(TuyaBLEEntity, ButtonEntity):
         self._mapping = button_mapping
 
     def press(self) -> None:
-        """Toggle the mapped datapoint's boolean value on the device."""
+        """Write the fixed press value, or toggle the mapped boolean datapoint."""
+        if self._mapping.press_value is not None:
+            self.send_dp_value(
+                self._mapping.dp_id,
+                TuyaBLEDataPointType.DT_BOOL,
+                self._mapping.press_value,
+            )
+            return
         datapoint = self.device.datapoints.get_or_create(
             self._mapping.dp_id,
             TuyaBLEDataPointType.DT_BOOL,

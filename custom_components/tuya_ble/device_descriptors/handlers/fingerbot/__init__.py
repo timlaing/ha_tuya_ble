@@ -9,6 +9,7 @@ from .mode import (
     not_in_program_mode,
     repeat_count_available,
 )
+from .polarity import get_inverted_switch, set_inverted_switch
 from .program import (
     get_position,
     get_program,
@@ -21,6 +22,7 @@ from .program import (
 )
 
 __all__ = [
+    "get_inverted_switch",
     "get_position",
     "get_program",
     "get_repeat_count",
@@ -30,6 +32,7 @@ __all__ = [
     "in_switch_mode",
     "not_in_program_mode",
     "repeat_count_available",
+    "set_inverted_switch",
     "set_position",
     "set_program",
     "set_repeat_count",
