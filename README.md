@@ -202,6 +202,7 @@ use. Review a file before attaching it to a public issue.
 | `button`        | Reset, program triggers                                                 |
 | `climate`       | Thermostatic radiator valves (TRV)                                      |
 | `cover`         | Blind and curtain controllers (open/close/stop)                         |
+| `lawn_mower`    | Robot lawn mowers (start/pause/stop/dock)                               |
 | `light`         | LED strip lights, lamps (on/off, brightness, color)                     |
 | `lock`          | Smart locks (lock/unlock, unlock tracking)                              |
 | `number`        | Countdown timers, temperature calibration, Fingerbot program parameters |
@@ -236,6 +237,7 @@ The integration supports a broad range of Tuya BLE devices across the following 
 | Water meters (`slj`)                     | RESTMO FML026A Bluetooth water meter                                      |
 | Aroma diffusers (`jsq`)                  | Dituo DT-T2190A aroma diffuser                                            |
 | Cooking thermometers (`swtz`)            | GRILLMEISTER / SK-T100, BTH08 meat thermometers                           |
+| Robot mowers (`gcj`)                     | PARKSIDE PAMRC 250 A1 (BT) City robot mower (experimental)                |
 
 Category codes are Tuya's, and several of them do not mean what their name suggests — `kg` is
 "Switch" and holds Fingerbot Plus, `znhsb` is "Smart glass" but the product is a water bottle.

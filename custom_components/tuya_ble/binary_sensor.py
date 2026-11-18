@@ -62,6 +62,7 @@ def _binary_sensor_description(
             else None
         ),
         entity_category=desc.resolved_entity_category(),
+        entity_registry_enabled_default=desc.enabled_by_default is not False,
     )
 
 

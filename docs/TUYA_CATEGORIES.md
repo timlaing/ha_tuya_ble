@@ -34,6 +34,7 @@ is how most of the categories below got their first device.
 | `qn`      | Heater                                     | MaXpeedingRods diesel parking heater.                                                                                                                                                                               |
 | `qt`      | _not in Tuya's list_                       | MaXpeedingRods MXR4000GT inverter generator.                                                                                                                                                                        |
 | `ccjqr`   | _not in Tuya's list_                       | Window cleaning robot (CHYW200.ABIR). The ha-tuya-ble fork first filed it under `cxjmb`; the device reports `ccjqr`.                                                                                                |
+| `gcj`     | _not in Tuya's list_                       | PARKSIDE robot lawn mowers. Experimental.                                                                                                                                                                           |
 | `co2bj`   | CO2 detector                               |                                                                                                                                                                                                                     |
 | `dd`      | Strip lights                               | Strip lights. `_category_dd.yaml` supplies the default `light` entity for every `dd` product that does not define its own.                                                                                          |
 | `xdd`     | Ceiling light                              | Ceiling lights. The one product here (`6tny2vqxktdzowt1`, Globo) declares its own `light` entity rather than inheriting a category default, because its data points are unverified.                                 |
@@ -64,8 +65,8 @@ These turn up in log lines and issue reports but are not categories with descrip
 
 The 138 category codes in Tuya's developer documentation, for reading a log line or a
 cloud response. Ones marked _undocumented_ are absent from that documentation but are known
-from shipped devices. ✓ marks the 17 of the 22 categories this integration supports that
-appear in Tuya's list. The other five, `ccjqr`, `dcb`, `qt`, `slj` and `znhsb`, are not in Tuya's
+from shipped devices. ✓ marks the 17 of the 23 categories this integration supports that
+appear in Tuya's list. The other six, `ccjqr`, `dcb`, `gcj`, `qt`, `slj` and `znhsb`, are not in Tuya's
 documentation at all, so they have no row here — they are in the table above.
 
 | Category      | Official name                                                      | Used here |

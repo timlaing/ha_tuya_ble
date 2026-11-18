@@ -82,7 +82,7 @@ model_name: 16wgjvck
 
 **sensor**: `unit` (mapped through the integration's unit table, so both `°C` and `C` work), `state_class`, `device_class`, `options` and `values` for an enum sensor, `coefficient` to divide a raw reading into its real unit, `suggested_display_precision` to choose the number of decimals, `unit_dp_id` to follow a `temperature_unit` select — the sensor then reports in whichever unit the device is set to instead of always declaring `°C` — `enabled_by_default: false` to hide the entity until enabled, and `restore`. Do **not** set `dp_type` — a sensor decodes whatever type the device pushed, and a test rejects the field.
 
-**binary_sensor**: `device_class` only (e.g. `problem`, `motion`, `moisture`). No `unit` or `state_class` — Home Assistant rejects both on a binary sensor. Use `handlers` for anything derived.
+**binary_sensor**: `device_class` (e.g. `problem`, `motion`, `moisture`) and `enabled_by_default: false` to hide the entity until enabled. No `unit` or `state_class` — Home Assistant rejects both on a binary sensor. Use `handlers` for anything derived.
 
 **valve**: `device_class: water` only. A valve writes its own `dp_id` — a dual-zone timer has one valve entity per zone — and the translation key carries the zone (`valve_zone1`, `valve_zone2`). Use `handlers` on the `switch` entity when the value written differs from the one the device expects.
 
@@ -105,6 +105,8 @@ model_name: 16wgjvck
 **lock**: `door_dp_id` (DP ID for door status sensor)
 
 **vacuum** (experimental): `dp_id` is the bool data point that starts (`true`) and stops (`false`) cleaning. Optional `status_dp_id` with `status_activities`, a mapping from each status value to a Home Assistant activity (`cleaning`, `docked`, `idle`, `paused`, `returning`, `error`) written in the data point's enum order, and optional `mode_dp_id` with `fan_speeds`, the cleaning modes in enum order. Start and stop are always offered; fan speed only when `mode_dp_id` is set. Pause and return-to-base are not supported yet. Unknown activities, or a `mode_dp_id` without `fan_speeds`, are rejected at load time.
+
+**lawn_mower**: `dp_id` is the status enum and `values` lists its states in enum order; `activities` maps each state to a Home Assistant activity (`mowing`, `paused`, `docked`, `returning`, `idle`, `error`). `command_dp_id` is the command enum and `commands` lists its values in enum order. `start_command`, `resume_command` (sent instead of the start command while paused), `pause_command`, `stop_command` and the `dock_commands` sequence name entries of `commands`; only the features whose command is declared are offered. Unknown states, activities or commands are rejected when the platform loads.
 
 ### 3. Handlers
 
@@ -136,6 +138,7 @@ Available handler modules:
 - `rssi.rssi` — read RSSI signal strength
 - `water_valve.is_water_valve_in_switch_mode` — when-role for water valve switches
 - `water_valve.set_16wgjvck_water_valve` — Aldi/Ferrex water valve write handler
+- `parkside_mower.*` — Parkside robot mower error/work logs and the shared rain delay payload
 - `fingerbot.mode.*` — Fingerbot mode/availability helpers
 - `fingerbot.program.*` — Fingerbot program read/write helpers
 
