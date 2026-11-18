@@ -84,12 +84,15 @@ class AuthenticatedFirmwareClient(FakeBleakClient):
         }
 
     async def start_notify(
-        self, gatt_char: str, handler: Callable[[str, bytearray], None]
+        self,
+        gatt_char: str,
+        handler: Callable[[str, bytearray], None],
+        **kwargs: Any,
     ) -> None:
         """Fail notification subscription only on the selected runtime link."""
         if self.failure == "notifications":
             raise OSError("Synthetic notification subscription failure")
-        await super().start_notify(gatt_char, handler)
+        await super().start_notify(gatt_char, handler, **kwargs)
 
     async def disconnect(self) -> None:
         """Release the physical link and deliver the normal disconnect callback."""

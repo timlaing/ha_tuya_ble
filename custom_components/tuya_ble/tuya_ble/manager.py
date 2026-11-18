@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 from typing import Any
 
@@ -29,12 +29,14 @@ class TuyaBLEDeviceCredentials:
     local_schema: dict[str, Any] | None = None
     cloud_info: dict[str, Any] | None = None
     connection_profile: ConnectionProfile | None = None
+    sec_key: str | None = field(default=None, repr=False)
 
     def __str__(self) -> str:
         return (
             "uuid: xxxxxxxxxxxxxxxx, "
             "local_key: xxxxxxxxxxxxxxxx, "
             "device_id: xxxxxxxxxxxxxxxx, "
+            f"sec_key: {'xxxxxxxxxxxxxxxx' if self.sec_key else None}, "
             f"category: {self.category}, "
             f"product_id: {self.product_id}, "
             f"device_name: {self.device_name}, "

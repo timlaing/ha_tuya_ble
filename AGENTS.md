@@ -85,6 +85,8 @@ If a file falls below the threshold, add tests until it passes before committing
 | `tests/test_setup_entries.py`                                              | per-platform `async_setup_entry` boilerplate                                                       |
 | `tests/test_util.py`                                                       | `util.py` (e.g. `remap_value`)                                                                     |
 | `tests/test_diagnostics.py`                                                | config-entry and device diagnostics, redaction, schema refresh and fallback                        |
+| `tests/test_security_v2.py`                                                | FD50 Security V2 keys, flags 14/15, pair frame, verification, cloud `sec_key`, diagnostics         |
+| `tests/test_config_flow_unverified.py`                                     | opt-in setup of protocol-4 devices whose verification failed                                       |
 
 ### prek
 
@@ -138,6 +140,7 @@ All public BLE symbols — `TuyaBLEDevice`, `TuyaBLEDataPoint`, `TuyaBLEDataPoin
 | File                                     | Purpose                                                                                                                                    |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `config_flow.py`                         | QR code login flow (user code → scan → device selection)                                                                                   |
+| `config_flow_options.py`                 | Options flow (QR-code re-authentication)                                                                                                   |
 | `cloud.py`                               | `tuya_sharing.Manager` wrapper, MAC-based device credential lookup                                                                         |
 | `const.py`                               | Constants — imports shared names from `homeassistant.components.tuya.const`; re-exports `DPType` from `tuya_ble.const`                     |
 | `device_registry.py`                     | `EntityDescriptor`, YAML descriptor loading/validation, `get_registry`, `get_mapped_dp_ids` — the product registry                         |
@@ -180,6 +183,7 @@ Do not add `tuya-iot-py-sdk` back. The integration migrated away from it in `e5c
 - `tuya_ble/` is a clean abstraction boundary — it knows nothing about cloud auth, only BLE encryption
 - Diivoo timers using the **Homgar app** (not Tuya Smart Life) won't appear in Tuya cloud — no local key extractable
 - `functions` / `status_range` on `TuyaBLEDeviceCredentials` carry the device specs from cloud, under the `CONF_FUNCTIONS` / `CONF_STATUS_RANGE` keys
+- `sec_key` on `TuyaBLEDeviceCredentials` is the cloud Security V2 key. It is persisted under `CONF_SEC_KEY` only when the FD50 advertisement announces Security V2, is excluded from `repr`, masked in `__str__`, redacted in diagnostics and never logged
 - `local_schema` on `TuyaBLEDeviceCredentials` carries the captured cloud schema (full local strategy, full status range with `report_type`, and `captured_at`), persisted under `CONF_LOCAL_SCHEMA` in the config entry's `data` by `config_flow.py` and exported by `diagnostics.py`. DP metadata only — never credentials
 - `tuya_ble/tuya_ble.py` and `tuya_ble/protocol_mixin.py` use `from Crypto.Cipher import AES` (pycryptodome/pycryptodomex) — not a listed runtime requirement but always available in HA
 - `select.py` subclasses `SelectEntityDescription` as `TemperatureUnitDescription` (select.py:43) purely to supply the `icon` and `entity_category` defaults for the `temperature_unit` translation key. Descriptions are always assembled into a `kwargs` dict that already contains `key`, so a subclass never has to repeat it — add a new subclass for its defaults, not for `key`.

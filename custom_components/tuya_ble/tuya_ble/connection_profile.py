@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 import asyncio
+from collections.abc import Callable
 import logging
 from struct import pack
 from typing import Any
@@ -11,6 +12,7 @@ from typing import Any
 from bleak_retry_connector import BleakClientWithServiceCache
 
 from .const import (
+    APP_DEVICE_INFO_CAPACITY,
     CHARACTERISTIC_NOTIFY,
     CHARACTERISTIC_NOTIFY_V4,
     CHARACTERISTIC_WRITE,
@@ -36,6 +38,11 @@ class TuyaBLEConnectionProfile:
     _write_char: str
     _client: Any
     _expected_disconnect: bool
+    # The protocol version and bound flag of this connection's encrypted
+    # DEVICE_INFO reply. Unlike _protocol_version and _is_bound, advertisements
+    # never change them during a handshake.
+    _device_info_protocol: int | None = None
+    _device_info_bound: bool | None = None
 
     @property
     @abstractmethod
@@ -49,6 +56,8 @@ class TuyaBLEConnectionProfile:
 
     def _select_characteristics(self, client: BleakClientWithServiceCache) -> None:
         """Use FD50 only for v4 devices offering both, otherwise classic."""
+        self._device_info_protocol = None
+        self._device_info_bound = None
         self._notify_char = CHARACTERISTIC_NOTIFY
         self._write_char = CHARACTERISTIC_WRITE
         if self._protocol_version != PROTOCOL_VERSION_V4:
@@ -68,11 +77,46 @@ class TuyaBLEConnectionProfile:
             self._protocol_version,
         )
 
+    def _may_pair(self) -> bool:
+        """Never pair a v4 device whose device-info reply reports it unbound.
+
+        Pairing an unbound device would register it with these credentials,
+        which setup verification also refuses. Classic devices keep their
+        existing behaviour.
+        """
+        if (
+            self._device_info_protocol == PROTOCOL_VERSION_V4
+            and not self._device_info_bound
+        ):
+            _LOGGER.debug(
+                "%s: Device reports it is not added to an account; not pairing",
+                self.address,
+            )
+            return False
+        return True
+
+    async def _start_notify(
+        self,
+        client: BleakClientWithServiceCache,
+        handler: Callable[[Any, bytearray], None],
+    ) -> None:
+        """Subscribe, using BlueZ StartNotify on FD50; AcquireNotify can lose reports.
+
+        Other backends ignore the BlueZ-specific argument.
+        """
+        kwargs: dict[str, Any] = {}
+        if self._notify_char == CHARACTERISTIC_NOTIFY_V4:
+            kwargs["bluez"] = {"use_start_notify": True}
+        await client.start_notify(self._notify_char, handler, **kwargs)
+
     def _build_device_info_request(self) -> bytes:
         """v4 requests exactly two bytes specifying safe ATT data capacity."""
-        if self._protocol_version == PROTOCOL_VERSION_V4:
-            return pack(">H", self._packet_size)
-        return b""
+        if self._protocol_version != PROTOCOL_VERSION_V4:
+            return b""
+        profile = self._connection_profile
+        if profile is not None and profile.app_capacity:
+            return pack(">H", APP_DEVICE_INFO_CAPACITY)
+        return pack(">H", self._packet_size)
 
     async def _configure_packet_size(self, client: BleakClientWithServiceCache) -> None:
         """Recompute safe write capacity on every connection, never from cache."""

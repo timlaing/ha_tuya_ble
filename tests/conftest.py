@@ -97,6 +97,7 @@ class FakeBleakClient:
         self.write_targets: list[str] = []
         self.notify_handler: Callable[[str, bytearray], None] | None = None
         self.notify_char: str | None = None
+        self.notify_kwargs: dict[str, Any] = {}
         self._notify_started = False
         self.stopped: list[str] = []
 
@@ -106,11 +107,15 @@ class FakeBleakClient:
         return self._is_connected
 
     async def start_notify(
-        self, gatt_char: str, handler: Callable[[str, bytearray], None]
+        self,
+        gatt_char: str,
+        handler: Callable[[str, bytearray], None],
+        **kwargs: Any,
     ) -> None:
         """Start notifications on the given characteristic."""
         self.notify_handler = handler
         self.notify_char = gatt_char
+        self.notify_kwargs = kwargs
         self._notify_started = True
 
     async def stop_notify(self, gatt_char: str) -> None:

@@ -20,6 +20,10 @@ from Crypto.Cipher import AES
 from .const import (
     PAIRING_REQUEST_LENGTH,
     RESPONSE_WAIT_TIMEOUT,
+    SECURITY_FLAG_LOGIN,
+    SECURITY_FLAG_SESSION,
+    SECURITY_FLAG_V2_LOGIN,
+    SECURITY_FLAG_V2_SESSION,
     SUPPORTED_PROTOCOL_VERSIONS,
     V4_VALUE_WIDTHS,
     ConnectionProfile,
@@ -51,12 +55,15 @@ class TuyaBLEProtocolSendMixin:
     _packet_size: int
     _device_info: TuyaBLEDeviceCredentials | None
     _local_key: bytes | None
+    _security_v2_key: bytes | None
     _login_key: bytes | None
     _session_key: bytes | None
     _auth_key: bytes | None
     _expected_disconnect: bool
     _is_paired: bool
     _is_bound: bool
+    _device_info_protocol: int | None
+    _device_info_bound: bool | None
     _flags: int
     _device_version: str
     _protocol_version_str: str
@@ -129,7 +136,10 @@ class TuyaBLEProtocolSendMixin:
                 )
 
     def _build_pairing_request(self) -> bytes:
-        """Serialize pairing identity without reusing session state across links."""
+        """Serialize pairing identity without reusing session state across links.
+
+        Security V2 sends the same frame: firmware matches only the UUID.
+        """
         result = bytearray()
         if self._device_info is None or self._local_key is None:
             raise TuyaBLEDeviceError(0)
@@ -281,15 +291,27 @@ class TuyaBLEProtocolSendMixin:
             version = self._connection_profile.info_version
         return self._fragment_into_packets(encrypted, version)
 
+    @property
+    def security_v2(self) -> bool:
+        """Return whether frames use the Security V2 (sec_key) channel."""
+        return self._security_v2_key is not None
+
+    def _security_flags(self) -> tuple[int, int]:
+        """Return the (login, session) security flags for this connection."""
+        if self._security_v2_key is not None:
+            return SECURITY_FLAG_V2_LOGIN, SECURITY_FLAG_V2_SESSION
+        return SECURITY_FLAG_LOGIN, SECURITY_FLAG_SESSION
+
     def _select_encryption_key(self, code: TuyaBLECode) -> tuple[bytes, bytes]:
         """Select the encryption key and security flag for the given code."""
+        login_flag, session_flag = self._security_flags()
         if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO:
             if self._login_key is None:
                 raise TuyaBLEDeviceError(0)
-            return self._login_key, b"\x04"
+            return self._login_key, bytes((login_flag,))
         if self._session_key is None:
             raise TuyaBLEDeviceError(0)
-        return self._session_key, b"\x05"
+        return self._session_key, bytes((session_flag,))
 
     def _encrypt_payload(
         self,

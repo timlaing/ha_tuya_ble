@@ -50,19 +50,37 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
 
     def _get_key(self, security_flag: int) -> bytes:
         """Return the encryption key for the given security flag."""
+        login_flag, session_flag = self._security_flags()
         if security_flag == 1:
             if self._auth_key is None:
                 raise TuyaBLEDeviceError(0)
             return self._auth_key
-        if security_flag == 4:
+        if security_flag == login_flag:
             if self._login_key is None:
                 raise TuyaBLEDeviceError(0)
             return self._login_key
-        if security_flag == 5:
+        if security_flag == session_flag:
             if self._session_key is None:
                 raise TuyaBLEDeviceError(0)
             return self._session_key
+        _LOGGER.debug(
+            "%s: Received security flag %s, expected %s or %s",
+            self.address,
+            security_flag,
+            login_flag,
+            session_flag,
+        )
         raise TuyaBLEDataFormatError()
+
+    def _log_unexpected_flag(self, expected: int) -> None:
+        """Log the security flag of a frame the current handshake rejects."""
+        received = self._input_buffer[0] if self._input_buffer else None
+        _LOGGER.debug(
+            "%s: Received security flag %s, expected %s",
+            self.address,
+            received,
+            expected,
+        )
 
     def _parse_timestamp(self, data: bytes, start_pos: int) -> tuple[float, int]:
         """Decode a timestamp field (type 0: ms-string, type 1: 4-byte big-endian)."""
@@ -277,23 +295,27 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
         self._protocol_version = data[2]
         self._flags = data[4]
         self._is_bound = data[5] != 0
+        self._device_info_protocol = self._protocol_version
+        self._device_info_bound = self._is_bound
 
         srand = data[6:12]
         if self._local_key is None:
             raise TuyaBLEDeviceError(0)
+        # Security V2: MD5(local_key + sec_key + srand); classic: MD5(key[:6] + srand).
         self._session_key = hashlib.md5(
-            self._local_key + srand, usedforsecurity=False
+            (self._security_v2_key or self._local_key) + srand, usedforsecurity=False
         ).digest()
         self._auth_key = data[14:46]
         _LOGGER.debug(
             "%s: Device info: firmware %s, protocol %s, hardware %s,"
-            " flags 0x%02x, bound %s",
+            " flags 0x%02x, bound %s, security %s",
             self.address,
             self._device_version,
             self._protocol_version_str,
             self._hardware_version,
             self._flags,
             self._is_bound,
+            "v2" if self._security_v2_key is not None else "classic",
         )
 
     def _handle_pair_response(self, data: bytes) -> int:

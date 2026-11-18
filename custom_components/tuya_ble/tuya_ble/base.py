@@ -6,7 +6,6 @@ import asyncio
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
-import hashlib
 import json
 import logging
 import time
@@ -45,6 +44,7 @@ from .protocol_mixin import (
     BLEAK_EXCEPTIONS,
     TuyaBLEProtocol,
 )
+from .security import derive_login_keys
 
 _LOGGER = logging.getLogger(__name__)
 _CONNECT_ATTEMPTS = 3
@@ -122,6 +122,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
 
         self._auth_key: bytes | None = None
         self._local_key: bytes | None = None
+        self._security_v2_key: bytes | None = None
         self._login_key: bytes | None = None
         self._session_key: bytes | None = None
 
@@ -195,11 +196,9 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
         self._connection_profile = credentials.connection_profile
         if self._connection_profile is not None:
             self._protocol_version = PROTOCOL_VERSION_V4
-        local_key = credentials.local_key.encode()
-        if len(local_key) < 6:
-            raise TuyaBLEDeviceError(0)
-        self._local_key = local_key[:6]
-        self._login_key = hashlib.md5(self._local_key, usedforsecurity=False).digest()
+        self._local_key, self._security_v2_key, self._login_key = derive_login_keys(
+            credentials.local_key, credentials.sec_key
+        )
         self.append_functions(
             credentials.functions if credentials.functions else [],
             credentials.status_range if credentials.status_range else [],
@@ -706,6 +705,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
         return (
             await self._try_start_notifications()
             and await self._try_send_device_info()
+            and self._may_pair()
             and await self._try_send_pairing()
         )
 
@@ -883,7 +883,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
 
         try:
             self._select_characteristics(client)
-            await client.start_notify(self._notify_char, handle_notification)
+            await self._start_notify(client, handle_notification)
             await self._configure_packet_size(client)
             return True
         except BLE_CONNECTION_EXCEPTIONS as err:

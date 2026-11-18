@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
 import logging
+import re
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -267,8 +268,15 @@ _CLOUD_INFO_ALLOW: frozenset[str] = frozenset({
 })
 
 # What an exported snapshot may contain: the allowlisted fields plus the
-# capture timestamp this module adds itself.
-_CLOUD_INFO_EXPORT: frozenset[str] = _CLOUD_INFO_ALLOW | {"captured_at"}
+# capture timestamp and sec_key presence flag this module adds itself.
+_CLOUD_INFO_EXPORT: frozenset[str] = _CLOUD_INFO_ALLOW | {
+    "captured_at",
+    "sec_key_present",
+}
+
+# Cloud field names that may carry the Security V2 key. The sharing SDK keeps
+# the raw payload's key names, which have not been confirmed for this field.
+_SEC_KEY_FIELDS: tuple[str, ...] = ("sec_key", "secKey")
 
 
 _JSON_SCALARS = str | int | float | bool
@@ -279,15 +287,72 @@ def _is_json_scalar(value: Any) -> bool:
     return value is None or isinstance(value, _JSON_SCALARS)
 
 
+def _cloud_sec_key(device: CustomerDevice) -> str | None:
+    """Return the device's Security V2 key from the cloud record, if any."""
+    for name in _SEC_KEY_FIELDS:
+        value = getattr(device, name, None)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def _redacted_shape(value: Any) -> str:
+    """Describe a withheld value by its type and size, never its content."""
+    if value is None:
+        return "<redacted none>"
+    if isinstance(value, bool):
+        return "<redacted bool>"
+    if isinstance(value, int | float):
+        return "<redacted number>"
+    if isinstance(value, str):
+        return f"<redacted str, {len(value)} chars>"
+    if isinstance(value, Mapping | list | tuple | set):
+        return f"<redacted {type(value).__name__}, {len(value)} items>"
+    return f"<redacted {type(value).__name__}>"
+
+
+# Matches every string _redacted_shape returns, so a stored field map can be
+# re-checked on export without trusting its contents.
+_REDACTED_SHAPE = re.compile(r"<redacted [A-Za-z_]\w*(, \d+ (chars|items))?>")
+
+
+def _is_exportable_field(key: str, value: Any) -> bool:
+    """Allow allowlisted scalars and redaction descriptions, nothing else."""
+    if key in _CLOUD_INFO_ALLOW and _is_json_scalar(value):
+        return True
+    return isinstance(value, str) and _REDACTED_SHAPE.fullmatch(value) is not None
+
+
+def capture_cloud_fields(device: CustomerDevice) -> dict[str, Any]:
+    """List every top-level field of the raw cloud record.
+
+    Allowlisted scalar fields keep their value; every other field is shown by
+    name with only its type and size, so diagnostics reveal which fields the
+    cloud sends (for example whether a ``sec_key`` exists) without its content.
+    """
+    return {
+        key: value
+        if key in _CLOUD_INFO_ALLOW and _is_json_scalar(value)
+        else _redacted_shape(value)
+        for key, value in sorted(vars(device).items())
+    }
+
+
 def capture_cloud_info(device: CustomerDevice) -> dict[str, Any]:
     """Capture the allowlisted product/version fields the cloud reports.
 
     The sharing SDK builds the device from the raw API payload, so the field
     set is restricted to ``_CLOUD_INFO_ALLOW`` rather than denylisted — the
     raw payload also carries network/location identifiers that must not be
-    persisted. Only scalars are kept so the entry stays JSON-safe.
+    persisted. Only scalars are kept so the entry stays JSON-safe. Whether the
+    record carries a sec_key is kept as a flag; the key itself never is.
+    ``fields`` names every raw field, with values only for allowlisted ones.
     """
-    info: dict[str, Any] = {"captured_at": dt_util.utcnow().isoformat()}
+    info: dict[str, Any] = {
+        "captured_at": dt_util.utcnow().isoformat(),
+        "sec_key_present": _cloud_sec_key(device) is not None,
+        "fields": capture_cloud_fields(device),
+    }
     for key, value in vars(device).items():
         if key not in _CLOUD_INFO_ALLOW:
             continue
@@ -301,13 +366,21 @@ def filter_cloud_info(snapshot: Mapping[str, Any]) -> dict[str, Any]:
 
     Entries captured before the allowlist existed may carry identifying
     fields; filtering on export keeps a diagnostics download free of them
-    without rewriting stored entry data.
+    without rewriting stored entry data. The ``fields`` map is re-checked so
+    only allowlisted values and redaction descriptions survive.
     """
-    return {
+    filtered = {
         key: value
         for key, value in snapshot.items()
         if key in _CLOUD_INFO_EXPORT and _is_json_scalar(value)
     }
+    fields = snapshot.get("fields")
+    if isinstance(fields, Mapping):
+        filtered["fields"] = {
+            str(key): value if _is_exportable_field(str(key), value) else "<redacted>"
+            for key, value in fields.items()
+        }
+    return filtered
 
 
 def _build_credentials(device: CustomerDevice) -> TuyaBLEDeviceCredentials:
@@ -325,4 +398,5 @@ def _build_credentials(device: CustomerDevice) -> TuyaBLEDeviceCredentials:
         status_range=_extract_status_range(device),
         local_schema=capture_local_schema(device),
         cloud_info=capture_cloud_info(device),
+        sec_key=_cloud_sec_key(device),
     )

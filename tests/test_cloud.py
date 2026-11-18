@@ -17,6 +17,7 @@ from custom_components.tuya_ble.cloud import (
     _build_credentials,
     _extract_functions,
     _extract_status_range,
+    capture_cloud_fields,
     capture_cloud_info,
     capture_local_schema,
     filter_cloud_info,
@@ -546,3 +547,78 @@ async def test_get_cloud_device_by_uuid_initializes_manager() -> None:
 
     with patch.object(mgr, "initialize", new=fake_initialize):
         assert await mgr.get_cloud_device_by_uuid("uuid") is device
+
+
+class _Opaque:
+    """A non-JSON value of a type the SDK might attach to a device."""
+
+
+def test_capture_cloud_fields_names_every_field_but_withholds_values() -> None:
+    """Every raw field is listed; only allowlisted scalars keep their value."""
+    device = make_device(
+        sec_key="fedcba9876543210",
+        online=True,
+        pv="2.1",
+        product_model=["not", "scalar"],
+        lat=12.5,
+        sub=None,
+        is_shared=False,
+        opaque=_Opaque(),
+        local_key="0123456789abcdef",
+    )
+    fields = capture_cloud_fields(device)
+
+    assert list(fields) == sorted(vars(device))
+    assert fields["online"] is True
+    assert fields["pv"] == "2.1"
+    assert fields["sub"] is None
+    assert fields["product_model"] == "<redacted list, 2 items>"
+    assert fields["sec_key"] == "<redacted str, 16 chars>"
+    assert fields["local_key"] == "<redacted str, 16 chars>"
+    assert fields["lat"] == "<redacted number>"
+    assert fields["is_shared"] == "<redacted bool>"
+    assert fields["opaque"] == "<redacted _Opaque>"
+    assert fields["function"] == "<redacted dict, 1 items>"
+    assert "fedcba9876543210" not in repr(fields)
+    assert "0123456789abcdef" not in repr(fields)
+
+
+def test_capture_cloud_fields_describes_unlisted_none() -> None:
+    """A field the cloud sends as null is named without exposing a value."""
+    assert capture_cloud_fields(make_device(owner_id=None))["owner_id"] == (
+        "<redacted none>"
+    )
+
+
+def test_capture_cloud_info_includes_field_map() -> None:
+    """The stored snapshot carries the redacted field map."""
+    info = capture_cloud_info(make_device(sec_key="fedcba9876543210"))
+    assert info["fields"]["sec_key"] == "<redacted str, 16 chars>"
+    assert filter_cloud_info(info)["fields"] == info["fields"]
+
+
+def test_filter_cloud_info_rechecks_stored_field_map() -> None:
+    """Stored field maps cannot smuggle values past the allowlist on export."""
+    snapshot = {
+        "fields": {
+            "pv": "2.1",
+            "local_key": "0123456789abcdef",
+            "sec_key": "<redacted str, 16 chars>",
+            "status": "<redacted dict, 9 items>",
+            "uid": "<redacted str, 16 chars> plus a value",
+            "online": {"nested": True},
+        }
+    }
+    assert filter_cloud_info(snapshot)["fields"] == {
+        "pv": "2.1",
+        "local_key": "<redacted>",
+        "sec_key": "<redacted str, 16 chars>",
+        "status": "<redacted dict, 9 items>",
+        "uid": "<redacted>",
+        "online": "<redacted>",
+    }
+
+
+def test_filter_cloud_info_drops_malformed_field_map() -> None:
+    """A field map that is not a mapping is not exported."""
+    assert "fields" not in filter_cloud_info({"fields": ["sec_key"]})

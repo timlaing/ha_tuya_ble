@@ -658,3 +658,38 @@ async def test_diagnostics_refresh_captures_fresh_cloud_info(
 
     capture.assert_called_once_with(_CLOUD_DEVICE)
     assert payload["cloud_info"] == {"captured_at": "fresh", "online": True}
+
+
+async def test_diagnostics_export_redacted_cloud_field_map(hass: HomeAssistant) -> None:
+    """Every cloud field is named; secrets show only their type and size."""
+    entry_data = _entry_data() | {
+        CONF_CLOUD_INFO: {
+            "captured_at": "2026-09-30T00:00:00+00:00",
+            "fields": {
+                "pv": "1.0.5",
+                "sec_key": "<redacted str, 16 chars>",
+                "local_key": "<redacted str, 16 chars>",
+                "ip": "10.0.0.5",
+            },
+        }
+    }
+    entry = _add_entry(hass, data=entry_data)
+
+    payload = await async_get_config_entry_diagnostics(hass, entry)
+
+    fields = payload["cloud_info"]["fields"]
+    assert fields == {
+        "pv": "1.0.5",
+        "sec_key": "<redacted str, 16 chars>",
+        "local_key": "<redacted str, 16 chars>",
+        # A raw value in a stored map is withheld on export.
+        "ip": "<redacted>",
+    }
+    assert "10.0.0.5" not in repr(payload)
+
+
+async def test_diagnostics_without_cloud_field_map(hass: HomeAssistant) -> None:
+    """Snapshots captured before the field map existed export without one."""
+    entry = _add_entry(hass, data=_entry_data() | {CONF_CLOUD_INFO: {"pv": "1"}})
+    payload = await async_get_config_entry_diagnostics(hass, entry)
+    assert "fields" not in payload["cloud_info"]

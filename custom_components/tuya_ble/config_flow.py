@@ -18,7 +18,6 @@ from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
-    OptionsFlowWithConfigEntry,
 )
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import callback
@@ -28,10 +27,16 @@ from tuya_sharing import LoginControl
 
 from . import _build_credentials_from_entry
 from .cloud import HASSTuyaBLEDeviceManager
+from .config_flow_options import TuyaBLEOptionsFlow
 from .config_flow_qr import UNKNOWN_ERROR, _QRCodeLoginMixin
 from .config_flow_state import PROBE_CLAIM_TTL, _consume_probe_result
 from .config_flow_state import advertisement_hex as _advertisement_hex
 from .config_flow_state import probe_state as _probe_state
+from .config_flow_unverified import (
+    UnverifiedSetup,
+    _UnverifiedSetupMixin,
+    unverified_error,
+)
 from .const import (
     CONF_ADVERTISED_UUID,
     CONF_CATEGORY,
@@ -47,6 +52,7 @@ from .const import (
     CONF_PRODUCT_ID,
     CONF_PRODUCT_MODEL,
     CONF_PRODUCT_NAME,
+    CONF_SEC_KEY,
     CONF_STATUS_RANGE,
     CONF_TERMINAL_ID,
     CONF_TOKEN_INFO,
@@ -64,11 +70,13 @@ from .tuya_ble import (
     SERVICE_UUIDS,
     ConnectionProfile,
     ProbeOutcome,
+    ProbeStage,
     TuyaBLEAdvertisementInfo,
     TuyaBLEDeviceCredentials,
     async_detect_v4_profile,
     async_probe_authenticated_status,
     decode_tuya_ble_advertisement,
+    is_valid_sec_key,
 )
 
 ACTIVE_SCAN_TIMEOUT = 60
@@ -77,7 +85,22 @@ PROBE_MAX_CANDIDATES = 4
 _LOGGER = logging.getLogger(__name__)
 
 
-class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
+def _probe_task_result(
+    task: asyncio.Task[tuple[TuyaBLEDeviceCredentials | None, str | None, str]],
+) -> tuple[TuyaBLEDeviceCredentials | None, str | None, str]:
+    """Return a finished verification task's result, mapping failures to errors."""
+    if task.cancelled():
+        return None, None, "bluetooth_probe_failed"
+    try:
+        return task.result()
+    except Exception:  # pylint: disable=broad-exception-caught
+        _LOGGER.debug("Cloud credential verification failed")
+        return None, None, "probe_setup_failed"
+
+
+class TuyaBLEConfigFlow(
+    ConfigFlow, _QRCodeLoginMixin, _UnverifiedSetupMixin, domain=DOMAIN
+):
     """Handle a config flow for Tuya BLE."""
 
     VERSION = 1
@@ -102,6 +125,8 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         self._probe_source_step = "device"
         self._probe_error: str | None = None
         self._verified_profile: ConnectionProfile | None = None
+        self._unverified_credentials: tuple[TuyaBLEDeviceCredentials, str] | None = None
+        self._unverified_setup: UnverifiedSetup | None = None
         self._reconfigure_unloaded = False
         self._qr_user_code: str = ""
         self._qr_code: str = ""
@@ -349,6 +374,14 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         }
         if credentials.connection_profile is not None:
             entry_data[CONF_CONNECTION_PROFILE] = credentials.connection_profile.value
+        if (
+            credentials.sec_key is not None
+            and advertisement.security_v2
+            and is_valid_sec_key(credentials.sec_key)
+        ):
+            # Only a device advertising Security V2 needs, and receives, the key.
+            # A malformed key is never stored: runtime could not load the entry.
+            entry_data[CONF_SEC_KEY] = credentials.sec_key
         _LOGGER.debug(
             "%s: config entry created (category: %s, product_id: %s, device_name: %s)",
             discovery_info.address,
@@ -407,14 +440,7 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
         self._probe_task = None
         self._probe_discovery = None
         self._probe_advertisement = None
-        if task.cancelled():
-            credentials, pairing_uuid, error = None, None, "bluetooth_probe_failed"
-        else:
-            try:
-                credentials, pairing_uuid, error = task.result()
-            except Exception:  # pylint: disable=broad-exception-caught
-                _LOGGER.debug("Cloud credential verification failed")
-                credentials, pairing_uuid, error = None, None, "probe_setup_failed"
+        credentials, pairing_uuid, error = _probe_task_result(task)
         if credentials is not None and pairing_uuid is not None:
             result = self._complete_verified_probe(
                 discovery, advertisement, credentials, pairing_uuid
@@ -424,12 +450,29 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
             error = "device_verification_expired"
         elif error == "device_not_registered" and self._probe_refresh_failed:
             error = "cloud_refresh_failed"
-        self._probe_error = error
+        return await self._async_probe_failed(discovery, advertisement, error)
+
+    async def _async_probe_failed(
+        self,
+        discovery: BluetoothServiceInfoBleak,
+        advertisement: TuyaBLEAdvertisementInfo,
+        error: str,
+    ) -> ConfigFlowResult:
+        """Return to the originating step, or offer an unverified v4 setup."""
+        unverified, self._unverified_credentials = self._unverified_credentials, None
         if error == "v4_verification_failed":
             self._get_device_info_error = True
+        if unverified is not None:
+            # Only a failed v4 verification leaves these; show why it failed.
+            error = unverified[1]
         if self._probe_source_step == "reconfigure":
+            self._probe_error = error
             await self._async_restore_entry()
             return await self._async_reconfigure_locked(None)
+        if unverified is not None:
+            self._unverified_setup = (discovery, advertisement, *unverified)
+            return self._show_unverified_form(discovery, error)
+        self._probe_error = error
         if self._probe_source_step == "discovered_device":
             return await self.async_step_discovered_device()
         return await self.async_step_device()
@@ -637,11 +680,13 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
                 and claim[2] > time.monotonic()
             ):
                 return None, None, "device_verification_expired"
+            stages: list[ProbeStage] = []
             profile = await async_detect_v4_profile(
                 discovery.device,
                 discovery.advertisement,
                 credentials,
                 get_mapped_dp_ids(credentials.category, credentials.product_id),
+                stages=stages,
             )
             self._abort_if_flow_removed()
             if profile is not None:
@@ -652,6 +697,8 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
                 )
         self._abort_if_flow_removed()
         if profile is None:
+            # Kept so the user may still add the device to collect diagnostics.
+            self._unverified_credentials = (credentials, unverified_error(stages))
             return None, None, "v4_verification_failed"
         return replace(credentials, connection_profile=profile), credentials.uuid, ""
 
@@ -919,82 +966,3 @@ class TuyaBLEConfigFlow(ConfigFlow, _QRCodeLoginMixin, domain=DOMAIN):
     ) -> TuyaBLEOptionsFlow:
         """Get the options flow for this handler."""
         return TuyaBLEOptionsFlow(config_entry)
-
-
-class TuyaBLEOptionsFlow(OptionsFlowWithConfigEntry, _QRCodeLoginMixin):
-    """Handle a Tuya BLE options flow."""
-
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Set up mutable state for the re-authentication QR-code flow."""
-        super().__init__(config_entry)
-        self._qr_user_code: str = ""
-        self._qr_code: str = ""
-        self._qr_login_control = LoginControl()
-
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Delegate to the user step for re-authentication."""
-        return await self.async_step_user(user_input)
-
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Handle re-authentication via QR code."""
-        errors: dict[str, str] = {}
-        placeholders: dict[str, Any] = {}
-
-        if user_input is not None:
-            success, response = await self._async_fetch_qr_code(
-                user_input[CONF_USER_CODE]
-            )
-            if success:
-                return await self.async_step_qr()
-
-            errors["base"] = "login_error"
-            placeholders = {
-                TUYA_RESPONSE_MSG: response.get(TUYA_RESPONSE_MSG, UNKNOWN_ERROR),
-                TUYA_RESPONSE_CODE: response.get(TUYA_RESPONSE_CODE, "0"),
-            }
-            _LOGGER.debug(
-                "Re-authentication rejected (code %s): %s",
-                placeholders[TUYA_RESPONSE_CODE],
-                placeholders[TUYA_RESPONSE_MSG],
-            )
-        else:
-            user_input = {}
-            user_input[CONF_USER_CODE] = self.config_entry.options.get(
-                CONF_USER_CODE, ""
-            )
-
-        return self.async_show_form(
-            step_id="user",
-            data_schema=probatio.Schema({
-                probatio.Required(
-                    CONF_USER_CODE, default=user_input.get(CONF_USER_CODE, "")
-                ): str,
-            }),
-            errors=errors,
-            description_placeholders=placeholders,
-        )
-
-    async def _async_qr_login_store_and_advance(
-        self, login_info: dict[str, Any]
-    ) -> ConfigFlowResult:
-        """Store login data as an options update."""
-        new_data = dict(self.config_entry.options)
-        new_data[CONF_USER_CODE] = self._qr_user_code
-        new_data[CONF_TOKEN_INFO] = {
-            "t": login_info["t"],
-            "uid": login_info["uid"],
-            "expire_time": login_info["expire_time"],
-            "access_token": login_info["access_token"],
-            "refresh_token": login_info["refresh_token"],
-        }
-        new_data[CONF_TERMINAL_ID] = login_info[CONF_TERMINAL_ID]
-        new_data[CONF_ENDPOINT] = login_info[CONF_ENDPOINT]
-
-        return self.async_create_entry(
-            title="",
-            data=new_data,
-        )

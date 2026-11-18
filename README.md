@@ -47,12 +47,14 @@ The integration works locally, but connecting to a Tuya BLE device requires a de
 2. Scan the displayed QR code in your Smart Life / Tuya Smart app
 3. Select your BLE device from the discovered list
 
-For protocol-4 devices, setup automatically verifies a compatible Bluetooth
-handshake and saves it for offline reconnects and Home Assistant reboots. Keep
-the device nearby and close Smart Life after login to release its BLE connection.
-No opt-in setting is required. Existing entries can run the same verification
-from **Reconfigure**, without deleting devices or changing entity IDs.
-See [protocol-4 compatibility and hardware checks](docs/PROTOCOL_4.md).
+For Tuya BLE protocol v4 devices, setup checks that Home Assistant can connect
+over Bluetooth and remembers how, so the device reconnects after restarts
+without the cloud. Keep the device nearby and close the Smart Life app after
+logging in, because the app can hold the device's Bluetooth connection. To run
+the check again for an existing device, use **Reconfigure**; entities are kept.
+If the check fails, setup tells you and lets you add the device anyway. It may
+then show as unavailable, but its diagnostics download helps add support.
+See [Tuya BLE protocol v4 details](docs/PROTOCOL_4.md).
 
 ## Debug logging
 

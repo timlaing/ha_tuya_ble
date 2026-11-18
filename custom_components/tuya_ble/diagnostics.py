@@ -42,6 +42,7 @@ from .const import (
     CONF_PRODUCT_ID,
     CONF_PRODUCT_MODEL,
     CONF_PRODUCT_NAME,
+    CONF_SEC_KEY,
     CONF_STATUS_RANGE,
     CONF_TERMINAL_ID,
     CONF_TOKEN_INFO,
@@ -68,6 +69,7 @@ _LOGGER = logging.getLogger(__name__)
 _TO_REDACT = frozenset({
     CONF_ENDPOINT,
     CONF_LOCAL_KEY,
+    CONF_SEC_KEY,
     CONF_TERMINAL_ID,
     CONF_TOKEN_INFO,
     CONF_USER_CODE,
@@ -175,6 +177,7 @@ def _device_section(device: TuyaBLEDevice | None) -> dict[str, Any]:
         "hardware_version": device.hardware_version,
         "protocol_version": device.protocol_version,
         "connection_profile": device.connection_profile,
+        "security_v2": device.security_v2,
     }
 
 
@@ -236,6 +239,29 @@ def _registry_device(device: dr.DeviceEntry) -> dict[str, Any]:
     }
 
 
+def _home_assistant_section(
+    hass: HomeAssistant, entry: ConfigEntry, device: dr.DeviceEntry | None
+) -> dict[str, Any]:
+    """Describe the entry and its registry devices, or the one requested."""
+    home_assistant: dict[str, Any] = {
+        "version": HA_VERSION,
+        "integration_version": entry.version,
+        "entry_state": entry.state,
+        "disabled_by": entry.disabled_by,
+        "captured_at": dt_util.now().isoformat(),
+    }
+    if device is None:
+        home_assistant["devices"] = [
+            _registry_device(registered)
+            for registered in dr.async_entries_for_config_entry(
+                dr.async_get(hass), entry.entry_id
+            )
+        ]
+    else:
+        home_assistant["device"] = _registry_device(device)
+    return home_assistant
+
+
 async def _async_diagnostics(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -258,24 +284,9 @@ async def _async_diagnostics(
         if cloud_device is not None
         else entry.data.get(CONF_CLOUD_INFO) or {}
     )
-
-    registry = dr.async_get(hass)
-    home_assistant: dict[str, Any] = {
-        "version": HA_VERSION,
-        "integration_version": entry.version,
-        "entry_state": entry.state,
-        "disabled_by": entry.disabled_by,
-        "captured_at": dt_util.now().isoformat(),
-    }
-    if device is None:
-        home_assistant["devices"] = [
-            _registry_device(registered)
-            for registered in dr.async_entries_for_config_entry(
-                registry, entry.entry_id
-            )
-        ]
-    else:
-        home_assistant["device"] = _registry_device(device)
+    # Already reduced to allowlisted values and type/size descriptions, so it
+    # bypasses name-based redaction, which would hide e.g. the sec_key's size.
+    cloud_fields = cloud_info.pop("fields", None)
 
     payload: dict[str, Any] = {
         "schema_captured_at": (schema or {}).get("captured_at"),
@@ -307,11 +318,15 @@ async def _async_diagnostics(
             "device_name": entry.data.get(CONF_DEVICE_NAME),
             "product_name": entry.data.get(CONF_PRODUCT_NAME),
             "product_model": entry.data.get(CONF_PRODUCT_MODEL),
+            "sec_key_stored": bool(entry.data.get(CONF_SEC_KEY)),
         },
-        "home_assistant": home_assistant,
+        "home_assistant": _home_assistant_section(hass, entry, device),
     }
 
-    return async_redact_data(payload, _TO_REDACT)
+    redacted: dict[str, Any] = async_redact_data(payload, _TO_REDACT)
+    if cloud_fields is not None:
+        redacted["cloud_info"]["fields"] = cloud_fields
+    return redacted
 
 
 async def async_get_config_entry_diagnostics(

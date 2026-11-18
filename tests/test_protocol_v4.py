@@ -336,10 +336,25 @@ async def test_v4_report_bitmap_accepts_sdk_widths(
 
 
 @pytest.mark.parametrize(
+    ("raw", "expected"),
+    [(b"\x2a", 42), (b"\xff", -1), (b"\x00\xd7", 215), (b"\xff\xd8", -40)],
+)
+async def test_v4_report_value_accepts_short_widths(
+    h: ProtocolHarness, raw: bytes, expected: int
+) -> None:
+    """One- and two-byte VALUEs decode signed and are acknowledged."""
+    deliver(h, DP_RECEIVE_V4, report(klv(3, TuyaBLEDataPointType.DT_VALUE, raw)))
+    await drain_responses(h.device)
+    dp = h.device.datapoints[3]
+    assert dp is not None
+    assert dp.value == expected
+    assert len(written_frames(h)) == 1
+
+
+@pytest.mark.parametrize(
     ("dp_type", "width"),
     [
         (TuyaBLEDataPointType.DT_VALUE, 0),
-        (TuyaBLEDataPointType.DT_VALUE, 1),
         (TuyaBLEDataPointType.DT_VALUE, 3),
         (TuyaBLEDataPointType.DT_VALUE, 5),
         (TuyaBLEDataPointType.DT_BOOL, 0),

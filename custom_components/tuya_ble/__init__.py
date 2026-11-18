@@ -27,6 +27,7 @@ from .const import (
     CONF_PRODUCT_ID,
     CONF_PRODUCT_MODEL,
     CONF_PRODUCT_NAME,
+    CONF_SEC_KEY,
     CONF_STATUS_RANGE,
     CONF_UUID,
     DOMAIN,
@@ -94,6 +95,7 @@ def _build_credentials_from_entry(entry: ConfigEntry) -> TuyaBLEDeviceCredential
             if data.get(CONF_CONNECTION_PROFILE) is not None
             else None
         ),
+        sec_key=data.get(CONF_SEC_KEY),
     )
 
 

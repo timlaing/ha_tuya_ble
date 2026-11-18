@@ -47,6 +47,20 @@ MAX_DEVICE_ID_LENGTH = 20
 # two trailing pad bytes the device expects.
 PAIRING_REQUEST_LENGTH = 44
 
+# The cloud sec_key used by Security V2 key derivation.
+SECURITY_V2_KEY_LENGTH = 16
+
+# The device-info payload the Tuya app sends to TuyaOS FD50 firmware: its
+# receive capacity, 243 bytes, regardless of the negotiated ATT MTU.
+APP_DEVICE_INFO_CAPACITY = 0xF3
+
+# Security flags prefixing each encrypted frame: login and session keys for the
+# classic scheme, and their Security V2 counterparts.
+SECURITY_FLAG_LOGIN = 4
+SECURITY_FLAG_SESSION = 5
+SECURITY_FLAG_V2_LOGIN = 14
+SECURITY_FLAG_V2_SESSION = 15
+
 
 class ConnectionProfile(StrEnum):
     """Verified FD50 handshake variants, independent of the report version."""
@@ -55,11 +69,19 @@ class ConnectionProfile(StrEnum):
     V2_20 = "v2_20"
     V4_MTU = "v4_mtu"
     V2_MTU = "v2_mtu"
+    # The Tuya app's own handshake (YZD02B and lock app captures): marker 0x20 and
+    # a 243-byte receive capacity, sent in 20-byte fragments.
+    V2_APP = "v2_app"
 
     @property
     def info_version(self) -> int:
         """Return the initial device-info frame's protocol marker."""
-        return 2 if self in (self.V2_20, self.V2_MTU) else 4
+        return 2 if self in (self.V2_20, self.V2_MTU, self.V2_APP) else 4
+
+    @property
+    def app_capacity(self) -> bool:
+        """Return whether device info announces the app's 243-byte capacity."""
+        return self is self.V2_APP
 
     @property
     def negotiated_mtu(self) -> bool:
@@ -122,7 +144,9 @@ class TuyaBLEDataPointType(Enum):
 
 V4_VALUE_WIDTHS = {
     TuyaBLEDataPointType.DT_BOOL: (1,),
-    TuyaBLEDataPointType.DT_VALUE: (4,),
+    # Firmware chooses the integer width (the SRB-PM01 reports 1 and 2 bytes);
+    # protocol 3 decodes the same widths signed.
+    TuyaBLEDataPointType.DT_VALUE: (1, 2, 4),
     TuyaBLEDataPointType.DT_ENUM: (1,),
     TuyaBLEDataPointType.DT_BITMAP: (1, 2, 4),
 }
