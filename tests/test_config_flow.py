@@ -36,7 +36,7 @@ from custom_components.tuya_ble.tuya_ble.const import MANUFACTURER_DATA_ID
 from tests.conftest import FakeAdvertisementData, make_device
 
 _SCAN_PATCH = (
-    "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements"
+    "custom_components.tuya_ble.config_flow_scan.bluetooth.async_process_advertisements"
 )
 
 
@@ -82,6 +82,7 @@ class FakeManager:
         self.credentials = credentials
         self.initialized = False
         self.calls: list[tuple[str, bool]] = []
+        self.refreshes = 0
 
     async def initialize(self) -> None:
         """Mark the fake manager as initialized."""
@@ -96,6 +97,10 @@ class FakeManager:
         """Return the fake credentials and record the call."""
         self.calls.append((uuid, force_update))
         return self.credentials
+
+    async def async_refresh(self) -> None:
+        """Record a cloud device-list refresh."""
+        self.refreshes += 1
 
     async def get_probe_candidates(
         self, advertised_uuid: str, product_id: str | None
@@ -640,7 +645,7 @@ async def test_async_scan_device_waits_for_complete_tuya_identity(
         return discovery
 
     with patch(
-        "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements",
+        _SCAN_PATCH,
         side_effect=process_advertisements,
     ):
         result = await flow._async_scan_device(discovery.address)
@@ -668,7 +673,7 @@ async def test_async_scan_device_accepts_block_aligned_extra_manufacturer_bytes(
         return discovery
 
     with patch(
-        "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements",
+        _SCAN_PATCH,
         side_effect=process_advertisements,
     ):
         result = await flow._async_scan_device(discovery.address)
@@ -696,7 +701,7 @@ async def test_async_scan_device_rejects_non_block_aligned_manufacturer_bytes(
         return discovery
 
     with patch(
-        "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements",
+        _SCAN_PATCH,
         side_effect=process_advertisements,
     ):
         result = await flow._async_scan_device(discovery.address)
@@ -722,7 +727,7 @@ async def test_async_scan_device_tolerates_missing_manufacturer_data(
         return discovery
 
     with patch(
-        "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements",
+        _SCAN_PATCH,
         side_effect=process_advertisements,
     ):
         result = await flow._async_scan_device(discovery.address)
@@ -748,7 +753,7 @@ async def test_async_scan_device_tolerates_missing_service_data(
         return discovery
 
     with patch(
-        "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements",
+        _SCAN_PATCH,
         side_effect=process_advertisements,
     ):
         result = await flow._async_scan_device(discovery.address)

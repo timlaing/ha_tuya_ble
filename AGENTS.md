@@ -81,6 +81,7 @@ If a file falls below the threshold, add tests until it passes before committing
 | `tests/test_entity_light.py`                                               | light entity methods                                                                               |
 | `tests/test_config_flow.py`                                                | config/options flow steps                                                                          |
 | `tests/test_config_flow_logging.py`                                        | `config_flow.py` debug/warning log output (reuses the fakes from `test_config_flow.py`)            |
+| `tests/test_config_flow_classic_bound.py`                                  | bound classic records whose identity does not decode (#155): scan fallback, probe-only setup       |
 | `tests/test_init.py`                                                       | integration `async_setup_entry`/`async_unload_entry`, offline manager, update listener             |
 | `tests/test_setup_entries.py`                                              | per-platform `async_setup_entry` boilerplate                                                       |
 | `tests/test_util.py`                                                       | `util.py` (e.g. `remap_value`)                                                                     |

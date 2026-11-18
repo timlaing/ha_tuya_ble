@@ -48,10 +48,40 @@ deferred address always requires a fresh, decoded identity before cloud
 credential lookup or entry creation. Configured addresses are still removed
 after cancellation cleanup. Cancelling the parent flow also cleans up its tasks.
 
-Compressed 20-character identities (manufacturer byte 3, bit 0) are also rejected
+Compressed 20-character identities (FD50 protocol-4 manufacturer byte 3, bit 0)
+are also rejected
 until their pairing representation is supported. Truncated records, invalid
 lengths/types and undecodable or non-printable plaintext fail closed. There is no alternate-key
 guessing or fallback from FD50 to a possibly stale classic service record.
+
+## Classic header and bound records
+
+The six-byte classic manufacturer header is: flags (bit 7 bound), protocol
+version, encryption mode, communication ability (two bytes, big-endian) and data
+type. For example `80 03 00 00 01 00` is a bound protocol-3 record with
+encryption mode 0, communication ability `0x0001` (register from BLE) and data
+type 0. Bytes 2-5 do not mark a compressed identity; the identity is always the
+block-aligned ciphertext after the header.
+
+Once a classic device is bound, its A201 record carries obfuscated product
+bytes instead of the readable product ID, and the identity is encrypted with the
+MD5 of those bytes. Home Assistant merges service and manufacturer data across
+advertisements, so a snapshot can pair a stale readable A201 record with a bound
+identity (#155). Its identity then does not decrypt, even for a product whose
+advertisements otherwise decode.
+
+Setup therefore keeps the active scan running until a classic pair decodes. If
+the scan times out, setup uses the last well-formed classic record:
+
+- **Bound**: the record's header supplies only the bound flag, protocol version
+  and, for product type 0, a readable product ID. No UUID is looked up or stored
+  as advertised. Cloud candidates of that product (all eligible candidates when
+  no product ID is readable) are verified by the same authenticated
+  device-info, pair and mapped-datapoint probe used for other unmatched bound
+  devices. The advertisement alone never selects a cloud record.
+- **Unbound**: setup still fails with `identity_not_decoded`.
+
+Strict identity decoding is unchanged and never guesses alternate keys.
 
 ## Evidence
 

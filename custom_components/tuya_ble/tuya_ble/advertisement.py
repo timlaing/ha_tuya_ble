@@ -157,3 +157,43 @@ def decode_fd50_identity_record(
     if service is None or not _is_v4_identity_record(service):
         return None
     return TuyaBLEIdentityRecord(is_bound=bool(service[0] & 0x08), protocol_version=4)
+
+
+@dataclass(frozen=True)
+class TuyaBLEClassicRecord:
+    """Header fields of a well-formed classic record, without its identity."""
+
+    product_id: str | None
+    is_bound: bool
+    protocol_version: int
+    # Security V2 is only announced by FD50 records.
+    security_v2: bool = False
+
+
+def decode_classic_record(
+    advertisement_data: AdvertisementData,
+) -> TuyaBLEClassicRecord | None:
+    """Read a classic record's header without decrypting its identity.
+
+    A bound device can pair a stale readable A201 record with an identity
+    encrypted under its obfuscated product bytes (#155), so the identity does
+    not decrypt. The header still carries the bound flag and protocol version,
+    which only allow an authenticated probe of cloud candidates: this record
+    never proves which device sent it.
+    """
+    service_data = advertisement_data.service_data or {}
+    if SERVICE_UUID_V4 in service_data:
+        return None
+    service = service_data.get(SERVICE_UUID, b"")
+    manufacturer = (advertisement_data.manufacturer_data or {}).get(
+        MANUFACTURER_DATA_ID, b""
+    )
+    if len(service) <= 1 or service[0] not in (0, 1) or len(manufacturer) <= 6:
+        return None
+    if manufacturer[1] not in (2, 3) or (len(manufacturer) - 6) % AES.block_size:
+        return None
+    return TuyaBLEClassicRecord(
+        product_id=_product_id(service[1:]) if service[0] == 0 else None,
+        is_bound=bool(manufacturer[0] & 0x80),
+        protocol_version=manufacturer[1],
+    )

@@ -22,7 +22,7 @@ from bleak_retry_connector import (
     establish_connection,
 )
 
-from .advertisement import decode_tuya_ble_advertisement
+from .advertisement import decode_classic_record, decode_tuya_ble_advertisement
 from .base import TuyaBLEDevice, global_connect_lock
 from .connection_cleanup import set_probe_cleanup_waiter
 from .const import SUPPORTED_PROTOCOL_VERSIONS, ConnectionProfile, TuyaBLECode
@@ -766,9 +766,13 @@ def _probe_credentials(
     bootstrap a v3 device; supported device versions are enforced after
     DEVICE_INFO. FD50 firmware does not reliably advertise its bound state, so
     protocol 4 relies on the bound flag of the encrypted DEVICE_INFO reply,
-    which is checked before any pair request is sent.
+    which is checked before any pair request is sent. A bound classic record
+    whose identity does not decrypt (#155) is still probed: the authenticated
+    read is the proof, not the advertisement.
     """
-    info = decode_tuya_ble_advertisement(advertisement)
+    info = decode_tuya_ble_advertisement(advertisement) or decode_classic_record(
+        advertisement
+    )
     if info is None or not expected_dp_ids:
         return None
     if info.protocol_version != 4 and not info.is_bound:
