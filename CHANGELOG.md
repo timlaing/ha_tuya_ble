@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+### Fixed
+
+- **Bound classic devices with a misleading product ID** (#182): when an older Tuya BLE device's identity cannot be read, setup now tries the devices from your Tuya account whose product matches the advertisement first, then the other devices, up to four in total. Previously, if the advertised product matched a different device, the real device was never tried and setup failed with `device_not_registered`.
+
 ## [2.10.0-beta.6] - 2026-11-18
 
 > **Beta — for testing only.** This build supersedes beta.5 with support for Tuya BLE protocol v4 devices that use the newer "Security V2" login, lets you add a device even when the Bluetooth check fails so its diagnostics can be shared, and fixes setup of some older (protocol 3) devices whose Bluetooth identity could not be read. Security V2 has not yet been tested on a device; if a device was added with an earlier beta, remove it and add it again so the new login details are fetched.

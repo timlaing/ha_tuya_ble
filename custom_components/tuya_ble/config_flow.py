@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
+from itertools import islice
 import logging
 import time
 from typing import Any
@@ -544,7 +545,8 @@ class TuyaBLEConfigFlow(
             if count > PROBE_MAX_CANDIDATES:
                 return None, None, "too_many_candidates"
             probe_failed = False
-            for credentials in candidates:
+            # The cap also bounds unverified-hint fallbacks queued after the count.
+            for credentials in islice(candidates, PROBE_MAX_CANDIDATES):
                 self._abort_if_flow_removed()
                 if credentials.device_id in claims:
                     continue

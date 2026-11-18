@@ -6,18 +6,24 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 import logging
+from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 import pytest
 
-from custom_components.tuya_ble.config_flow import TuyaBLEConfigFlow
+from custom_components.tuya_ble.cloud import HASSTuyaBLEDeviceManager
+from custom_components.tuya_ble.config_flow import (
+    PROBE_MAX_CANDIDATES,
+    TuyaBLEConfigFlow,
+)
 from custom_components.tuya_ble.config_flow_scan import async_scan_device
 from custom_components.tuya_ble.const import (
     CONF_ADVERTISED_UUID,
     CONF_CLOUD_UUID,
+    CONF_DEVICE_ID,
     CONF_UUID,
 )
 from custom_components.tuya_ble.tuya_ble import (
@@ -27,6 +33,7 @@ from custom_components.tuya_ble.tuya_ble import (
 )
 from custom_components.tuya_ble.tuya_ble.probe import ProbeOutcome
 from tests.conftest import FakeAdvertisementData, FakeBLEAddress, make_credentials
+from tests.test_cloud import make_device
 from tests.test_config_flow import FakeDiscovery, FakeManager, build_flow
 from tests.test_config_flow_probe import _setup
 
@@ -143,6 +150,115 @@ async def test_undecoded_bound_classic_without_match(hass: HomeAssistant) -> Non
     assert result is None
     assert error == "device_not_registered"
     assert not manager.calls
+
+
+def _cloud_flow(
+    hass: HomeAssistant, discovery: FakeDiscovery, cloud_devices: list[Any]
+) -> TuyaBLEConfigFlow:
+    """Drive the flow through the real cloud manager's candidate selection."""
+    manager = HASSTuyaBLEDeviceManager(hass, {})
+    manager._manager = cast(
+        Any,
+        SimpleNamespace(
+            device_map={device.id: device for device in cloud_devices},
+            update_device_cache=Mock(),
+        ),
+    )
+    flow = build_flow(hass)
+    flow._manager = manager
+    flow._discovered_devices[discovery.address] = discovery  # type: ignore[assignment]
+    return flow
+
+
+def _matches(device_id: str) -> Any:
+    """Probe side effect that authenticates only one cloud record."""
+
+    async def probe(
+        _device: Any, _adv: Any, credentials: TuyaBLEDeviceCredentials, *_args: Any
+    ) -> ProbeOutcome:
+        if credentials.device_id == device_id:
+            return ProbeOutcome.MATCHED
+        return ProbeOutcome.REJECTED
+
+    return probe
+
+
+async def test_undecoded_bound_classic_hint_matches_other_device(
+    hass: HomeAssistant,
+) -> None:
+    """A hint matching another device's product still probes the real one (#182)."""
+    discovery = _discovery()
+    decoy = make_device(
+        id="a-decoy", uuid="decoy-uuid", product_id="bs3ubslo", local_key="123456"
+    )
+    real = make_device(
+        id="b-real", uuid="real-uuid", product_id="other", local_key="123456"
+    )
+    flow = _cloud_flow(hass, discovery, [real, decoy])
+    with patch(_PROBE_PATCH, side_effect=_matches("b-real")) as probe:
+        result, error = await _setup(flow, discovery)
+    assert error is None
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_DEVICE_ID] == "b-real"
+    assert result["data"][CONF_UUID] == "real-uuid"
+    # The hint's record is tried first, then the fallback.
+    assert [call.args[2].device_id for call in probe.await_args_list] == [
+        "a-decoy",
+        "b-real",
+    ]
+
+
+async def test_undecoded_bound_classic_fallbacks_stay_within_cap(
+    hass: HomeAssistant,
+) -> None:
+    """Fallbacks only use the cap's remaining slots; the hint keeps its count."""
+    discovery = _discovery()
+    devices = [
+        make_device(
+            id="a-hint", uuid="hint-uuid", product_id="bs3ubslo", local_key="123456"
+        )
+    ] + [
+        make_device(
+            id=f"b-other-{index}",
+            uuid=f"other-{index}",
+            product_id="other",
+            local_key="123456",
+        )
+        for index in range(PROBE_MAX_CANDIDATES + 1)
+    ]
+    flow = _cloud_flow(hass, discovery, devices)
+    with patch(
+        _PROBE_PATCH, new_callable=AsyncMock, return_value=ProbeOutcome.REJECTED
+    ) as probe:
+        result, error = await _setup(flow, discovery)
+    assert result is None
+    assert error == "device_not_registered"
+    assert [call.args[2].device_id for call in probe.await_args_list] == [
+        "a-hint",
+        *(f"b-other-{index}" for index in range(PROBE_MAX_CANDIDATES - 1)),
+    ]
+
+
+async def test_undecoded_bound_classic_too_many_hint_matches(
+    hass: HomeAssistant,
+) -> None:
+    """More hint-matching records than the cap still probes nothing."""
+    discovery = _discovery()
+    devices = [
+        make_device(
+            id=f"hint-{index}",
+            uuid=f"hint-{index}",
+            product_id="bs3ubslo",
+            local_key="123456",
+        )
+        for index in range(PROBE_MAX_CANDIDATES + 1)
+    ]
+    flow = _cloud_flow(hass, discovery, devices)
+    with patch(_PROBE_PATCH, new_callable=AsyncMock) as probe:
+        result, error = await _setup(flow, discovery)
+    assert result is None
+    assert error == "too_many_candidates"
+    probe.assert_not_awaited()
 
 
 async def test_undecoded_unbound_classic_is_not_probed(hass: HomeAssistant) -> None:

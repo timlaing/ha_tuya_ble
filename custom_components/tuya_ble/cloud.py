@@ -141,12 +141,17 @@ class HASSTuyaBLEDeviceManager:
     ) -> tuple[int, Iterator[TuyaBLEDeviceCredentials]]:
         """Count eligible records and lazily build credentials in sorted order.
 
-        The caller checks the count against its safety cap before consuming the
-        iterator, so an oversized cloud account builds no probe credentials.
+        Records of ``product_id`` come first, then the other eligible records,
+        each group ordered by device ID. The caller checks the count against
+        its safety cap before consuming the iterator, so an oversized cloud
+        account builds no probe credentials, and probes at most that many.
+
         Without a decoded identity (empty ``advertised_uuid``) a readable
-        product ID is the only hint, so only records of that product are kept.
-        The hint is unverified (bound bytes can be printable), so it is ignored
-        when no eligible record has that product.
+        product ID is the only hint. It is unverified (bound bytes can be
+        printable), so it never excludes a record: when eligible records have
+        that product only they are counted against the cap, and the others are
+        fallbacks probed within the cap's remaining slots. A hint that matches
+        no eligible record is ignored and every record is counted.
         """
         if self._manager is None:
             await self.initialize()
@@ -156,20 +161,19 @@ class HASSTuyaBLEDeviceManager:
             entry.data.get(CONF_DEVICE_ID)
             for entry in self._hass.config_entries.async_entries(DOMAIN)
         }
-        eligible = [
-            device
-            for device in self._manager.device_map.values()
-            if _is_probe_candidate(device, advertised_uuid, configured)
-        ]
-        if not advertised_uuid and product_id is not None:
-            eligible = [
-                device for device in eligible if device.product_id == product_id
-            ] or eligible
         candidates = sorted(
-            eligible,
+            (
+                device
+                for device in self._manager.device_map.values()
+                if _is_probe_candidate(device, advertised_uuid, configured)
+            ),
             key=lambda device: (device.product_id != product_id, device.id),
         )
-        return len(candidates), _iter_probe_credentials(candidates)
+        count = len(candidates)
+        if not advertised_uuid and product_id is not None:
+            matching = sum(device.product_id == product_id for device in candidates)
+            count = matching or count
+        return count, _iter_probe_credentials(candidates)
 
     @property
     def data(self) -> dict[str, Any]:
