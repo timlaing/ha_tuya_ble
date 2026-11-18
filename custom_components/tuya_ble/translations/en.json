@@ -611,6 +611,12 @@
     },
     "option_not_settable": {
       "message": "{option} can only be reported by this device, not set. Choose one of: {settable}."
+    },
+    "ble_unlock_check_missing": {
+      "message": "This lock has no Bluetooth unlock check from the Tuya cloud. Open the lock once from the Tuya or Smart Life app, then remove and add the device again."
+    },
+    "ble_unlock_check_invalid": {
+      "message": "The stored Bluetooth unlock check for this lock is not valid. Remove and add the device again to fetch a new one from the Tuya cloud."
     }
   },
   "options": {

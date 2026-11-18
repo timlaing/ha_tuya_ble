@@ -18,6 +18,7 @@ from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 
 from .const import (
+    CONF_BLE_UNLOCK_CHECK,
     CONF_CATEGORY,
     CONF_CONNECTION_PROFILE,
     CONF_DEVICE_ID,
@@ -105,6 +106,7 @@ def _build_credentials_from_entry(entry: ConfigEntry) -> TuyaBLEDeviceCredential
             if data.get(CONF_SECURITY_MODE) is not None
             else None
         ),
+        ble_unlock_check=data.get(CONF_BLE_UNLOCK_CHECK),
     )
 
 
@@ -203,6 +205,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # device with no entities is otherwise invisible to the user. This fires once
     # per config entry, and never for a device that has a descriptor.
     product_info = get_device_product_info(device)
+    # Before the first connection, so credential-bearing data points are never
+    # logged.
+    device.datapoints.sensitive_ids = product_info.sensitive_dp_ids
     if not product_info.entities:
         _LOGGER.warning(
             "%s: no descriptor for category %s / product %s; loading with no entities",

@@ -8,9 +8,26 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from importlib import import_module
-from typing import cast
+from typing import TypeVar, cast
 
 _HANDLER_PREFIX = "custom_components.tuya_ble.device_descriptors.handlers"
+
+_HandlerT = TypeVar("_HandlerT", bound=Callable[..., object])
+
+
+def requires_dp_ids(*keys: str) -> Callable[[_HandlerT], _HandlerT]:
+    """Declare the auxiliary ``*_dp_id`` descriptor fields a handler reads.
+
+    The registry rejects a descriptor that references the handler without
+    giving each of them a data point id, so a handler never has to cope with a
+    missing one at runtime.
+    """
+
+    def decorate(handler: _HandlerT) -> _HandlerT:
+        setattr(handler, "required_dp_ids", keys)  # noqa: B010
+        return handler
+
+    return decorate
 
 
 def resolve_handler(path: str) -> Callable[..., object]:

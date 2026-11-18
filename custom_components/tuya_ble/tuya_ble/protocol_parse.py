@@ -203,8 +203,8 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
                 dp_id,
                 dp_type.name,
                 flags,
-                raw_value.hex(),
-                value,
+                self._datapoints.loggable(dp_id, raw_value.hex()),
+                self._datapoints.loggable(dp_id, value),
             )
         return self._datapoints.update_from_device(
             dp_id, timestamp, flags, dp_type, value, raw_value
@@ -478,9 +478,18 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
 
     def _read_v4_report_header(self, code: TuyaBLECode, data: bytes) -> bytes:
         """Log a protocol-4 DP report and return its validated header."""
-        _LOGGER.debug(
-            "%s: Received %s payload: %s", self.address, code.name, data.hex()
-        )
+        if self._datapoints.sensitive_ids:
+            # The report may carry a credential-bearing data point.
+            _LOGGER.debug(
+                "%s: Received %s payload: %d byte(s)",
+                self.address,
+                code.name,
+                len(data),
+            )
+        else:
+            _LOGGER.debug(
+                "%s: Received %s payload: %s", self.address, code.name, data.hex()
+            )
         if len(data) < V4_REPORT_HEADER_LENGTH:
             raise TuyaBLEDataLengthError()
         if data[0] != V4_REPORT_VERSION:

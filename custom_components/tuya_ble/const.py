@@ -50,6 +50,8 @@ CONF_ADVERTISED_UUID: Final = "advertised_uuid"
 CONF_LOCAL_KEY: Final = "local_key"
 CONF_SEC_KEY: Final = "sec_key"
 CONF_SECURITY_MODE: Final = "security_mode"
+# Cloud-issued lock check code (also the Tuya status code it is read from).
+CONF_BLE_UNLOCK_CHECK: Final = "ble_unlock_check"
 CONF_DEVICE_ID: Final = "device_id"
 CONF_CATEGORY: Final = "category"
 CONF_PRODUCT_ID: Final = "product_id"

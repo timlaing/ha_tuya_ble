@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
+from typing import Any
 
 from homeassistant.components.button import (
     ButtonEntity,
@@ -20,6 +21,9 @@ from .devices import TuyaBLECoordinator, TuyaBLEData, TuyaBLEEntity, TuyaBLEProd
 from .tuya_ble import BLE_CONNECTION_EXCEPTIONS, TuyaBLEDataPointType, TuyaBLEDevice
 
 TuyaBLEButtonIsAvailable = Callable[["TuyaBLEButton", TuyaBLEProductInfo], bool] | None
+TuyaBLEButtonSetter = (
+    Callable[["TuyaBLEButton", TuyaBLEProductInfo], Coroutine[Any, Any, None]] | None
+)
 
 
 @dataclass
@@ -32,6 +36,7 @@ class TuyaBLEButtonMapping:
     dp_type: TuyaBLEDataPointType | None = None
     is_available: TuyaBLEButtonIsAvailable = None
     press_value: bool | None = None
+    setter: TuyaBLEButtonSetter = None
 
 
 @dataclass
@@ -65,6 +70,13 @@ def _press_value(desc: EntityDescriptor) -> bool | None:
 
 def _build_button_mapping(desc: EntityDescriptor) -> TuyaBLEButtonMapping:
     """Construct a button mapping from a registry descriptor."""
+    press_value = _press_value(desc)
+    setter = desc.resolved_handler("write")
+    if press_value is not None and setter is not None:
+        raise DeviceRegistryError(
+            f"Button entity dp_id {desc.dp_id} cannot set both press_value and a "
+            "write handler"
+        )
     return TuyaBLEButtonMapping(
         dp_id=desc.dp_id,
         description=_button_description(desc),
@@ -73,7 +85,8 @@ def _build_button_mapping(desc: EntityDescriptor) -> TuyaBLEButtonMapping:
             TuyaBLEDataPointType(desc.dp_type) if desc.dp_type is not None else None
         ),
         is_available=desc.resolved_handler("when"),
-        press_value=_press_value(desc),
+        press_value=press_value,
+        setter=setter,
     )
 
 
@@ -125,29 +138,42 @@ class TuyaBLEButton(TuyaBLEEntity, ButtonEntity):  # pylint: disable=abstract-me
         super().__init__(hass, coordinator, device, product, button_mapping.description)
         self._mapping = button_mapping
 
+    @property
+    def dp_id(self) -> int:
+        """The data point this button is mapped to."""
+        return self._mapping.dp_id
+
     async def async_press(self) -> None:
-        """Write the fixed press value, or toggle the mapped boolean datapoint.
+        """Run the descriptor write handler, or write/toggle the mapped boolean.
 
         The write is awaited so a failed or unacknowledged command is reported
         to the caller instead of being lost in a background task. The toggle
         is computed under the device write lock, so rapid presses each invert
-        the latest value.
+        the latest value. A write handler raises its own translated error for a
+        command it cannot build.
         """
-        datapoint = self.device.datapoints.get_or_create(
-            self._mapping.dp_id,
-            TuyaBLEDataPointType.DT_BOOL,
-            False,
-        )
         try:
-            if self._mapping.press_value is None:
-                await datapoint.toggle()
+            if self._mapping.setter is not None:
+                await self._mapping.setter(self, self._product)
             else:
-                await datapoint.set_value(self._mapping.press_value)
+                await self._write_press()
         except BLE_CONNECTION_EXCEPTIONS as err:
             raise HomeAssistantError(
                 translation_domain=DOMAIN,
                 translation_key="button_press_failed",
             ) from err
+
+    async def _write_press(self) -> None:
+        """Write the fixed press value, or toggle the mapped boolean datapoint."""
+        datapoint = self.device.datapoints.get_or_create(
+            self._mapping.dp_id,
+            TuyaBLEDataPointType.DT_BOOL,
+            False,
+        )
+        if self._mapping.press_value is None:
+            await datapoint.toggle()
+        else:
+            await datapoint.set_value(self._mapping.press_value)
 
     @property
     def available(self) -> bool:

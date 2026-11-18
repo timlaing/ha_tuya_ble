@@ -13,6 +13,7 @@ from homeassistant.util import dt as dt_util
 from tuya_sharing import CustomerDevice, Manager, SharingTokenListener
 
 from .const import (
+    CONF_BLE_UNLOCK_CHECK,
     CONF_DEVICE_ID,
     CONF_ENDPOINT,
     CONF_TERMINAL_ID,
@@ -21,7 +22,7 @@ from .const import (
     DOMAIN,
     TUYA_CLIENT_ID,
 )
-from .tuya_ble import TuyaBLEDeviceCredentials
+from .tuya_ble import TuyaBLEDeviceCredentials, is_valid_ble_unlock_check
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -317,6 +318,23 @@ def _cloud_sec_key(device: CustomerDevice) -> str | None:
     return None
 
 
+def _cloud_ble_unlock_check(device: CustomerDevice) -> str | None:
+    """Return the lock's validated cloud ``ble_unlock_check``, if it has one.
+
+    Only locks report this status code. The value is a credential, so a
+    malformed one is dropped without being logged.
+    """
+    status = getattr(device, "status", None)
+    if not isinstance(status, Mapping) or CONF_BLE_UNLOCK_CHECK not in status:
+        return None
+    value = status[CONF_BLE_UNLOCK_CHECK]
+    if is_valid_ble_unlock_check(value):
+        return str(value)
+    if value:
+        _LOGGER.warning("Ignoring a malformed ble_unlock_check from the Tuya cloud")
+    return None
+
+
 def _redacted_shape(value: Any) -> str:
     """Describe a withheld value by its type and size, never its content."""
     if value is None:
@@ -420,4 +438,5 @@ def _build_credentials(device: CustomerDevice) -> TuyaBLEDeviceCredentials:
         local_schema=capture_local_schema(device),
         cloud_info=capture_cloud_info(device),
         sec_key=_cloud_sec_key(device),
+        ble_unlock_check=_cloud_ble_unlock_check(device),
     )

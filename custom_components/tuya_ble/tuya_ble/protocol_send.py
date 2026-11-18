@@ -217,7 +217,7 @@ class TuyaBLEProtocolSendMixin:
                 self.address,
                 dp.dp_id,
                 dp.dp_type.name,
-                dp.value,
+                self._datapoints.loggable(dp.dp_id, dp.value),
             )
             if not 0 <= dp.dp_id <= MAX_BYTE or len(value) > MAX_BYTE:
                 raise TuyaBLEOutgoingDataLengthError(dp_id)

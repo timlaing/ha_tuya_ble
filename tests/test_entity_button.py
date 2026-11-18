@@ -213,6 +213,19 @@ async def test_rapid_presses_each_toggle_the_latest_value(
     assert dp.value is expected_sent[-1]
 
 
+async def test_async_press_without_handler_toggles(hass: HomeAssistant) -> None:
+    """Without a write handler, async_press keeps the toggling press."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(hass, device, coordinator, product)
+    assert entity.dp_id == 2
+    add_dp(device, 2, TuyaBLEDataPointType.DT_BOOL, False)
+    await entity.async_press()
+    await hass.async_block_till_done()
+    dp = device.datapoints[2]
+    assert dp is not None
+    assert dp.value is True
+
+
 async def test_available(hass: HomeAssistant) -> None:
     """Verify availability follows the coordinator connection state."""
     device, coordinator, product = build_context(hass)

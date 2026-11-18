@@ -43,14 +43,15 @@ model_name: 16wgjvck
 
 #### Top-level fields
 
-| Field          | Required | Description                                                                          |
-| -------------- | -------- | ------------------------------------------------------------------------------------ |
-| `category`     | Yes      | Tuya category ID (e.g. `sfkzq`, `ggq`, `ms`)                                         |
-| `product_id`   | Yes      | Tuya product ID                                                                      |
-| `entities`     | No       | Mapping of platform name → list of entity descriptors                                |
-| `device_name`  | No       | Human-readable device name (used as the device-name fallback in the device registry) |
-| `model_name`   | No       | Model identifier (used as the model fallback in the device registry)                 |
-| `manufacturer` | No       | Brand shown on the device in Home Assistant                                          |
+| Field              | Required | Description                                                                                                                  |
+| ------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `category`         | Yes      | Tuya category ID (e.g. `sfkzq`, `ggq`, `ms`)                                                                                 |
+| `product_id`       | Yes      | Tuya product ID                                                                                                              |
+| `entities`         | No       | Mapping of platform name → list of entity descriptors                                                                        |
+| `device_name`      | No       | Human-readable device name (used as the device-name fallback in the device registry)                                         |
+| `model_name`       | No       | Model identifier (used as the model fallback in the device registry)                                                         |
+| `manufacturer`     | No       | Brand shown on the device in Home Assistant                                                                                  |
+| `sensitive_dp_ids` | No       | Data points whose values carry credentials (e.g. a lock's DP 71 unlock command): never logged, and withheld from diagnostics |
 
 #### Entity fields (common)
 
@@ -86,7 +87,7 @@ model_name: 16wgjvck
 
 **valve**: `device_class: water` only. A valve writes its own `dp_id` — a dual-zone timer has one valve entity per zone — and the translation key carries the zone (`valve_zone1`, `valve_zone2`). Use `handlers` on the `switch` entity when the value written differs from the one the device expects.
 
-**button**: `press_value` (optional YAML boolean). A button is a momentary press, so it needs no unit, range or options; pressing it toggles the boolean `dp_id`. Set `press_value: true` (or `false`) to write that fixed value on every press instead — use it for write-only trigger data points, where a toggle would alternate the value sent.
+**button**: `press_value` (optional YAML boolean). A button is a momentary press, so it needs no unit, range or options; pressing it toggles the boolean `dp_id`. Set `press_value: true` (or `false`) to write that fixed value on every press instead — use it for write-only trigger data points, where a toggle would alternate the value sent. A `write` handler replaces the press entirely and cannot be combined with `press_value`.
 
 **number**: `min_value`, `max_value`, `step`, `mode` (`box` or `slider`), `unit`, and `coefficient` to divide a raw reading into its real unit
 
@@ -102,7 +103,7 @@ model_name: 16wgjvck
 
 **light**: `switch_dp_id`, `color_mode_dp_id`, `brightness_dp_id`, `brightness_min`, `brightness_max`, `color_temp_dp_id`, `color_temp_min`, `color_temp_max`, `color_data_dp_id`
 
-**lock**: `door_dp_id` (DP ID for door status sensor)
+**lock**: `door_dp_id` (DP ID for door status sensor), plus the `*_dp_id` fields the shared lock handlers declare: `passage_dp_id`, `manual_lock_dp_id`, `unlock_dp_id` and `open_dp_id`. Without handlers a lock reads its `dp_id` as the bolt/motor state (on = unlocked) and writes it for lock/unlock. A lock that cannot report a truthful locked state should get a `bluetooth_unlock` button instead of a lock entity.
 
 **vacuum** (experimental): `dp_id` is the bool data point that starts (`true`) and stops (`false`) cleaning. Optional `status_dp_id` with `status_activities`, a mapping from each status value to a Home Assistant activity (`cleaning`, `docked`, `idle`, `paused`, `returning`, `error`) written in the data point's enum order, and optional `mode_dp_id` with `fan_speeds`, the cleaning modes in enum order. Start and stop are always offered; fan speed only when `mode_dp_id` is set. Pause and return-to-base are not supported yet. Unknown activities, or a `mode_dp_id` without `fan_speeds`, are rejected at load time.
 
@@ -121,13 +122,17 @@ entities:
         write: water_valve.set_16wgjvck_water_valve
 ```
 
-Three roles are supported. Note that handler signatures vary by platform:
+These roles are supported. Note that handler signatures vary by platform:
 
 | Role    | Sensor / binary_sensor             | Other platforms                   | Purpose                            |
 | ------- | ---------------------------------- | --------------------------------- | ---------------------------------- |
 | `read`  | `(entity)` — sets the entity value | `(entity, product)` → value       | Custom DP value reader             |
 | `write` | `(entity, product, value)` → None  | `(entity, product, value)` → None | Custom DP value writer             |
 | `when`  | `(entity, product)` → bool         | `(entity, product)` → bool        | Whether the entity should be added |
+| `pulse` | —                                  | switch: `(entity, dp_id)` → secs  | Momentary switch duration          |
+| `open`  | —                                  | lock only: `(entity, product)`    | Lock `open` action                 |
+
+On `lock`, `write` and `open` handlers are coroutines: `write` is awaited as `(lock, product, locked)`. On `button`, a `write` handler is a coroutine awaited as `(button, product)` on every press, replacing the default toggle. A handler that needs further data points declares their `*_dp_id` field names with `requires_dp_ids`, and a descriptor that omits one is rejected.
 
 `read` handlers on `sensor` and `binary_sensor` platforms are called with only the entity and must set its value directly (returning `None`); on `switch`, `number`, `text`, `valve`, and `lock` platforms they receive `(entity, product)` and return the value. `write` and `when` handlers use the same `(entity, product)` / `(entity, product, value)` signatures on every platform.
 
@@ -141,6 +146,8 @@ Available handler modules:
 - `parkside_mower.*` — Parkside robot mower error/work logs and the shared rain delay payload
 - `fingerbot.mode.*` — Fingerbot mode/availability helpers
 - `fingerbot.program.*` — Fingerbot program read/write helpers
+- `lock.state.*` — lock `read` handlers: `passage_or_bolt` (unlocked while passage mode or the bolt report is on) and `automatic_lock` (locked while automatic locking is on)
+- `lock.command.*` — lock `write` handlers (`manual_lock_or_passage`, `manual_lock_or_raw_unlock`, `automatic_lock`), lock `open` handlers (`momentary_open`, `timestamped_open`) and lock button `write` handlers (`press_raw_unlock`, `press_timestamped_unlock`; a plain boolean unlock trigger uses `press_value: true` instead). The timestamped commands use the lock's `ble_unlock_check` from the Tuya cloud; mark the DP they write in `sensitive_dp_ids`
 
 Invalid handler paths or unknown roles are **rejected at load time** — typos fail fast.
 

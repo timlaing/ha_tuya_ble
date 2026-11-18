@@ -54,6 +54,7 @@ from .config_flow_unverified import (
 )
 from .const import (
     CONF_ADVERTISED_UUID,
+    CONF_BLE_UNLOCK_CHECK,
     CONF_CATEGORY,
     CONF_CLOUD_INFO,
     CONF_CLOUD_UUID,
@@ -399,6 +400,9 @@ class TuyaBLEConfigFlow(
         }
         entry_data.update(verified_login_data(credentials))
         entry_data.update(sec_key_data(credentials, advertisement.security_v2))
+        if credentials.ble_unlock_check is not None:
+            # Already validated by the cloud manager; a lock needs it to open.
+            entry_data[CONF_BLE_UNLOCK_CHECK] = credentials.ble_unlock_check
         entry_data.update(self._mobile_entry_updates())
         _LOGGER.debug(
             "%s: config entry created (category: %s, product_id: %s, device_name: %s)",

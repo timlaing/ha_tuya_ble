@@ -27,6 +27,11 @@ from .const import (
     TuyaBLEDataPointType,
 )
 from .datapoints import TuyaBLEDataPoint, TuyaBLEDataPoints
+from .lock_check import (
+    build_timestamped_unlock_command,
+    decode_ble_unlock_check,
+    is_valid_ble_unlock_check,
+)
 from .manager import (
     AbstractTuyaBLEDeviceManager,
     TuyaBLEDeviceCredentials,
@@ -73,4 +78,7 @@ __all__ = [
     "async_probe_authenticated_status",
     "async_detect_v4_credentials",
     "async_detect_v4_profile",
+    "build_timestamped_unlock_command",
+    "decode_ble_unlock_check",
+    "is_valid_ble_unlock_check",
 ]

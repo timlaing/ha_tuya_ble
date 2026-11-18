@@ -35,6 +35,7 @@ class TuyaBLEDeviceCredentials:
     cloud_info: dict[str, Any] | None = None
     connection_profile: ConnectionProfile | None = None
     sec_key: str | None = field(default=None, repr=False)
+    ble_unlock_check: str | None = field(default=None, repr=False)
     # The verified login channel. None keeps the original rule: a stored
     # sec_key selects Security V2.
     security_mode: SecurityMode | None = None
@@ -56,6 +57,8 @@ class TuyaBLEDeviceCredentials:
             "local_key: xxxxxxxxxxxxxxxx, "
             "device_id: xxxxxxxxxxxxxxxx, "
             f"sec_key: {'xxxxxxxxxxxxxxxx' if self.sec_key else None}, "
+            "ble_unlock_check: "
+            f"{'xxxxxxxxxxxxxxxx' if self.ble_unlock_check else None}, "
             f"category: {self.category}, "
             f"product_id: {self.product_id}, "
             f"device_name: {self.device_name}, "

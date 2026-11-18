@@ -25,6 +25,9 @@ _LOGGER = logging.getLogger(__name__)
 
 TuyaBLEDataPointValue = bytes | bytearray | memoryview | bool | int | str
 
+# Logged in place of the value of a data point that carries a credential.
+REDACTED_VALUE = "<redacted>"
+
 
 class TuyaBLEDataPoint:
     """Represents a single data point from a Tuya BLE device."""
@@ -79,8 +82,8 @@ class TuyaBLEDataPoint:
             _LOGGER.debug(
                 "Data point %s changed by device: %s -> %s (%s)",
                 self._id,
-                self._value,
-                value,
+                self._owner.loggable(self._id, self._value),
+                self._owner.loggable(self._id, value),
                 dp_type,
             )
         self._value = value
@@ -233,7 +236,7 @@ class TuyaBLEDataPoint:
         _LOGGER.debug(
             "Data point %s set locally without notifying the device: %s",
             self._id,
-            self._value,
+            self._owner.loggable(self._id, self._value),
         )
 
     async def set_value(self, value: TuyaBLEDataPointValue) -> None:
@@ -302,6 +305,20 @@ class TuyaBLEDataPoints:
         # Serializes writes: a second write must not snapshot the first one's
         # unconfirmed optimistic value (issue #116).
         self._write_lock = asyncio.Lock()
+        self._sensitive_ids: frozenset[int] = frozenset()
+
+    @property
+    def sensitive_ids(self) -> frozenset[int]:
+        """Data point ids whose values carry credentials and are never logged."""
+        return self._sensitive_ids
+
+    @sensitive_ids.setter
+    def sensitive_ids(self, dp_ids: Iterable[int]) -> None:
+        self._sensitive_ids = frozenset(dp_ids)
+
+    def loggable(self, dp_id: int, value: object) -> object:
+        """Return *value* for a log line, or a placeholder for a sensitive id."""
+        return REDACTED_VALUE if dp_id in self._sensitive_ids else value
 
     def __len__(self) -> int:
         return len(self._datapoints)

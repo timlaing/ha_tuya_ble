@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.components.diagnostics import async_redact_data
+from homeassistant.components.diagnostics import REDACTED, async_redact_data
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.const import __version__ as HA_VERSION
@@ -30,6 +30,7 @@ from .cloud import (
 )
 from .const import (
     CONF_ADVERTISED_UUID,
+    CONF_BLE_UNLOCK_CHECK,
     CONF_CATEGORY,
     CONF_CLOUD_INFO,
     CONF_CLOUD_UUID,
@@ -59,7 +60,7 @@ from .mobile_snapshot import filter_mobile_snapshot
 if TYPE_CHECKING:
     from tuya_sharing import CustomerDevice
 
-    from .tuya_ble import TuyaBLEDevice
+    from .tuya_ble import TuyaBLEDataPoint, TuyaBLEDevice
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,6 +72,7 @@ _LOGGER = logging.getLogger(__name__)
 # `cloud_info`; they stay redacted across the whole payload even though the
 # capture is allowlisted now.
 _TO_REDACT = frozenset({
+    CONF_BLE_UNLOCK_CHECK,
     CONF_ENDPOINT,
     CONF_LOCAL_KEY,
     CONF_SEC_KEY,
@@ -215,18 +217,40 @@ def _security_v2_state(device: TuyaBLEDevice) -> dict[str, Any]:
     }
 
 
-def _live_section(device: TuyaBLEDevice | None) -> dict[str, Any]:
-    """Report every data point the device has sent so far, in dp id order."""
+def _sensitive_dp_ids(category: str, product_id: str) -> frozenset[int]:
+    """Return the data points the product's descriptor marks sensitive."""
+    entities = get_registry().get(category, product_id)
+    return entities.sensitive_dp_ids if entities is not None else frozenset()
+
+
+def _live_datapoint(dp: TuyaBLEDataPoint, sensitive: bool) -> dict[str, Any]:
+    """Describe one data point, withholding the value of a sensitive one."""
+    value = _serialize_value(dp.value)
+    raw = dp.raw_value.hex() if dp.raw_value is not None else None
+    if sensitive:
+        value = REDACTED
+        raw = REDACTED if raw is not None else None
+    return {
+        "type": dp.dp_type.name if dp.dp_type is not None else None,
+        "value": value,
+        "raw": raw,
+        "changed_by_device": dp.changed_by_device,
+    }
+
+
+def _live_section(
+    device: TuyaBLEDevice | None, sensitive_dp_ids: frozenset[int]
+) -> dict[str, Any]:
+    """Report every data point the device has sent so far, in dp id order.
+
+    A data point the descriptor marks sensitive (such as a lock command that
+    embeds the cloud unlock check) keeps its type but not its value.
+    """
     if device is None:
         return {}
 
     return {
-        str(dp.dp_id): {
-            "type": dp.dp_type.name if dp.dp_type is not None else None,
-            "value": _serialize_value(dp.value),
-            "raw": dp.raw_value.hex() if dp.raw_value is not None else None,
-            "changed_by_device": dp.changed_by_device,
-        }
+        str(dp.dp_id): _live_datapoint(dp, dp.dp_id in sensitive_dp_ids)
         for dp in device.datapoints.values()
     }
 
@@ -326,7 +350,7 @@ async def _async_diagnostics(
         "schema_captured_at": (schema or {}).get("captured_at"),
         "schema_source": schema_source,
         "device": _device_section(tuya_device),
-        "live": _live_section(tuya_device),
+        "live": _live_section(tuya_device, _sensitive_dp_ids(category, product_id)),
         "cloud_info": cloud_info,
         "cloud_schema": {
             # The runtime list is filtered to the codes the device exposes and
@@ -359,6 +383,7 @@ async def _async_diagnostics(
                 else "stored"
             ),
             CONF_SECURITY_MODE: entry.data.get(CONF_SECURITY_MODE),
+            "ble_unlock_check_stored": bool(entry.data.get(CONF_BLE_UNLOCK_CHECK)),
         },
         "home_assistant": _home_assistant_section(hass, entry, device),
     }
