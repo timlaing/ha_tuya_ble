@@ -82,8 +82,9 @@ Per-product coverage varies — `0axr5s0b` exposes only five entities, while the
 - PARKSIDE Smart battery 4Ah (2026 revision, product_id `vllfabvs`).
 - PARKSIDE Smart battery 8Ah (2026 revision, product_id `r04rvmaq`).
 - PARKSIDE Smart battery 4Ah (2026 revision, PAPP 204 A1, product_id `fab74vxu`).
+- PARKSIDE Smart battery 12Ah (product_id `fay1puxy`) — **experimental**: read-only sensors only (battery, temperatures, charge/discharge current and voltage, cycle and protection-event counters, fault and tool diagnostics). The layout comes from the source fork's PR 283 and has not been checked against diagnostics from this battery, so battery status (DP 102), the configuration switches and numbers, the work-mode select and the identify switch are not exposed yet. A diagnostics download from a 12Ah pack — ideally one taken while charging, one idle and one under load — would let them be added.
 
-Entities: battery, temperature, charge/discharge current and voltage, tool diagnostics (rotation speed, torque, runtime), fault counters, configuration switches (upper temp, security, kickback, lamp, laser), identify switch (DP 115) and battery work mode select (DP 105, Performance/Balanced/Eco/Expert) — all three on the 2026 revisions.
+Entities: battery, temperature, charge/discharge current and voltage, tool diagnostics (rotation speed, torque, runtime), fault counters, configuration switches (upper temp, security, kickback, lamp, laser), identify switch (DP 115) and battery work mode select (DP 105, Performance/Balanced/Eco/Expert) — all three on the 2026 revisions. Tool current (DP 157) is a plain measurement without a unit until diagnostics confirm it. Battery status on `z5ztlw3k`/`ajrhf1aj` and their discharging-current unit (mA) are unconfirmed against device diagnostics.
 
 ## LED strip lights and lamps (category_id `dd`)
 

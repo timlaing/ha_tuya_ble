@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+### Added
+
+- **PARKSIDE Smart battery 12Ah (`dcb`/`fay1puxy`) — experimental** (#175): a descriptor for the 12 Ah pack from the source fork's PR 283 (thanks @kleju00). It exposes the battery's read-only sensors only — battery, temperatures, charge and discharge current and voltage, the cycle and protection-event counters, fault and tool diagnostics. Battery status and the writable settings (switches, numbers, work mode, identify) are left out until a diagnostics download from this battery confirms them.
+
 ### Fixed
 
 - **Bound classic devices with a misleading product ID** (#182): when an older Tuya BLE device's identity cannot be read, setup now tries the devices from your Tuya account whose product matches the advertisement first, then the other devices, up to four in total. Previously, if the advertised product matched a different device, only that device was tried and setup failed with `device_not_registered`. If more than four devices in your account match the advertised product, setup still stops with `too_many_candidates` without trying any.
