@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning].
 
 ## [2.10.0-beta.6] - 2026-11-18
 
-> **Beta — for testing only.** This build supersedes beta.5 with support for Tuya BLE protocol v4 devices that use the newer "Security V2" login, and lets you add a device even when the Bluetooth check fails so its diagnostics can be shared. It has not yet been tested on a Security V2 device; if a device was added with an earlier beta, remove it and add it again so the new login details are fetched.
+> **Beta — for testing only.** This build supersedes beta.5 with support for Tuya BLE protocol v4 devices that use the newer "Security V2" login, lets you add a device even when the Bluetooth check fails so its diagnostics can be shared, and fixes setup of some older (protocol 3) devices whose Bluetooth identity could not be read. Security V2 has not yet been tested on a device; if a device was added with an earlier beta, remove it and add it again so the new login details are fetched.
 
 ### Added
 
