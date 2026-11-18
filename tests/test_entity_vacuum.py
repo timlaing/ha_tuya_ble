@@ -150,6 +150,19 @@ def test_build_vacuum_mapping_minimal_descriptor() -> None:
     assert built.dp_type is None
 
 
+@pytest.mark.parametrize(
+    ("enabled", "expected"), [(None, True), (True, True), (False, False)]
+)
+def test_build_vacuum_mapping_enabled_by_default(
+    enabled: bool | None, expected: bool
+) -> None:
+    """``enabled_by_default: false`` hides the vacuum; otherwise it is enabled."""
+    built = vacuum._build_vacuum_mapping(
+        EntityDescriptor(platform="vacuum", dp_id=1, enabled_by_default=enabled)
+    )
+    assert built.description.entity_registry_enabled_default is expected
+
+
 def test_build_vacuum_mapping_dp_type() -> None:
     """A declared dp_type is resolved for the setup has_id gate."""
     built = vacuum._build_vacuum_mapping(
@@ -391,6 +404,35 @@ async def test_set_fan_speed_writes_mode_only(hass: HomeAssistant) -> None:
     assert datapoint is not None
     assert datapoint.value == 3
     assert datapoint.dp_type is TuyaBLEDataPointType.DT_ENUM
+    assert device.datapoints[1] is None
+
+
+async def test_set_fan_speed_writes_name_to_string_mode(hass: HomeAssistant) -> None:
+    """A mode reported as a string is written back as the mode name."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(hass, device, coordinator, product)
+    add_dp(device, 2, TuyaBLEDataPointType.DT_STRING, "smart")
+
+    await entity.async_set_fan_speed("edge")
+    await hass.async_block_till_done()
+
+    datapoint = device.datapoints[2]
+    assert datapoint is not None
+    assert datapoint.value == "edge"
+    assert datapoint.dp_type is TuyaBLEDataPointType.DT_STRING
+    assert entity.fan_speed == "edge"
+
+
+async def test_set_fan_speed_without_mode_dp_sends_nothing(hass: HomeAssistant) -> None:
+    """A mapping with fan speeds but no mode data point writes nothing."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(
+        hass, device, coordinator, product, _plain_mapping(fan_speeds=["smart"])
+    )
+
+    await entity.async_set_fan_speed("smart")
+    await hass.async_block_till_done()
+
     assert device.datapoints[1] is None
 
 

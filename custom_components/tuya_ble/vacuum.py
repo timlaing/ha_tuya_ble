@@ -72,6 +72,7 @@ def _vacuum_description(desc: EntityDescriptor) -> StateVacuumEntityDescription:
         key=desc.translation_key or str(desc.dp_id),
         name=desc.name,
         icon=desc.icon,
+        entity_registry_enabled_default=desc.enabled_by_default is not False,
     )
 
 
@@ -210,6 +211,17 @@ class TuyaBLEVacuum(TuyaBLEEntity, StateVacuumEntity):  # pylint: disable=abstra
                 },
             )
         _LOGGER.debug("%s: setting cleaning mode to %s", self.device.address, fan_speed)
+        mode = (
+            self.device.datapoints[self._mapping.mode_dp_id]
+            if self._mapping.mode_dp_id is not None
+            else None
+        )
+        if mode is not None and mode.dp_type is TuyaBLEDataPointType.DT_STRING:
+            # A device that reports the mode as a string expects the name back.
+            self.send_dp_value(
+                self._mapping.mode_dp_id, TuyaBLEDataPointType.DT_STRING, fan_speed
+            )
+            return
         self.send_dp_value(
             self._mapping.mode_dp_id,
             TuyaBLEDataPointType.DT_ENUM,
