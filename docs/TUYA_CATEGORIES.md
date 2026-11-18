@@ -40,6 +40,7 @@ is how most of the categories below got their first device.
 | `znhsb`   | Smart glass (not in Tuya's list)           | Officially _Smart glass_, but the `cdlandip` product here is a smart water bottle. See [gotchas](#gotchas).                                                                                                         |
 | `jsq`     | Humidifier                                 | The one product here (`if1nolcm`) is a Dituo aroma diffuser.                                                                                                                                                        |
 | `slj`     | _not in Tuya's list_                       | Not in Tuya's published list. RESTMO FML026A water meter.                                                                                                                                                           |
+| `swtz`    | Cooking thermometer (undocumented)         | Cooking thermometers (GRILLMEISTER / SK-T100, BTH08). No category default; each product declares its own probes.                                                                                                    |
 
 To see the products in a category:
 
@@ -62,7 +63,7 @@ These turn up in log lines and issue reports but are not categories with descrip
 
 The 138 category codes in Tuya's developer documentation, for reading a log line or a
 cloud response. Ones marked _undocumented_ are absent from that documentation but are known
-from shipped devices. ✓ marks the 15 of the 20 categories this integration supports that
+from shipped devices. ✓ marks the 16 of the 21 categories this integration supports that
 appear in Tuya's list. The other five, `ccjqr`, `dcb`, `qt`, `slj` and `znhsb`, are not in Tuya's
 documentation at all, so they have no row here — they are in the table above.
 
@@ -163,7 +164,7 @@ documentation at all, so they have no row here — they are in the table above.
 | `sjz`         | Electric desk (undocumented)                                       |           |
 | `sos`         | Emergency button                                                   |           |
 | `sp`          | Smart camera                                                       |           |
-| `swtz`        | Cooking thermometer (undocumented)                                 |           |
+| `swtz`        | Cooking thermometer (undocumented)                                 |     ✓     |
 | `sz`          | Smart indoor garden                                                |           |
 | `szjcy`       | Water tester (undocumented)                                        |           |
 | `szjqr`       | Fingerbot (undocumented)                                           |     ✓     |

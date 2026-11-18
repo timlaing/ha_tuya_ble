@@ -7,6 +7,7 @@
 - **CubeTouch 1s** (product_id `3yqdo5yt`): built-in battery with USB type C charging.
 - **CubeTouch II** (product_id `xhf790if`): built-in battery with USB type C charging.
 - **Nedis SmartLife Finger Robot** (product_id `yn4x5fa7`).
+- **Finger Robot CBF02V2** (product_id `bo25vaxy`, sold as KKmoon): Click/Switch mode (DP 2), switch (DP 1, in both modes), push button and hold time 0.3–10 s (DPs 1/3, Click mode), up/down position 0–30 (DPs 4/5), battery (DP 8) and an **Invert switch status** button (DP 102) that flips the on/off indication without moving the arm. The switch reads and writes DP 1 inverted, as tested by the owner; if your unit shows the wrong state, press Invert switch status once. No program, reverse-position or charge-status entities: the device has only two modes, and charge status (DP 7) was never reported by the CR2-powered test unit. Auto adjustment (DP 101) is not exposed.
 
 Programming (series of actions) is implemented for Fingerbot Plus. Exposed entities: Program (switch), Repeat forever, Repeats count, Idle position, and Program (text). Format: `position[/time];...` where position is in percent, optional time is in seconds.
 
@@ -141,6 +142,11 @@ Entities: open/close/stop, battery, work state and cover speed.
 - SGS01B-JR Soil Sensor (product_id `gpkyrocn`).
 
 Entities: temperature, humidity, battery state, battery percentage.
+
+## Cooking thermometers (category_id `swtz`)
+
+- **GRILLMEISTER Bluetooth Cooking Thermometer** (Lidl, SK-T100, product_id `iv13iqhf`): battery (DP 1) and two probe temperatures (DPs 2/3, 0.1 °C, negative readings confirmed). Probe presence (DP 16) and temperature unit (DP 17) are not yet confirmed and are not exposed.
+- **BTH08 Smart Meat Thermometer** (product_id `o3nnpkat`) — _experimental_: battery (DP 1) and six probe temperatures (DPs 2–5, 28 and 29, 0.1 °C). Connection was confirmed, but which physical probe each DP reports is not. Target temperatures, timers, temperature unit and alarms are not exposed.
 
 ## Category notes
 

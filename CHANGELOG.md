@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning].
 - **RESTMO FML026A water meter** (#174, `slj` / `mqqna0px`): experimental flow rate, battery and water-usage counters (total, session, daily and since reset) in litres. Thanks to @phoenixxx-1 for the original mapping and device test.
 - **LED BULB B509Z2** (#174, `dj` / `bpqbwf8y`): experimental light with brightness and colour temperature only, since this bulb has no RGB colour. Thanks to @CloCkWeRX.
 - **Dituo DT-T2190A aroma diffuser** (#174, `jsq` / `if1nolcm`): experimental power, mist, mist mode, timer, light scene, time remaining and fault entities, and a light with brightness. Thanks to @CloCkWeRX and the tuya-local contributors.
+- **Finger Robot CBF02V2 (`szjqr` / `bo25vaxy`)** (#168): add Click/Switch mode, switch, push, hold time, 0–30 up/down position, battery and an Invert switch status button that corrects the on/off indication without moving the arm. The switch keeps the owner-tested inverted on/off handling. Charge status and auto adjustment are not exposed. Thanks to @bchevreau for the device profile, Thing Model and testing.
+- **GRILLMEISTER / SK-T100 cooking thermometer (`swtz` / `iv13iqhf`)** (#168): add battery and two probe temperatures, including below-zero readings. Probe presence and temperature unit are not exposed until confirmed. Thanks to @CloCkWeRX for the mapping and testing.
+- **BTH08 Smart Meat Thermometer (`swtz` / `o3nnpkat`)** (#168, experimental): add battery and six probe temperatures. Which probe each reading belongs to still needs confirming on the device. Thanks to @crebain for the mapping.
 
 ### Fixed
 

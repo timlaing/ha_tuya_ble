@@ -76,6 +76,9 @@
       }
     },
     "button": {
+      "invert_switch_status": {
+        "name": "Invert switch status"
+      },
       "push": {
         "name": "Push"
       }
@@ -235,6 +238,24 @@
       },
       "moisture": {
         "name": "Moisture"
+      },
+      "probe_1_temperature": {
+        "name": "Probe 1 temperature"
+      },
+      "probe_2_temperature": {
+        "name": "Probe 2 temperature"
+      },
+      "probe_3_temperature": {
+        "name": "Probe 3 temperature"
+      },
+      "probe_4_temperature": {
+        "name": "Probe 4 temperature"
+      },
+      "probe_5_temperature": {
+        "name": "Probe 5 temperature"
+      },
+      "probe_6_temperature": {
+        "name": "Probe 6 temperature"
       },
       "residual_electricity": {
         "name": "Battery"

@@ -1,0 +1,30 @@
+# Lidl GRILLMEISTER / SK-T100 Bluetooth cooking thermometer, ported from
+# ha-tuya-ble/ha_tuya_ble#345 by @CloCkWeRX (see also issue #265).
+# DP1 battery %, DP2/DP3 probe temperatures as signed 0.1 degC values
+# (reporter-confirmed 50 = 5.0 degC and -250 = -25.0 degC).
+# DP16 (raw, looks like a probe-connected bitmap) and DP17 (enum, looks like
+# the temperature unit) are unconfirmed and deliberately left unmapped.
+category: swtz
+product_id: iv13iqhf
+device_name: GRILLMEISTER Bluetooth Cooking Thermometer
+model_name: iv13iqhf
+entities:
+  sensor:
+    - dp_id: 1
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+    - dp_id: 2
+      translation_key: probe_1_temperature
+      device_class: temperature
+      unit: °C
+      state_class: measurement
+      coefficient: 10.0
+    - dp_id: 3
+      translation_key: probe_2_temperature
+      device_class: temperature
+      unit: °C
+      state_class: measurement
+      coefficient: 10.0

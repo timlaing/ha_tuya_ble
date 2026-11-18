@@ -953,17 +953,28 @@ def test_every_mode_gated_descriptor_exposes_a_mode_select() -> None:
     assert missing == []
 
 
+# Products whose Thing Model mode enum has only two entries and no Program
+# mode: the CBF02V2 reports ``mode`` as ``[click, long_press]``.
+_TWO_MODE_SZJQR_PRODUCTS = frozenset({"bo25vaxy"})
+
+
 def test_fingerbot_mode_select_is_uniform() -> None:
-    """Every mode select offers the same three modes, in the same order.
+    """Every mode select offers the same modes, in the same order.
 
     The options map positionally onto the wire values the mode data point
-    accepts, so the order is part of the contract rather than a preference.
+    accepts, so the order is part of the contract rather than a preference. A
+    product whose schema has no Program mode drops only that trailing option.
     """
     offenders = [
         f"{product.product_id} declares {desc.options}"
         for product in _szjqr_products()
         for desc in _mode_selects(product)
-        if desc.options != ["push", "switch", "program"]
+        if desc.options
+        != (
+            ["push", "switch"]
+            if product.product_id in _TWO_MODE_SZJQR_PRODUCTS
+            else ["push", "switch", "program"]
+        )
     ]
     assert offenders == []
 
