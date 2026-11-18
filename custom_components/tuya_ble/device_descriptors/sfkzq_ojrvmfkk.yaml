@@ -1,0 +1,121 @@
+# Unistyle WT-04W dual-outlet water timer. Experimental: not tested over BLE.
+# DP IDs, value ranges and enum values come from the model-specific tuya-local
+# descriptor `unistyle_wt04_watertimer.yaml` (ha-tuya-ble/ha_tuya_ble#218 and
+# #232). tuya-local addresses enums by name, so the ENUM index order below is
+# the order that descriptor lists them in and still needs device confirmation.
+#   DP1   valve 1             bool                       rw
+#   DP10  weather delay       enum [cancel, 1day..7day]  rw
+#   DP11  valve 1 countdown   value 0-86400 s, scale 0   rw
+#   DP12  valve 1 status      enum [auto, manual, idle, spray, delay]  ro
+#   DP14  use weather         bool                       rw
+#   DP101 battery             value %, scale 0           ro
+#   DP103 valve 1 remaining   value s, scale 0           ro
+#   DP121 valve 2             bool                       rw
+#   DP122 valve 2 countdown   value 0-86400 s, scale 0   rw
+#   DP123 valve 2 status      enum [auto, manual, idle, spray, delay]  ro
+#   DP124 valve 2 remaining   value s, scale 0           ro
+# Not mapped: DP13 weather (optional, only two of its values known), DP102/112
+# irrigation logs and DP104-117 schedules (base64 raw).
+category: sfkzq
+product_id: ojrvmfkk
+device_name: WT-04W water timer
+model_name: ojrvmfkk
+manufacturer: Unistyle
+entities:
+  sensor:
+    - dp_id: 101
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+    - dp_id: 12
+      translation_key: work_state_z1
+      name: Operation 1
+      device_class: enum
+      entity_category: diagnostic
+      options:
+        - auto
+        - manual
+        - idle
+        - spray
+        - delay
+    - dp_id: 123
+      translation_key: work_state_z2
+      name: Operation 2
+      device_class: enum
+      entity_category: diagnostic
+      options:
+        - auto
+        - manual
+        - idle
+        - spray
+        - delay
+    - dp_id: 103
+      translation_key: time_left_z1
+      name: Remaining irrigation time 1
+      device_class: duration
+      unit: s
+      state_class: measurement
+    - dp_id: 124
+      translation_key: time_left_z2
+      name: Remaining irrigation time 2
+      device_class: duration
+      unit: s
+      state_class: measurement
+  number:
+    - dp_id: 11
+      translation_key: countdown_duration_z1
+      name: Irrigation time 1
+      icon: mdi:timer
+      unit: s
+      mode: box
+      min_value: 0
+      max_value: 86400
+      step: 1
+    - dp_id: 122
+      translation_key: countdown_duration_z2
+      name: Irrigation time 2
+      icon: mdi:timer
+      unit: s
+      mode: box
+      min_value: 0
+      max_value: 86400
+      step: 1
+  switch:
+    - dp_id: 1
+      translation_key: water_valve_z1
+      name: Valve 1
+      icon: mdi:valve
+    - dp_id: 121
+      translation_key: water_valve_z2
+      name: Valve 2
+      icon: mdi:valve
+    - dp_id: 14
+      translation_key: weather_switch
+      name: Use weather
+      icon: mdi:weather-cloudy
+      entity_category: config
+  valve:
+    - dp_id: 1
+      translation_key: valve_zone1
+      device_class: water
+    - dp_id: 121
+      translation_key: valve_zone2
+      device_class: water
+  select:
+    - dp_id: 10
+      translation_key: weather_delay
+      name: Weather delay
+      icon: mdi:weather-partly-cloudy
+      entity_category: config
+      dp_type: 4
+      options:
+        - cancel
+        - 1day
+        - 2day
+        - 3day
+        - 4day
+        - 5day
+        - 6day
+        - 7day

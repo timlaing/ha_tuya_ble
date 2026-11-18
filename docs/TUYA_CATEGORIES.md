@@ -38,6 +38,8 @@ is how most of the categories below got their first device.
 | `xdd`     | Ceiling light                              | Ceiling lights. The one product here (`6tny2vqxktdzowt1`, Globo) declares its own `light` entity rather than inheriting a category default, because its data points are unverified.                                 |
 | `dj`      | Light                                      | Light. `_category_dj.yaml` supplies the default `light` entity (DPs 20-24) for every `dj` product that does not define its own.                                                                                     |
 | `znhsb`   | Smart glass (not in Tuya's list)           | Officially _Smart glass_, but the `cdlandip` product here is a smart water bottle. See [gotchas](#gotchas).                                                                                                         |
+| `jsq`     | Humidifier                                 | The one product here (`if1nolcm`) is a Dituo aroma diffuser.                                                                                                                                                        |
+| `slj`     | _not in Tuya's list_                       | Not in Tuya's published list. RESTMO FML026A water meter.                                                                                                                                                           |
 
 To see the products in a category:
 
@@ -60,8 +62,8 @@ These turn up in log lines and issue reports but are not categories with descrip
 
 The 138 category codes in Tuya's developer documentation, for reading a log line or a
 cloud response. Ones marked _undocumented_ are absent from that documentation but are known
-from shipped devices. ✓ marks the 14 of the 18 categories this integration supports that
-appear in Tuya's list. The other four, `ccjqr`, `dcb`, `qt` and `znhsb`, are not in Tuya's
+from shipped devices. ✓ marks the 15 of the 20 categories this integration supports that
+appear in Tuya's list. The other five, `ccjqr`, `dcb`, `qt`, `slj` and `znhsb`, are not in Tuya's
 documentation at all, so they have no row here — they are in the table above.
 
 | Category      | Official name                                                      | Used here |
@@ -114,7 +116,7 @@ documentation at all, so they have no row here — they are in the table above.
 | `jdcljqr`     | Curtain Robot (undocumented)                                       |           |
 | `jqbj`        | Formaldehyde Detector (undocumented)                               |           |
 | `js`          | Water purifier                                                     |           |
-| `jsq`         | Humidifier                                                         |           |
+| `jsq`         | Humidifier                                                         |     ✓     |
 | `jtmsbh`      | Smart lock (keep alive)                                            |           |
 | `jtmspro`     | Residential lock pro                                               |     ✓     |
 | `jwbj`        | Methane detector                                                   |           |

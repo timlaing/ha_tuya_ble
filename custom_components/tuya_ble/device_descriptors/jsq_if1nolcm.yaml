@@ -1,0 +1,91 @@
+# Dituo DT-T2190A aroma diffuser. Experimental: not tested over BLE.
+# DP IDs, ranges and enum values come from the model-specific tuya-local
+# descriptor `dituo_dtt2190a_aromadiffuser.yaml` (ha-tuya-ble/ha_tuya_ble#260).
+# tuya-local addresses enums by name, so the ENUM index order below is the order
+# that descriptor lists them in and still needs device confirmation.
+#   DP1   power             bool                                rw
+#   DP2   mist              bool                                rw
+#   DP3   mist mode         enum [small, large]                 rw
+#   DP5   timer             enum [on (no timer), 1h, 3h, 6h]    rw
+#   DP6   time remaining    value min, scale 0                  ro
+#   DP7   light             bool                                rw
+#   DP9   light brightness  value 1-100, scale 0 (optional)     rw
+#   DP12  fault             bitmap, 0 = no fault (optional)     ro
+#   DP101 light scene       enum [night, read, work, rest, grassland,
+#                           colorful, Dazzle, gorgeous] (optional) rw
+# Not mapped: DP8 light work mode and DP10 colour. Their work-mode table is
+# [colour, colourful1, Night_light, scene], so the light platform's standard
+# white/colour indices would select the wrong mode.
+category: jsq
+product_id: if1nolcm
+device_name: DT-T2190A aroma diffuser
+model_name: if1nolcm
+manufacturer: Dituo
+entities:
+  switch:
+    - dp_id: 1
+      translation_key: switch
+      name: Power
+      icon: mdi:power
+    - dp_id: 2
+      translation_key: switch_spray
+      name: Mist
+      icon: mdi:spray
+  select:
+    - dp_id: 3
+      translation_key: spray_mode
+      name: Mist mode
+      icon: mdi:spray
+      entity_category: config
+      dp_type: 4
+      options:
+        - small
+        - large
+    - dp_id: 5
+      translation_key: timer
+      name: Timer
+      icon: mdi:timer-outline
+      entity_category: config
+      dp_type: 4
+      options:
+        - cancel
+        - 1h
+        - 3h
+        - 6h
+    - dp_id: 101
+      translation_key: scene
+      name: Light scene
+      icon: mdi:palette
+      entity_category: config
+      dp_type: 4
+      options:
+        - night
+        - read
+        - work
+        - rest
+        - grassland
+        - colorful
+        - dazzle
+        - gorgeous
+  sensor:
+    - dp_id: 6
+      translation_key: time_remaining
+      name: Time remaining
+      device_class: duration
+      unit: min
+      state_class: measurement
+      entity_category: diagnostic
+  binary_sensor:
+    - dp_id: 12
+      translation_key: fault_code
+      name: Fault
+      device_class: problem
+      entity_category: diagnostic
+      dp_type: 5
+  light:
+    - translation_key: light
+      name: Light
+      switch_dp_id: 7
+      brightness_dp_id: 9
+      brightness_min: 1
+      brightness_max: 100

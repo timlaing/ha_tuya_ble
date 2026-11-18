@@ -70,8 +70,14 @@ Supports lock/unlock, alarm events, fingerprint/card/password unlock tracking, a
 - Water valve controller (product_ids `46zia2nz`, `1fcnd8xk`).
 - HCT-611 water timer (product_id `tqzkwarw`).
 - ZX-7378 Smart Irrigation Controller (product_id `ldcdnigc`).
+- YZD05 water valve (product_id `d4vpmigg`). Experimental. Valve and water-valve switch (DP 1), countdown (DP 11, 0–86400 s), weather-delay select (DP 10), weather select (DP 13), battery (DP 7), operation (DP 12), last and accumulated use time (DPs 15/9) and fault (DP 4), taken from the cloud schema in home-assistant-libs/tuya-device-handlers#348. The weather switch (DP 14) and raw schedules (DPs 16/17) are not exposed.
+- Unistyle WT-04W dual water timer (product_id `ojrvmfkk`). Experimental. Separate valve, switch, countdown (0–86400 s), remaining time and operation entities per outlet (DPs 1/11/103/12 and 121/122/124/123), a 1–7 day weather-delay select (DP 10), a use-weather switch (DP 14) and battery (DP 101), from the tuya-local descriptor for this model. The weather select (DP 13), irrigation logs and schedules are not exposed.
+- MoistenLand water timer (product_id `8t5hebn0`). Experimental. Valve and water-valve switch (DP 1), countdown (DP 11, 0–86400 s), weather-delay select (DP 10), battery and battery state (DPs 7/8), operation (DP 12), last use time (DP 15) and fault (DP 4), from the tuya-local descriptor for this model.
+- The Rainpoint TTV102B (`e1poaiwa`) is not supported yet: the only source mapping shares a generic product entry and has no data-point report for this model.
 
 Entities available across this category: valve (open/close/stop), the matching water-valve switch, battery (with battery-state and alternate-percentage diagnostics on some models), countdown/irrigation timers, accumulated use time, work state, weather forecast, weather-delay select, smart-weather switch, fault code, soak and irrigation schedules, and valve opening percentage on `16wgjvck`.
+
+The enum order of the WT-04W and MoistenLand selects and status sensors is inferred and has not been confirmed on a device; diagnostics from either model are welcome.
 
 Per-product coverage varies — `0axr5s0b` exposes only five entities, while the SOP10 timers expose twelve. Check the descriptor for the exact set.
 
@@ -104,8 +110,17 @@ Entities: on/off, brightness, color temperature. `work_mode` is driven internall
 ## Lights (category_id `dj`)
 
 - Tuya Smart LED Wall Lamp (product_id `joe8qqgiwhpqgwex`).
+- LED BULB B509Z2 (product_id `bpqbwf8y`). Experimental. On/off, brightness and colour temperature only (no RGB), on the standard `dj` DPs 20–23 because the cloud report has no DP IDs. The countdown (`countdown_1`) is not exposed until its DP ID is known; diagnostics are welcome.
 
-Entities: on/off, brightness, color temperature, RGB color.
+Entities: on/off, brightness, color temperature, RGB color (where the light has it).
+
+## Water meters (category_id `slj`)
+
+- RESTMO FML026A water meter (product_id `mqqna0px`). Experimental. Flow rate (DP 5, L/min), battery (DP 4) and water counters in litres: total (DP 1), current session (DP 2), today (DP 101), and total and today since the last reset (DPs 107/108). Every reading is reported in 0.1 units. The counters are `total_increasing`, so a daily, session or manual reset back to zero is recorded as a new cycle rather than negative usage. Resetting the counters from Home Assistant is not supported.
+
+## Aroma diffusers (category_id `jsq`)
+
+- Dituo DT-T2190A aroma diffuser (product_id `if1nolcm`). Experimental. Power and mist switches (DPs 1/2), mist mode, timer and light scene selects (DPs 3/5/101), time remaining (DP 6, minutes), fault (DP 12) and a light with on/off and brightness (DPs 7/9). Light colour and work mode (DPs 8/10) are not exposed because this model uses a non-standard work-mode list. The select option order is inferred from the tuya-local descriptor and has not been confirmed on a device.
 
 ## Blind / curtain controllers (category_id `cl`)
 

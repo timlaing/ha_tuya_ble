@@ -1,0 +1,94 @@
+# YZD05 water valve / irrigation timer. Experimental: not tested over BLE.
+# DP IDs, cloud codes, types, ranges and access come from the Tuya cloud
+# local_strategy / function / status_range attached to
+# home-assistant-libs/tuya-device-handlers#348 (via ha-tuya-ble/ha_tuya_ble#173
+# and #198, based on @hippich's commit). Access: rw = in `function`, ro = report only.
+#   DP1  switch              bool          rw
+#   DP4  fault               bitmap        ro (property only)
+#   DP7  battery_percentage  value 0-100 % ro, scale 0
+#   DP9  time_use            value 0-2592000 s, scale 0 (cumulative watering time)
+#   DP10 weather_delay       enum [cancel, 24h, 48h, 72h]  rw
+#   DP11 countdown           value 0-86400 s, scale 0       rw
+#   DP12 work_state          enum [auto, manual, idle]     ro
+#   DP13 smart_weather       enum [sunny, cloudy, rainy]   rw
+#   DP15 use_time_one        value 0-86400 s, scale 0      ro (last watering time)
+# Not mapped: DP14 switch_weather (property only, absent from local_strategy),
+# DP16 cycle_timing / DP17 timer (raw schedules).
+category: sfkzq
+product_id: d4vpmigg
+device_name: YZD05 water valve
+model_name: d4vpmigg
+entities:
+  sensor:
+    - dp_id: 7
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+    - dp_id: 12
+      translation_key: work_state
+      name: Operation
+      device_class: enum
+      options:
+        - auto
+        - manual
+        - idle
+    - dp_id: 15
+      translation_key: use_time_one
+      name: Use time
+      device_class: duration
+      unit: s
+      state_class: measurement
+    - dp_id: 9
+      translation_key: time_use
+      name: Accumulated use time
+      device_class: duration
+      unit: s
+      state_class: total_increasing
+  binary_sensor:
+    - dp_id: 4
+      translation_key: fault_code
+      name: Fault
+      device_class: problem
+      entity_category: diagnostic
+      dp_type: 5
+  number:
+    - dp_id: 11
+      translation_key: countdown_duration
+      icon: mdi:timer
+      unit: s
+      mode: box
+      min_value: 0
+      max_value: 86400
+      step: 1
+  switch:
+    - dp_id: 1
+      translation_key: water_valve
+      icon: mdi:valve
+  valve:
+    - dp_id: 1
+      translation_key: valve
+      device_class: water
+  select:
+    - dp_id: 10
+      translation_key: weather_delay
+      name: Weather delay
+      icon: mdi:weather-partly-cloudy
+      entity_category: config
+      dp_type: 4
+      options:
+        - cancel
+        - 24h
+        - 48h
+        - 72h
+    - dp_id: 13
+      translation_key: smart_weather
+      name: Weather
+      icon: mdi:weather-cloudy-alert
+      entity_category: config
+      dp_type: 4
+      options:
+        - sunny
+        - cloudy
+        - rainy
