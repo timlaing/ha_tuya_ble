@@ -38,7 +38,9 @@ class TuyaBLEConnectionProfile:
     _write_char: str
     _client: Any
     _expected_disconnect: bool
-    _is_bound: bool
+    # The bound flag of this connection's encrypted DEVICE_INFO reply. Unlike
+    # _is_bound, advertisements never change it during a handshake.
+    _device_info_bound: bool | None = None
 
     @property
     @abstractmethod
@@ -52,6 +54,7 @@ class TuyaBLEConnectionProfile:
 
     def _select_characteristics(self, client: BleakClientWithServiceCache) -> None:
         """Use FD50 only for v4 devices offering both, otherwise classic."""
+        self._device_info_bound = None
         self._notify_char = CHARACTERISTIC_NOTIFY
         self._write_char = CHARACTERISTIC_WRITE
         if self._protocol_version != PROTOCOL_VERSION_V4:
@@ -78,7 +81,10 @@ class TuyaBLEConnectionProfile:
         which setup verification also refuses. Classic devices keep their
         existing behaviour.
         """
-        if self._protocol_version == PROTOCOL_VERSION_V4 and not self._is_bound:
+        if (
+            self._protocol_version == PROTOCOL_VERSION_V4
+            and not self._device_info_bound
+        ):
             _LOGGER.debug(
                 "%s: Device reports it is not added to an account; not pairing",
                 self.address,

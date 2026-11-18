@@ -325,6 +325,8 @@ async def test_fd50_recovery_uses_v4_packet_header() -> None:
         packets.append(dev._build_packets(1, code, data, response_to)[0])
         # Simulate successful handshake replies without any BLE I/O.
         dev._session_key = bytes(16)
+        if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO:
+            dev._device_info_bound = True
         if code == TuyaBLECode.FUN_SENDER_PAIR:
             dev._is_paired = True
         return True

@@ -724,3 +724,50 @@ async def test_explicit_pair_refusal_reports_its_own_stage() -> None:
         )
     assert outcome == ProbeOutcome.REJECTED
     assert stages == [ProbeStage.PAIR_REJECTED]
+
+
+class AdvertisementRaceFirmware(SecurityV2Firmware):
+    """Let an advertisement rewrite the advertised bound state mid-handshake."""
+
+    def __init__(
+        self,
+        credentials: TuyaBLEDeviceCredentials,
+        report_data: bytes,
+        device: TuyaBLEDevice,
+        *,
+        bound: bool,
+    ) -> None:
+        super().__init__(credentials, report_data, bound=bound)
+        self.device = device
+
+    def _answer(self, seq_num: int, code: int, data: bytes, flag: int) -> None:
+        super()._answer(seq_num, code, data, flag)
+        if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO.value:
+            # Test setup: the state an advertisement decode would leave behind.
+            self.device._is_bound = not self.bound
+
+
+@pytest.mark.parametrize("bound", [True, False])
+async def test_pairing_follows_device_info_not_advertisements(bound: bool) -> None:
+    """Only the DEVICE_INFO reply of this handshake decides whether to pair."""
+    credentials = v2_credentials()
+    device = make_device()
+    device.set_ble_device_and_advertisement_data(
+        device._ble_device,
+        v4_advertisement(uuid=credentials.uuid.encode(), service=V2_SERVICE),
+    )
+    device.initialize_with_credentials(credentials)
+    firmware = AdvertisementRaceFirmware(credentials, SHADE_DATA, device, bound=bound)
+    if bound:
+        await run_session(device, firmware)
+    else:
+        with (
+            patch(RUNTIME_CONNECT, return_value=firmware),
+            pytest.raises(BLE_CONNECTION_EXCEPTIONS),
+        ):
+            await device.update()
+        await device.stop()
+    paired = TuyaBLECode.FUN_SENDER_PAIR.value in {
+        frame[0] for frame in firmware.received
+    }
+    assert paired is bound

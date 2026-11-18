@@ -62,6 +62,7 @@ class TuyaBLEProtocolSendMixin:
     _expected_disconnect: bool
     _is_paired: bool
     _is_bound: bool
+    _device_info_bound: bool | None
     _flags: int
     _device_version: str
     _protocol_version_str: str

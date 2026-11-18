@@ -564,7 +564,7 @@ class _ProbeDevice(TuyaBLEDevice):
             return ProbeOutcome.RETRYABLE
         if self._session_key is None:
             return ProbeOutcome.INCONCLUSIVE
-        if not self._is_bound:
+        if not self._device_info_bound:
             self.stage = ProbeStage.UNBOUND
             return ProbeOutcome.INCONCLUSIVE
         if self._protocol_version not in SUPPORTED_PROTOCOL_VERSIONS:
