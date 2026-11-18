@@ -727,7 +727,7 @@ async def test_explicit_pair_refusal_reports_its_own_stage() -> None:
 
 
 class AdvertisementRaceFirmware(SecurityV2Firmware):
-    """Let an advertisement rewrite the advertised bound state mid-handshake."""
+    """Let an advertisement rewrite the advertised state mid-handshake."""
 
     def __init__(
         self,
@@ -740,15 +740,26 @@ class AdvertisementRaceFirmware(SecurityV2Firmware):
         super().__init__(credentials, report_data, bound=bound)
         self.device = device
 
-    def _answer(self, seq_num: int, code: int, data: bytes, flag: int) -> None:
-        super()._answer(seq_num, code, data, flag)
+    def _reply(self, code: int, response_to: int, data: bytes, flag: int) -> int:
+        seq = super()._reply(code, response_to, data, flag)
         if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO.value:
-            # Test setup: the state an advertisement decode would leave behind.
-            self.device._is_bound = not self.bound
+            # Queued after the reply's fragments, so it runs once the parser has
+            # stored the reply and before the handshake task resumes.
+            asyncio.get_running_loop().call_soon(self._advertisement_arrives)
+        return seq
+
+    def _advertisement_arrives(self) -> None:
+        # Test setup: the state an advertisement decode would leave behind,
+        # including a classic record's protocol version for the unbound case.
+        self.device._is_bound = not self.bound
+        if not self.bound:
+            self.device._protocol_version = 3
 
 
 @pytest.mark.parametrize("bound", [True, False])
-async def test_pairing_follows_device_info_not_advertisements(bound: bool) -> None:
+async def test_pairing_follows_device_info_not_advertisements(
+    caplog: pytest.LogCaptureFixture, bound: bool
+) -> None:
     """Only the DEVICE_INFO reply of this handshake decides whether to pair."""
     credentials = v2_credentials()
     device = make_device()
@@ -758,16 +769,62 @@ async def test_pairing_follows_device_info_not_advertisements(bound: bool) -> No
     )
     device.initialize_with_credentials(credentials)
     firmware = AdvertisementRaceFirmware(credentials, SHADE_DATA, device, bound=bound)
-    if bound:
-        await run_session(device, firmware)
-    else:
-        with (
-            patch(RUNTIME_CONNECT, return_value=firmware),
-            pytest.raises(BLE_CONNECTION_EXCEPTIONS),
-        ):
-            await device.update()
-        await device.stop()
+    with caplog.at_level(logging.DEBUG):
+        if bound:
+            await run_session(device, firmware)
+        else:
+            with (
+                patch(RUNTIME_CONNECT, return_value=firmware),
+                pytest.raises(BLE_CONNECTION_EXCEPTIONS),
+            ):
+                await device.update()
+            await device.stop()
     paired = TuyaBLECode.FUN_SENDER_PAIR.value in {
         frame[0] for frame in firmware.received
     }
     assert paired is bound
+    assert ("not added to an account; not pairing" in caplog.text) is not bound
+    assert firmware.received[0][0] == TuyaBLECode.FUN_SENDER_DEVICE_INFO.value
+
+
+class SilentFirmware(FakeV4Firmware):
+    """Never answer the device-info request, as for a frame it cannot decrypt."""
+
+    def _answer(self, seq_num: int, code: int, data: bytes, flag: int) -> None:
+        if code != TuyaBLECode.FUN_SENDER_DEVICE_INFO.value:
+            super()._answer(seq_num, code, data, flag)
+
+
+@pytest.mark.parametrize(
+    ("service", "expected"),
+    [
+        (V2_SERVICE, ProbeStage.MISSING_SEC_KEY),
+        (CLASSIC_SERVICE, ProbeStage.DEVICE_INFO),
+    ],
+)
+async def test_missing_sec_key_explains_a_silent_security_v2_device(
+    service: bytes, expected: ProbeStage
+) -> None:
+    """A Security V2 device with no cloud sec_key reports the missing key."""
+    credentials = v2_credentials(None)
+    clients: list[FakeV4Firmware] = []
+    stages: list[ProbeStage] = []
+    establish = _probe_establish(
+        clients, lambda: SilentFirmware(credentials, SHADE_DATA)
+    )
+    with (
+        patch(PROBE_CONNECT, side_effect=establish),
+        patch("custom_components.tuya_ble.tuya_ble.probe.PROBE_TIMEOUT", 0.2),
+    ):
+        outcome = await async_probe_authenticated_status(
+            make_device()._ble_device,
+            v4_advertisement(uuid=credentials.uuid.encode(), service=service),
+            credentials,
+            credentials.uuid,
+            frozenset({1, 3}),
+            stages,
+        )
+    assert outcome == ProbeOutcome.RETRYABLE
+    assert stages == [expected]
+    # The classic login is still attempted.
+    assert [frame[3] for frame in clients[0].received] == [4]

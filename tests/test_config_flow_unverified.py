@@ -186,6 +186,7 @@ def test_every_stage_has_a_translated_error() -> None:
         ([ProbeStage.CONNECT, ProbeStage.DEVICE_INFO], "v4_failed_no_reply"),
         ([ProbeStage.DATAPOINTS, ProbeStage.NOTIFY], "v4_failed_no_data"),
         ([ProbeStage.UNBOUND], "v4_failed_not_added"),
+        ([ProbeStage.DEVICE_INFO, ProbeStage.MISSING_SEC_KEY], "v4_failed_missing_key"),
         ([ProbeStage.PAIR, ProbeStage.UNSUPPORTED], "v4_failed_no_reply"),
         ([ProbeStage.PAIR_REJECTED, ProbeStage.PAIR], "v4_failed_login"),
     ],

@@ -18,6 +18,7 @@
       "v4_failed_credentials": "The login details from the Tuya cloud cannot be used for this device.",
       "v4_failed_connect": "Home Assistant could not connect to the device over Bluetooth. Move it closer to Home Assistant or a Bluetooth proxy, close the Smart Life app and try again.",
       "v4_failed_no_reply": "The device connected but did not reply. It may use a Bluetooth login this integration does not support yet.",
+      "v4_failed_missing_key": "This device uses a newer Bluetooth login that needs an extra security key, and the Tuya cloud did not provide one.",
       "v4_failed_not_added": "The device says it is not added to a Smart Life account. Add it in the Smart Life app and try again.",
       "v4_failed_unsupported_version": "The device uses a Bluetooth protocol version this integration does not support yet.",
       "v4_failed_login": "The device did not accept the login details from the Tuya cloud.",

@@ -115,12 +115,16 @@ class ProbeStage(StrEnum):
     CONNECT = "connect"
     NOTIFY = "notify"
     DEVICE_INFO = "device_info"
+    MISSING_SEC_KEY = "missing_sec_key"
     UNBOUND = "unbound"
     UNSUPPORTED = "unsupported"
     PAIR = "pair"
     PAIR_REJECTED = "pair_rejected"
     STATUS = "status"
     DATAPOINTS = "datapoints"
+
+
+_STAGE_RANK = {stage: rank for rank, stage in enumerate(ProbeStage)}
 
 
 class ProbeOutcome(StrEnum):
@@ -653,8 +657,29 @@ async def async_probe_authenticated_status(
         ble_device, advertisement, credentials, pairing_uuid, expected_dp_ids
     )
     if stages is not None and outcome != ProbeOutcome.MATCHED:
-        stages.append(stage)
+        stages.append(_explain_stage(stage, advertisement, credentials))
     return outcome
+
+
+def _explain_stage(
+    stage: ProbeStage,
+    advertisement: AdvertisementData,
+    credentials: TuyaBLEDeviceCredentials,
+) -> ProbeStage:
+    """Blame a missing sec_key when a Security V2 device never answered.
+
+    The classic login is still attempted, because the Security V2 flag is not
+    proven for every firmware, but its silent failure is then explained.
+    """
+    if (
+        credentials.sec_key is None
+        and _STAGE_RANK[stage] <= _STAGE_RANK[ProbeStage.DEVICE_INFO]
+        and stage != ProbeStage.INELIGIBLE
+        and (info := decode_tuya_ble_advertisement(advertisement)) is not None
+        and info.security_v2
+    ):
+        return ProbeStage.MISSING_SEC_KEY
+    return stage
 
 
 async def _async_probe(

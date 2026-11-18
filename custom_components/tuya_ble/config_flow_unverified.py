@@ -34,6 +34,7 @@ _STAGE_ERRORS: dict[ProbeStage, str] = {
     ProbeStage.CONNECT: "v4_failed_connect",
     ProbeStage.NOTIFY: "v4_failed_connect",
     ProbeStage.DEVICE_INFO: "v4_failed_no_reply",
+    ProbeStage.MISSING_SEC_KEY: "v4_failed_missing_key",
     ProbeStage.UNBOUND: "v4_failed_not_added",
     ProbeStage.UNSUPPORTED: "v4_failed_unsupported_version",
     # A PAIR timeout or drop is not a refusal of the cloud login details.

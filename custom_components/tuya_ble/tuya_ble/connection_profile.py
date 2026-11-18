@@ -38,8 +38,10 @@ class TuyaBLEConnectionProfile:
     _write_char: str
     _client: Any
     _expected_disconnect: bool
-    # The bound flag of this connection's encrypted DEVICE_INFO reply. Unlike
-    # _is_bound, advertisements never change it during a handshake.
+    # The protocol version and bound flag of this connection's encrypted
+    # DEVICE_INFO reply. Unlike _protocol_version and _is_bound, advertisements
+    # never change them during a handshake.
+    _device_info_protocol: int | None = None
     _device_info_bound: bool | None = None
 
     @property
@@ -54,6 +56,7 @@ class TuyaBLEConnectionProfile:
 
     def _select_characteristics(self, client: BleakClientWithServiceCache) -> None:
         """Use FD50 only for v4 devices offering both, otherwise classic."""
+        self._device_info_protocol = None
         self._device_info_bound = None
         self._notify_char = CHARACTERISTIC_NOTIFY
         self._write_char = CHARACTERISTIC_WRITE
@@ -82,7 +85,7 @@ class TuyaBLEConnectionProfile:
         existing behaviour.
         """
         if (
-            self._protocol_version == PROTOCOL_VERSION_V4
+            self._device_info_protocol == PROTOCOL_VERSION_V4
             and not self._device_info_bound
         ):
             _LOGGER.debug(

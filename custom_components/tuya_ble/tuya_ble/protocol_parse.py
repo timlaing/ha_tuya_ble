@@ -295,6 +295,7 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
         self._protocol_version = data[2]
         self._flags = data[4]
         self._is_bound = data[5] != 0
+        self._device_info_protocol = self._protocol_version
         self._device_info_bound = self._is_bound
 
         srand = data[6:12]
