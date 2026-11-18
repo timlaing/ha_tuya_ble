@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.exceptions import ConfigEntryNotReady
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -70,25 +71,27 @@ async def test_probe_candidates_filter_and_order(hass: HomeAssistant) -> None:
 
 
 @pytest.mark.parametrize(
-    ("advertised_uuid", "product_id", "expected"),
+    ("advertised_uuid", "product_id", "expected_count", "expected"),
     [
-        # No decoded identity (#155): only the readable product is probed.
-        ("", "target", ["a-target", "c-target"]),
+        # No decoded identity (#155): the readable product is probed first and
+        # bounds the count; other products stay as fallbacks (#182).
+        ("", "target", 2, ["a-target", "c-target", "b-other"]),
         # No identity and no product hint: every eligible record.
-        ("", None, ["a-target", "b-other", "c-target"]),
+        ("", None, 3, ["a-target", "b-other", "c-target"]),
         # Printable bound bytes that match no record are not a product filter.
-        ("", "unmapped", ["a-target", "b-other", "c-target"]),
-        # A decoded identity keeps other products, ordered after the match.
-        ("ble-uuid", "target", ["a-target", "c-target", "b-other"]),
+        ("", "unmapped", 3, ["a-target", "b-other", "c-target"]),
+        # A decoded identity counts other products, ordered after the match.
+        ("ble-uuid", "target", 3, ["a-target", "c-target", "b-other"]),
     ],
 )
-async def test_probe_candidates_without_identity_filter_by_product(
+async def test_probe_candidates_without_identity_order_by_product(
     hass: HomeAssistant,
     advertised_uuid: str,
     product_id: str | None,
+    expected_count: int,
     expected: list[str],
 ) -> None:
-    """Bound the candidate count by product only when no UUID was decoded."""
+    """Order by the product hint; bound the count by it only without a UUID."""
     cloud_devices = [
         make_device(id="a-target", uuid="a", product_id="target", local_key="123456"),
         make_device(id="b-other", uuid="b", product_id="other", local_key="123456"),
@@ -99,8 +102,29 @@ async def test_probe_candidates_without_identity_filter_by_product(
         Any, SimpleNamespace(device_map={d.id: d for d in cloud_devices})
     )
     count, candidates = await manager.get_probe_candidates(advertised_uuid, product_id)
-    assert count == len(expected)
+    assert count == expected_count
     assert [c.device_id for c in candidates] == expected
+
+
+async def test_probe_candidates_hint_keeps_fallbacks_beyond_cap(
+    hass: HomeAssistant,
+) -> None:
+    """A matching hint counts only its records but still yields every fallback."""
+    cloud_devices = [
+        make_device(id=f"z-other-{index}", uuid=f"o{index}", product_id="other")
+        for index in range(5)
+    ] + [make_device(id="target", uuid="t", product_id="target")]
+    for device in cloud_devices:
+        device.local_key = "123456"
+    manager = HASSTuyaBLEDeviceManager(hass, {})
+    manager._manager = cast(
+        Any, SimpleNamespace(device_map={d.id: d for d in cloud_devices})
+    )
+    count, candidates = await manager.get_probe_candidates("", "target")
+    assert count == 1
+    assert [c.device_id for c in candidates] == ["target"] + [
+        f"z-other-{index}" for index in range(5)
+    ]
 
 
 async def test_async_refresh_reloads_device_cache(hass: HomeAssistant) -> None:
@@ -230,3 +254,26 @@ async def test_real_cloud_manager_skips_bad_metadata_during_public_setup(
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_DEVICE_ID] == "b-good"
     probe.assert_awaited_once()
+
+
+async def test_probe_candidates_initialise_missing_manager(
+    hass: HomeAssistant,
+) -> None:
+    """Load the cloud list first, and fail setup if it still cannot load."""
+    manager = HASSTuyaBLEDeviceManager(hass, {})
+    with (
+        patch.object(manager, "initialize", new_callable=AsyncMock) as initialize,
+        pytest.raises(ConfigEntryNotReady),
+    ):
+        await manager.get_probe_candidates("", None)
+    initialize.assert_awaited_once_with()
+
+    async def load() -> None:
+        manager._manager = cast(
+            Any, SimpleNamespace(device_map={"a": make_device(local_key="123456")})
+        )
+
+    with patch.object(manager, "initialize", side_effect=load):
+        count, candidates = await manager.get_probe_candidates("", None)
+    assert count == 1
+    assert [c.device_id for c in candidates] == ["deviceid"]
