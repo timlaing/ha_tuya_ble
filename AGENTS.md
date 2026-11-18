@@ -95,6 +95,7 @@ If a file falls below the threshold, add tests until it passes before committing
 | `tests/test_config_flow_manual.py`                                         | manual credential entry: validation, Bluetooth verification, errors and claims                        |
 | `tests/test_config_flow_options_credentials.py`                            | options-flow key-pair replacement, security-key clearing and refusal                                  |
 | `tests/test_session_recovery.py`                                           | failed/unanswered command recovery: no replay after reconnect, stale clients, waiters                 |
+| `tests/test_reconnect_absent_device.py`                                    | absent at startup: advertising, duplicate connects, failed handshakes, unload, drops                  |
 
 ### prek
 

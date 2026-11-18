@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass, field
+import logging
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -35,7 +36,9 @@ from custom_components.tuya_ble.const import (
     DOMAIN,
 )
 from custom_components.tuya_ble.devices import TuyaBLEData
-from tests.conftest import make_credentials
+from custom_components.tuya_ble.tuya_ble.const import TuyaBLECode
+from tests.conftest import make_credentials, make_device
+from tests.protocol_harness import v4_advertisement
 from tests.test_probe import _input
 from tests.test_probe_runtime_handoff import AuthenticatedFirmwareClient
 
@@ -251,6 +254,126 @@ def _connected(runtime: Runtime) -> bool:
     )
 
 
+async def test_startup_out_of_range_connects_once_the_device_advertises(
+    runtime: Runtime, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An absent device at startup is connected as soon as it is heard from.
+
+    The initial update must not end in an unwatched task (PR 297), and no
+    restart or entry reload may be needed once it advertises (PR 351).
+    """
+    device = runtime.data.device
+    firmware = runtime.firmware
+
+    await _until(lambda: len(firmware.devices) >= 6)
+    assert not runtime.data.coordinator.connected
+    assert not firmware.clients
+    assert device._reconnect_task is not None
+    assert not device._reconnect_task.done()
+    assert firmware.devices[0].address == ADDRESS
+
+    runtime.advertise()
+    await _until(lambda: _connected(runtime))
+
+    assert firmware.devices[-1] is runtime.advertised
+    assert len(firmware.clients) == 1
+    assert firmware.overlaps == 0
+    assert device._reconnect_delay == 0.02
+    assert not device._connection_failure_reported
+    records = caplog.get_records("setup") + caplog.records
+    warnings = [
+        r
+        for r in records
+        if r.levelno >= logging.WARNING and r.name.startswith("custom_components")
+    ]
+    assert [r.getMessage() for r in warnings] == [
+        f"{ADDRESS}: Unable to connect after 3 connection cycles; RSSI: None. "
+        "Check device power, Bluetooth range and proxy availability; "
+        "enable debug logging for retry details"
+    ]
+    assert not any("never retrieved" in r.getMessage() for r in records)
+
+
+async def test_repeated_advertisements_do_not_start_duplicate_connections(
+    runtime: Runtime,
+) -> None:
+    """A burst of advertisements during a connection attempt adds no attempts."""
+    firmware = runtime.firmware
+    firmware.gate = asyncio.Event()
+    runtime.advertise()
+    await _until(lambda: firmware.in_flight == 1)
+    attempts = len(firmware.devices)
+
+    for _ in range(25):
+        runtime.advertise()
+    await asyncio.sleep(0.05)
+
+    assert len(firmware.devices) == attempts
+    firmware.gate.set()
+    await _until(lambda: _connected(runtime))
+
+    for _ in range(25):
+        runtime.advertise()
+    await asyncio.sleep(0.05)
+    assert firmware.max_in_flight == 1
+    assert len(firmware.devices) == attempts
+    assert len(firmware.clients) == 1
+
+
+async def test_repeated_fd50_identity_advertisements_start_one_connection(
+    firmware: AbsentFirmware,
+) -> None:
+    """Each identity advertisement must not spawn another connect task."""
+    credentials = make_credentials()
+    device = make_device()
+    device.initialize_with_credentials(credentials)
+    device._awaiting_fd50_identity = True
+    firmware.gate = asyncio.Event()
+    advertisement = v4_advertisement(uuid=credentials.uuid.encode())
+    try:
+        device.set_ble_device_and_advertisement_data(device._ble_device, advertisement)
+        task = device._identity_connect_task
+        assert task is not None
+        await _until(lambda: firmware.in_flight == 1)
+        for _ in range(25):
+            device.set_ble_device_and_advertisement_data(
+                device._ble_device, advertisement
+            )
+        await asyncio.sleep(0.02)
+        assert device._identity_connect_task is task
+        assert firmware.max_in_flight == 1
+        assert len(firmware.devices) == 1
+    finally:
+        await device.stop()
+    assert task.cancelled()
+
+
+@pytest.mark.parametrize("failure", ["info_timeout", "pair_rejected", "notifications"])
+async def test_failed_handshakes_recover_without_overlapping_links(
+    runtime: Runtime, failure: str
+) -> None:
+    """Every failed handshake is released before the next one, then recovers."""
+    firmware = runtime.firmware
+    firmware.failures = [failure] * 4
+    runtime.advertise()
+
+    await _until(lambda: _connected(runtime))
+
+    assert len(firmware.clients) == 5
+    assert firmware.overlaps == 0
+    assert all(not client.physical_connected for client in firmware.clients[:-1])
+    assert firmware.clients[-1].physical_connected
+    assert runtime.data.device._reconnect_delay == 0.02
+
+    # Notifications still queued on a failed link must not reach the parser.
+    stale = firmware.clients[0]
+    if stale.notify_handler is not None:
+        stale.notify(TuyaBLECode.FUN_RECEIVE_DP, b"\x03\x02\x04\x00\x00\x00\x07")
+    datapoint = runtime.data.device.datapoints[3]
+    assert datapoint is not None
+    assert datapoint.value == 42
+
+
 @pytest.mark.parametrize(
     ("firmware", "owner"),
     [("gated", "initial update"), (None, "reconnect")],
@@ -287,6 +410,26 @@ async def test_unload_during_an_in_flight_connect_does_not_block(
     assert not runtime.data.coordinator.connected
     assert device._client is None
     assert len(firmware.devices) == attempts
+
+
+async def test_dropped_link_reconnects_and_ignores_the_old_subscription(
+    runtime: Runtime,
+) -> None:
+    """A link lost on the device side is replaced by exactly one new session."""
+    firmware = runtime.firmware
+    runtime.advertise()
+    await _until(lambda: _connected(runtime))
+    first = firmware.clients[0]
+
+    first.drop()
+    await _until(lambda: len(firmware.clients) == 2 and _connected(runtime))
+
+    assert firmware.overlaps == 0
+    assert runtime.data.device._client is firmware.clients[1]
+    first.notify(TuyaBLECode.FUN_RECEIVE_DP, b"\x03\x02\x04\x00\x00\x00\x07")
+    datapoint = runtime.data.device.datapoints[3]
+    assert datapoint is not None
+    assert datapoint.value == 42
 
 
 async def test_abandoned_live_link_is_released_before_reconnecting(
