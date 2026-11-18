@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Iterator
+from contextlib import ExitStack
 from dataclasses import dataclass, field
 import gc
 import logging
@@ -106,20 +107,31 @@ def _flow(
 async def _setup(
     flow: TuyaBLEConfigFlow,
     discovery: FakeDiscovery,
-    mapped_dp_ids: frozenset[int] = frozenset({1, 2, 3}),
+    mapped_dp_ids: frozenset[int] | None = frozenset({1, 2, 3}),
 ) -> tuple[Any, Any]:
-    with (
-        patch.object(flow, "_async_scan_device", return_value=discovery),
-        patch(
-            "custom_components.tuya_ble.config_flow.async_setup_registry",
-            new_callable=AsyncMock,
-        ),
-        patch(
-            "custom_components.tuya_ble.config_flow.get_mapped_dp_ids",
-            return_value=mapped_dp_ids,
-        ),
-        patch.object(flow, "_async_refresh_discovered_devices", new_callable=AsyncMock),
-    ):
+    """Drive setup to a result; ``mapped_dp_ids=None`` uses the real registry."""
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch.object(flow, "_async_scan_device", return_value=discovery)
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.tuya_ble.config_flow.async_setup_registry",
+                new_callable=AsyncMock,
+            )
+        )
+        if mapped_dp_ids is not None:
+            stack.enter_context(
+                patch(
+                    "custom_components.tuya_ble.config_flow.get_mapped_dp_ids",
+                    return_value=mapped_dp_ids,
+                )
+            )
+        stack.enter_context(
+            patch.object(
+                flow, "_async_refresh_discovered_devices", new_callable=AsyncMock
+            )
+        )
         result = await flow.async_step_device({"address": discovery.address})
         if result["type"] == FlowResultType.CREATE_ENTRY:
             return result, None

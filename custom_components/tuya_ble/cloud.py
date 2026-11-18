@@ -142,9 +142,10 @@ class HASSTuyaBLEDeviceManager:
         """Count eligible records and lazily build credentials in sorted order.
 
         Records of ``product_id`` come first, then the other eligible records,
-        each group ordered by device ID. The caller checks the count against
-        its safety cap before consuming the iterator, so an oversized cloud
-        account builds no probe credentials, and probes at most that many.
+        each group ordered by device ID. The caller checks the returned count
+        against its safety cap before consuming the iterator and builds no
+        probe credentials when the count exceeds it. The count can be smaller
+        than the iterator, so the caller also stops after the cap's probes.
 
         Without a decoded identity (empty ``advertised_uuid``) a readable
         product ID is the only hint. It is unverified (bound bytes can be

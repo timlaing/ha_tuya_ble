@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
 from dataclasses import replace
-from itertools import islice
 import logging
 import time
 from typing import Any
@@ -30,7 +30,7 @@ from .cloud import HASSTuyaBLEDeviceManager
 from .config_flow_options import TuyaBLEOptionsFlow
 from .config_flow_qr import UNKNOWN_ERROR, _QRCodeLoginMixin
 from .config_flow_scan import async_scan_device, bound_classic_advertisement
-from .config_flow_state import PROBE_CLAIM_TTL, _consume_probe_result
+from .config_flow_state import PROBE_CLAIM_TTL, ProbeClaim, _consume_probe_result
 from .config_flow_state import advertisement_hex as _advertisement_hex
 from .config_flow_state import probe_state as _probe_state
 from .config_flow_unverified import (
@@ -544,34 +544,53 @@ class TuyaBLEConfigFlow(
                     claims.pop(device_id, None)
             if count > PROBE_MAX_CANDIDATES:
                 return None, None, "too_many_candidates"
-            probe_failed = False
-            # The cap also bounds unverified-hint fallbacks queued after the count.
-            for credentials in islice(candidates, PROBE_MAX_CANDIDATES):
-                self._abort_if_flow_removed()
-                if credentials.device_id in claims:
-                    continue
-                outcome, pairing_uuid = await self._async_try_probe_cloud_candidate(
-                    discovery_info, advertisement, credentials
-                )
-                self._abort_if_flow_removed()
-                if outcome == ProbeOutcome.MATCHED and pairing_uuid is not None:
-                    claims[credentials.device_id] = (
-                        self._probe_claim_owner,
-                        discovery_info.address,
-                        time.monotonic() + PROBE_CLAIM_TTL,
-                    )
-                    return (
-                        replace(credentials, connection_profile=self._verified_profile),
-                        pairing_uuid,
-                        "",
-                    )
-                if outcome in (ProbeOutcome.INCONCLUSIVE, ProbeOutcome.RETRYABLE):
-                    probe_failed = True
-            return (
-                None,
-                None,
-                ("bluetooth_probe_failed" if probe_failed else "device_not_registered"),
+            return await self._async_probe_candidates(
+                discovery_info, advertisement, candidates, claims
             )
+
+    async def _async_probe_candidates(
+        self,
+        discovery_info: BluetoothServiceInfoBleak,
+        advertisement: TuyaBLEAdvertisementInfo,
+        candidates: Iterator[TuyaBLEDeviceCredentials],
+        claims: dict[str, ProbeClaim],
+    ) -> tuple[TuyaBLEDeviceCredentials | None, str | None, str]:
+        """Probe unclaimed candidates in order, up to the probe cap.
+
+        The cap also bounds unverified-hint fallbacks queued after the count;
+        claimed and unmapped records do no BLE I/O, so they use no slot.
+        """
+        probe_failed = False
+        probed = 0
+        for credentials in candidates:
+            self._abort_if_flow_removed()
+            if credentials.device_id in claims:
+                continue
+            outcome, pairing_uuid = await self._async_try_probe_cloud_candidate(
+                discovery_info, advertisement, credentials
+            )
+            self._abort_if_flow_removed()
+            if outcome == ProbeOutcome.MATCHED and pairing_uuid is not None:
+                claims[credentials.device_id] = (
+                    self._probe_claim_owner,
+                    discovery_info.address,
+                    time.monotonic() + PROBE_CLAIM_TTL,
+                )
+                return (
+                    replace(credentials, connection_profile=self._verified_profile),
+                    pairing_uuid,
+                    "",
+                )
+            if outcome in (ProbeOutcome.INCONCLUSIVE, ProbeOutcome.RETRYABLE):
+                probe_failed = True
+            probed += outcome is not None
+            if probed >= PROBE_MAX_CANDIDATES:
+                break
+        return (
+            None,
+            None,
+            ("bluetooth_probe_failed" if probe_failed else "device_not_registered"),
+        )
 
     async def _async_try_probe_cloud_candidate(
         self,

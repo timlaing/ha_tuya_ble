@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 import logging
+import time
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock, patch
@@ -20,6 +21,7 @@ from custom_components.tuya_ble.config_flow import (
     TuyaBLEConfigFlow,
 )
 from custom_components.tuya_ble.config_flow_scan import async_scan_device
+from custom_components.tuya_ble.config_flow_state import probe_state as _probe_state
 from custom_components.tuya_ble.const import (
     CONF_ADVERTISED_UUID,
     CONF_CLOUD_UUID,
@@ -188,15 +190,24 @@ async def test_undecoded_bound_classic_hint_matches_other_device(
 ) -> None:
     """A hint matching another device's product still probes the real one (#182)."""
     discovery = _discovery()
+    # Both are supported Fingerbots, so the real registry maps their DPs.
     decoy = make_device(
-        id="a-decoy", uuid="decoy-uuid", product_id="bs3ubslo", local_key="123456"
+        id="a-decoy",
+        uuid="decoy-uuid",
+        category="kg",
+        product_id="bs3ubslo",
+        local_key="123456",
     )
     real = make_device(
-        id="b-real", uuid="real-uuid", product_id="other", local_key="123456"
+        id="b-real",
+        uuid="real-uuid",
+        category="kg",
+        product_id="gnpbj0bq",
+        local_key="123456",
     )
     flow = _cloud_flow(hass, discovery, [real, decoy])
     with patch(_PROBE_PATCH, side_effect=_matches("b-real")) as probe:
-        result, error = await _setup(flow, discovery)
+        result, error = await _setup(flow, discovery, mapped_dp_ids=None)
     assert error is None
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_DEVICE_ID] == "b-real"
@@ -236,6 +247,56 @@ async def test_undecoded_bound_classic_fallbacks_stay_within_cap(
     assert [call.args[2].device_id for call in probe.await_args_list] == [
         "a-hint",
         *(f"b-other-{index}" for index in range(PROBE_MAX_CANDIDATES - 1)),
+    ]
+
+
+async def test_undecoded_bound_classic_skipped_records_use_no_slot(
+    hass: HomeAssistant,
+) -> None:
+    """Claimed and unmapped records do no BLE I/O, so they use no probe slot."""
+    discovery = _discovery()
+    devices = [
+        make_device(
+            id="a-hint",
+            uuid="hint-uuid",
+            category="kg",
+            product_id="bs3ubslo",
+            local_key="123456",
+        ),
+        *(
+            make_device(
+                id=f"b-unmapped-{index}",
+                uuid=f"unmapped-{index}",
+                category="unmapped",
+                product_id="unmapped",
+                local_key="123456",
+            )
+            for index in range(PROBE_MAX_CANDIDATES)
+        ),
+        *(
+            make_device(
+                id=f"c-other-{index}",
+                uuid=f"other-{index}",
+                category="kg",
+                product_id="gnpbj0bq",
+                local_key="123456",
+            )
+            for index in range(PROBE_MAX_CANDIDATES)
+        ),
+    ]
+    flow = _cloud_flow(hass, discovery, devices)
+    _probe_state(hass)[1]["a-hint"] = (
+        object(),
+        "another-address",
+        time.monotonic() + 120,
+    )
+    last = f"c-other-{PROBE_MAX_CANDIDATES - 1}"
+    with patch(_PROBE_PATCH, side_effect=_matches(last)) as probe:
+        result, error = await _setup(flow, discovery, mapped_dp_ids=None)
+    assert error is None
+    assert result["data"][CONF_DEVICE_ID] == last
+    assert [call.args[2].device_id for call in probe.await_args_list] == [
+        f"c-other-{index}" for index in range(PROBE_MAX_CANDIDATES)
     ]
 
 
