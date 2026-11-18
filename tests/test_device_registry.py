@@ -1293,7 +1293,8 @@ def test_sgs01b_jr_descriptor_matches_the_sgs01_plant_sensor() -> None:
     assert [desc.dp_id for desc in product.get("select")] == [9]
     temperature, *others = product.get("sensor")
     assert temperature.extra == {"unit_dp_id": 9}
-    assert [replace(temperature, extra={}), *others] == reference.get("sensor")
+    sensors_without_unit = [replace(temperature, extra={}), *others]
+    assert sensors_without_unit == reference.get("sensor")
     assert product.device_name == "SGS01B-JR Soil Sensor"
     assert product.model_name == "gpkyrocn"
 
