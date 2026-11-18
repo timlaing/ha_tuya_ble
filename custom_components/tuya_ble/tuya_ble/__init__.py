@@ -31,6 +31,7 @@ from .probe import (
     async_probe_authenticated_status,
 )
 from .protocol_mixin import BLE_CONNECTION_EXCEPTIONS, BLEAK_EXCEPTIONS
+from .security import is_valid_sec_key
 
 __all__ = [
     "AbstractTuyaBLEDeviceManager",
@@ -52,6 +53,7 @@ __all__ = [
     "TuyaBLEDeviceCredentials",
     "TuyaBLEDeviceFunction",
     "decode_tuya_ble_advertisement",
+    "is_valid_sec_key",
     "async_probe_authenticated_status",
     "async_detect_v4_profile",
 ]

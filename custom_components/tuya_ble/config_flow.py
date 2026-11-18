@@ -76,6 +76,7 @@ from .tuya_ble import (
     async_detect_v4_profile,
     async_probe_authenticated_status,
     decode_tuya_ble_advertisement,
+    is_valid_sec_key,
 )
 
 ACTIVE_SCAN_TIMEOUT = 60
@@ -373,8 +374,13 @@ class TuyaBLEConfigFlow(
         }
         if credentials.connection_profile is not None:
             entry_data[CONF_CONNECTION_PROFILE] = credentials.connection_profile.value
-        if credentials.sec_key is not None and advertisement.security_v2:
+        if (
+            credentials.sec_key is not None
+            and advertisement.security_v2
+            and is_valid_sec_key(credentials.sec_key)
+        ):
             # Only a device advertising Security V2 needs, and receives, the key.
+            # A malformed key is never stored: runtime could not load the entry.
             entry_data[CONF_SEC_KEY] = credentials.sec_key
         _LOGGER.debug(
             "%s: config entry created (category: %s, product_id: %s, device_name: %s)",

@@ -15,6 +15,7 @@ from homeassistant.data_entry_flow import AbortFlow, FlowResultType
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.tuya_ble import _build_credentials_from_entry
 from custom_components.tuya_ble.config_flow import TuyaBLEConfigFlow
 from custom_components.tuya_ble.config_flow_unverified import unverified_error
 from custom_components.tuya_ble.const import (
@@ -50,12 +51,13 @@ async def _fail_verification(
     *,
     source: str = "discovered_device",
     service: bytes | None = None,
+    sec_key: str = SEC_KEY,
 ) -> tuple[TuyaBLEConfigFlow, Any, dict[str, Any]]:
     """Run setup until verification has failed and the unverified form shows."""
     flow = build_flow(hass)
     info = _discovery(service)
     credentials = replace(
-        make_credentials(local_key="0123456789abcdef"), sec_key=SEC_KEY
+        make_credentials(local_key="0123456789abcdef"), sec_key=sec_key
     )
     flow._manager = cast(Any, FakeManager(credentials))
     if source == "discovered_device":
@@ -222,3 +224,16 @@ async def test_unverified_form_shows_why_verification_failed(
     assert result["errors"] == {"base": "v4_failed_no_reply"}
     shown = await flow.async_step_unverified()
     assert shown["errors"] == {"base": "v4_failed_no_reply"}
+
+
+async def test_malformed_sec_key_is_never_stored(hass: HomeAssistant) -> None:
+    """A sec_key that cannot derive keys is dropped so the entry still loads."""
+    flow, _, _ = await _fail_verification(hass, service=V2_SERVICE, sec_key="short")
+    result = await flow.async_step_unverified({})
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    data = cast(dict[str, Any], result["data"])
+    assert CONF_SEC_KEY not in data
+    entry = MockConfigEntry(domain=DOMAIN, data=data)
+    device = make_device()
+    device.initialize_with_credentials(_build_credentials_from_entry(entry))
+    assert not device.security_v2

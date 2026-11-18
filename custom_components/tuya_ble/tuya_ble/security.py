@@ -10,6 +10,11 @@ from .exceptions import TuyaBLEDeviceError
 CLASSIC_LOCAL_KEY_LENGTH = 6
 
 
+def is_valid_sec_key(sec_key: str) -> bool:
+    """Return whether a cloud sec_key can derive Security V2 keys."""
+    return len(sec_key.encode()) == SECURITY_V2_KEY_LENGTH
+
+
 def derive_login_keys(
     local_key: str, sec_key: str | None
 ) -> tuple[bytes, bytes | None, bytes]:
@@ -25,10 +30,9 @@ def derive_login_keys(
         raise TuyaBLEDeviceError(0)
     security_v2_key: bytes | None = None
     if sec_key is not None:
-        sec = sec_key.encode()
-        if len(sec) != SECURITY_V2_KEY_LENGTH:
+        if not is_valid_sec_key(sec_key):
             raise TuyaBLEDeviceError(0)
-        security_v2_key = local + sec
+        security_v2_key = local + sec_key.encode()
     classic = local[:CLASSIC_LOCAL_KEY_LENGTH]
     login_key = hashlib.md5(security_v2_key or classic, usedforsecurity=False).digest()
     return classic, security_v2_key, login_key
