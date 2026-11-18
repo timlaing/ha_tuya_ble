@@ -136,10 +136,10 @@ class _ConnectionCleanup:
             if not target.is_connected:
                 self._release_pending(client)
 
-    async def async_discard(
+    def schedule_discard(
         self, client: BleakClientWithServiceCache, cleanup_duration: float
-    ) -> None:
-        """Close an unused link without allowing cancellation to lose ownership."""
+    ) -> asyncio.Task[None]:
+        """Hold the ownership barrier now and start closing an unused link."""
         self.discarded.add(client)
         self.pending.add(client)
         self.capture_source(client)
@@ -151,6 +151,13 @@ class _ConnectionCleanup:
             )
             self.tasks[client] = task
             task.add_done_callback(partial(self._finish_cleanup, client))
+        return task
+
+    async def async_discard(
+        self, client: BleakClientWithServiceCache, cleanup_duration: float
+    ) -> None:
+        """Close an unused link without allowing cancellation to lose ownership."""
+        task = self.schedule_discard(client, cleanup_duration)
         try:
             await asyncio.shield(task)
         except asyncio.CancelledError:

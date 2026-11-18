@@ -474,8 +474,8 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
     async def stop(self) -> None:
         """Stop the TuyaBLE and cancel any in-flight background tasks."""
         _LOGGER.debug("%s: Stop", self.address)
-        # Set before touching any lock, otherwise an in-flight connect holds
-        # _connect_lock and stop() blocks behind its whole retry loop.
+        # Set before touching any lock: an in-flight connect checks it before
+        # adopting its client, so stop() need not wait behind its retry loop.
         self._expected_disconnect = True
         for task in self._background_tasks():
             if not task.done():
@@ -501,14 +501,14 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
     def _disconnected(self, client: BleakClientWithServiceCache) -> None:
         """Handle BLE disconnection: fire callbacks and reconnect."""
         if client in self._discarded_clients:
-            # Closed on purpose before any handshake, see _discard_client. The
-            # callback can arrive after a later connection has replaced it, so
-            # it must not touch the current client or the paired state.
+            # Closed on purpose, see _discard_client. The callback can arrive
+            # after a later connection has replaced it, so it must not touch
+            # the current client or the paired state.
             self._discarded_clients.discard(client)
             # Only successful cleanup releases its ownership barrier. Proxy
             # callbacks can clear local state before disconnect is acknowledged.
             _LOGGER.debug(
-                "%s: Closed the connection made before the FD50 identity arrived",
+                "%s: Closed a connection that is no longer used",
                 self.address,
             )
             return
@@ -549,6 +549,17 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
         """Execute disconnection."""
         self._expected_disconnect = True
         self._cancel_pending_responses()
+        if self._connect_lock.locked():
+            # An attempt, maybe in a caller's task stop() cannot cancel, discards
+            # its own client on seeing _expected_disconnect; never wait behind it.
+            _LOGGER.debug("%s: In-flight connection will close itself", self.address)
+        else:
+            await self._disconnect_current_client()
+        async with self._seq_num_lock:
+            self._current_seq_num = 1
+
+    async def _disconnect_current_client(self) -> None:
+        """Close the adopted client while no connection attempt can replace it."""
         async with self._connect_lock:
             client = self._client
             if client is not None and self._is_fingerbot_touch:
@@ -564,8 +575,6 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
                     await client.stop_notify(self._notify_char)
                     await client.disconnect()
                     self._pending_client_cleanup.discard(client)
-        async with self._seq_num_lock:
-            self._current_seq_num = 1
 
     @property
     def _is_fingerbot_touch(self) -> bool:

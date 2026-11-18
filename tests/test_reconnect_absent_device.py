@@ -1,0 +1,313 @@
+"""Recovery of a device that is absent at startup and starts advertising later.
+
+Regression scenarios carried over from ha-tuya-ble/ha_tuya_ble PRs 351, 293,
+297, 298 and 277. They drive the real ``async_setup_entry``, coordinator and
+``TuyaBLEDevice`` against a simulated protocol-3 firmware; only the Bluetooth
+stack and Home Assistant's platform forwarding are mocked.
+"""
+
+# pylint: disable=protected-access
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import AsyncGenerator, Callable
+from dataclasses import dataclass, field
+from typing import Any, cast
+from unittest.mock import AsyncMock, Mock, patch
+
+from bleak.backends.device import BLEDevice
+from bleak.backends.scanner import AdvertisementData
+from bleak.exc import BleakError
+from bleak_retry_connector import BleakClientWithServiceCache, BleakNotFoundError
+from homeassistant.core import HomeAssistant
+import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+from custom_components.tuya_ble import async_setup_entry, async_unload_entry
+from custom_components.tuya_ble.const import (
+    CONF_CATEGORY,
+    CONF_DEVICE_ID,
+    CONF_DEVICE_NAME,
+    CONF_LOCAL_KEY,
+    CONF_PRODUCT_ID,
+    CONF_UUID,
+    DOMAIN,
+)
+from custom_components.tuya_ble.devices import TuyaBLEData
+from tests.conftest import make_credentials
+from tests.test_probe import _input
+from tests.test_probe_runtime_handoff import AuthenticatedFirmwareClient
+
+ADDRESS = "AA:BB:CC:DD:EE:FF"
+BASE = "custom_components.tuya_ble.tuya_ble.base"
+TIMEOUT = 3.0
+# Real, if shortened, backoff timing plus a cold descriptor registry load when
+# this module runs first need more than the suite's default two seconds.
+pytestmark = pytest.mark.timeout(8)
+
+
+async def _until(condition: Callable[[], bool]) -> None:
+    """Wait, bounded, for state driven by background tasks."""
+    async with asyncio.timeout(TIMEOUT):
+        while not condition():
+            await asyncio.sleep(0.005)
+
+
+class DroppingFirmwareClient(AuthenticatedFirmwareClient):
+    """Firmware link that can fail a write while staying connected, or drop."""
+
+    def __init__(self, *args: Any) -> None:
+        super().__init__(*args)
+        self.fail_next_write = False
+
+    async def write_gatt_char(
+        self, gatt_char: str, data: bytes, response: bool
+    ) -> None:
+        """Fail one write without touching the link, like a GATT error."""
+        if self.fail_next_write:
+            self.fail_next_write = False
+            raise OSError("Synthetic GATT write failure")
+        await super().write_gatt_char(gatt_char, data, response)
+
+    def drop(self) -> None:
+        """Lose the link from the device side and report it like bleak does."""
+        self._is_connected = False
+        self.physical_connected = False
+        self.disconnected_callback(self)
+
+
+@dataclass
+class AbsentFirmware:
+    """A single-link device that is only reachable while it advertises."""
+
+    advertising: bool = False
+    failures: list[str] = field(default_factory=list)
+    clients: list[DroppingFirmwareClient] = field(default_factory=list)
+    devices: list[BLEDevice] = field(default_factory=list)
+    overlaps: int = 0
+    gate: asyncio.Event | None = None
+    in_flight: int = 0
+    max_in_flight: int = 0
+
+    async def establish(
+        self,
+        _client_class: type[BleakClientWithServiceCache],
+        device: BLEDevice,
+        _name: str,
+        disconnected_callback: Callable[[Any], None],
+        **_kwargs: Any,
+    ) -> BleakClientWithServiceCache:
+        """Connect only when advertising and the previous link is released."""
+        self.devices.append(device)
+        self.in_flight += 1
+        self.max_in_flight = max(self.max_in_flight, self.in_flight)
+        try:
+            if self.gate is not None:
+                await self.gate.wait()
+        finally:
+            self.in_flight -= 1
+        if not self.advertising:
+            raise BleakNotFoundError(f"{ADDRESS} not found")
+        if any(client.physical_connected for client in self.clients):
+            self.overlaps += 1
+        failure = self.failures.pop(0) if self.failures else "none"
+        client = DroppingFirmwareClient(
+            failure, disconnected_callback, len(self.clients)
+        )
+        self.clients.append(client)
+        return cast(BleakClientWithServiceCache, client)
+
+
+@dataclass
+class Runtime:
+    """The public setup of one entry and the callbacks Home Assistant holds."""
+
+    hass: HomeAssistant
+    entry: MockConfigEntry
+    firmware: AbsentFirmware
+    data: TuyaBLEData
+    on_advertisement: Callable[[Any, Any], None]
+    advertised: BLEDevice
+    advertisement: AdvertisementData
+
+    def advertise(self) -> None:
+        """Make the device reachable and deliver one advertisement."""
+        self.firmware.advertising = True
+        self.on_advertisement(
+            Mock(device=self.advertised, advertisement=self.advertisement), "change"
+        )
+
+    async def unload(self) -> bool:
+        """Unload the entry through the integration's public entry point."""
+        with patch.object(
+            self.hass.config_entries,
+            "async_unload_platforms",
+            AsyncMock(return_value=True),
+        ):
+            return await async_unload_entry(self.hass, self.entry)
+
+
+@pytest.fixture(autouse=True)
+def fast_timing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Shrink protocol timeouts and reconnect backoff to test scale."""
+    monkeypatch.setattr(
+        "custom_components.tuya_ble.tuya_ble.protocol_send.RESPONSE_WAIT_TIMEOUT", 0.01
+    )
+    monkeypatch.setattr(f"{BASE}._DISCARDED_CLIENT_CLEANUP_TIMEOUT", 0.05)
+    monkeypatch.setattr(f"{BASE}.BLEAK_BACKOFF_TIME", 0.01)
+    monkeypatch.setattr(f"{BASE}._RECONNECT_INITIAL_DELAY", 0.02)
+    monkeypatch.setattr(f"{BASE}._RECONNECT_MAX_DELAY", 0.05)
+
+
+@pytest.fixture(name="firmware")
+def fixture_firmware(
+    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> AbsentFirmware:
+    """Route every runtime connection to the simulated firmware.
+
+    Parametrised with ``"gated"``, every attempt is held from the very first.
+    """
+    firmware = AbsentFirmware()
+    if getattr(request, "param", None) == "gated":
+        firmware.gate = asyncio.Event()
+    monkeypatch.setattr(f"{BASE}.establish_connection", firmware.establish)
+    return firmware
+
+
+@pytest.fixture(name="runtime")
+async def fixture_runtime(
+    hass: HomeAssistant, firmware: AbsentFirmware
+) -> AsyncGenerator[Runtime]:
+    """Set up an entry whose device is not in Home Assistant's Bluetooth cache."""
+    credentials = make_credentials(category="cl", product_id="jetlwvfm")
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Shelf Shade",
+        data={
+            "address": ADDRESS,
+            CONF_UUID: credentials.uuid,
+            CONF_LOCAL_KEY: credentials.local_key,
+            CONF_DEVICE_ID: credentials.device_id,
+            CONF_CATEGORY: credentials.category,
+            CONF_PRODUCT_ID: credentials.product_id,
+            CONF_DEVICE_NAME: credentials.device_name,
+        },
+    )
+    entry.add_to_hass(hass)
+    _, advertisement = _input()
+    advertised = BLEDevice(ADDRESS, "Shelf Shade", {})
+    callbacks: list[Callable[[Any, Any], None]] = []
+
+    def last_service_info(*_args: Any, **_kwargs: Any) -> Mock | None:
+        """Home Assistant only stores an advertisement once one was heard."""
+        if not firmware.advertising:
+            return None
+        return Mock(device=advertised, advertisement=advertisement)
+
+    def register(_hass: HomeAssistant, callback: Any, *_args: Any) -> Mock:
+        callbacks.append(callback)
+        return Mock()
+
+    with (
+        patch(
+            "custom_components.tuya_ble.bluetooth.async_ble_device_from_address",
+            return_value=None,
+        ),
+        patch(
+            "custom_components.tuya_ble.bluetooth.async_last_service_info",
+            side_effect=last_service_info,
+        ),
+        patch(
+            "custom_components.tuya_ble.bluetooth.async_register_callback",
+            side_effect=register,
+        ),
+        patch.object(
+            hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
+        ),
+    ):
+        assert await async_setup_entry(hass, entry)
+        data = cast(TuyaBLEData, hass.data[DOMAIN][entry.entry_id])
+        runtime = Runtime(
+            hass, entry, firmware, data, callbacks[0], advertised, advertisement
+        )
+        try:
+            yield runtime
+        finally:
+            if firmware.gate is not None:
+                firmware.gate.set()
+            await data.device.stop()
+            await data.coordinator.async_shutdown()
+            await hass.async_block_till_done()
+
+
+def _connected(runtime: Runtime) -> bool:
+    """Return whether the session is up and its first status has arrived."""
+    datapoint = runtime.data.device.datapoints[3]
+    return (
+        runtime.data.coordinator.connected
+        and datapoint is not None
+        and datapoint.value == 42
+    )
+
+
+@pytest.mark.parametrize(
+    ("firmware", "owner"),
+    [("gated", "initial update"), (None, "reconnect")],
+    indirect=["firmware"],
+)
+async def test_unload_during_an_in_flight_connect_does_not_block(
+    runtime: Runtime, owner: str
+) -> None:
+    """Unloading must not wait behind a connection attempt (PR 298).
+
+    The attempt may come from the entry's initial update or a reconnect. Once
+    unloaded, a link that completes late is closed and never adopted.
+    """
+    firmware = runtime.firmware
+    device = runtime.data.device
+    if owner == "reconnect":
+        await _until(lambda: device._reconnect_task is not None)
+        firmware.gate = asyncio.Event()
+    gate = firmware.gate
+    assert gate is not None
+    await _until(lambda: firmware.in_flight == 1)
+    assert (device._reconnect_task is None) == (owner == "initial update")
+    attempts = len(firmware.devices)
+
+    async with asyncio.timeout(TIMEOUT):
+        assert await runtime.unload()
+
+    assert runtime.entry.entry_id not in runtime.hass.data[DOMAIN]
+    firmware.advertising = True
+    gate.set()
+    await asyncio.sleep(0.05)
+    await runtime.hass.async_block_till_done()
+    assert all(not client.physical_connected for client in firmware.clients)
+    assert not runtime.data.coordinator.connected
+    assert device._client is None
+    assert len(firmware.devices) == attempts
+
+
+async def test_abandoned_live_link_is_released_before_reconnecting(
+    runtime: Runtime,
+) -> None:
+    """A write failure on a live link must close it, not just forget it (PR 277).
+
+    Otherwise the old connection keeps its notification subscription and, on a
+    single-link device or proxy, the slot the replacement needs.
+    """
+    firmware = runtime.firmware
+    runtime.advertise()
+    await _until(lambda: _connected(runtime))
+    first = firmware.clients[0]
+    first.fail_next_write = True
+
+    with pytest.raises(BleakError):
+        await runtime.data.device.update()
+
+    await _until(lambda: len(firmware.clients) == 2 and _connected(runtime))
+    assert first.disconnect_calls == 1
+    assert not first.physical_connected
+    assert firmware.overlaps == 0
+    assert runtime.data.device._client is firmware.clients[1]

@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning].
 - **No repeated commands after a Bluetooth reconnect** (#162): a command whose write failed is no longer sent again once the device reconnects. The retry reused packets encrypted for the old connection, and the device may already have acted on them, for example pressing a Fingerbot twice.
 - **Recovery from an unanswered command** (#162): when the device does not reply to a command, the connection is closed and opened again instead of being kept in a possibly broken state. A late reply or disconnect notice from an old connection no longer affects the new one, and commands queued for the old connection are not sent on the new one.
 - **Button press errors are shown** (#162): a button press now waits for the device and shows an error in Home Assistant if the press could not be sent or was not confirmed, instead of failing silently in the background. These three fixes are ported from [ha-tuya-ble/ha_tuya_ble#343](https://github.com/ha-tuya-ble/ha_tuya_ble/pull/343); thanks to @d-g-laptev.
+- **Reloading or removing an entry while its device is out of range** (#164): unloading no longer waits for a connection attempt that is still searching for the device, so a reload or options change finishes straight away instead of leaving the entry stuck. A connection that completes afterwards is closed. Based on the report and fix by @sytchi; the new tests also cover the dropped-connection report by @LozhkinIvan.
 
 ## [2.10.0-beta.6] - 2026-11-18
 
