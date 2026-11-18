@@ -460,9 +460,6 @@ class _ProbeDevice(TuyaBLEDevice):
     def _schedule_reconnect(self) -> None:
         """Do not reconnect outside the bounded probe."""
 
-    def _schedule_resend(self, packets: list[bytes]) -> None:
-        """Do not retry writes after a disconnect."""
-
     def _disconnected(self, client: object) -> None:
         """Do not spawn background tasks after an unexpected disconnect."""
         self._connection_lost = True

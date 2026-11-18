@@ -11,12 +11,13 @@ from homeassistant.components.button import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .device_registry import DeviceRegistryError, EntityDescriptor, get_registry
 from .devices import TuyaBLECoordinator, TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
-from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
+from .tuya_ble import BLE_CONNECTION_EXCEPTIONS, TuyaBLEDataPointType, TuyaBLEDevice
 
 TuyaBLEButtonIsAvailable = Callable[["TuyaBLEButton", TuyaBLEProductInfo], bool] | None
 
@@ -110,7 +111,7 @@ def get_mapping_by_device(device: TuyaBLEDevice) -> list[TuyaBLEButtonMapping]:
     return []
 
 
-class TuyaBLEButton(TuyaBLEEntity, ButtonEntity):
+class TuyaBLEButton(TuyaBLEEntity, ButtonEntity):  # pylint: disable=abstract-method
     """Representation of a Tuya BLE Button."""
 
     def __init__(
@@ -124,21 +125,28 @@ class TuyaBLEButton(TuyaBLEEntity, ButtonEntity):
         super().__init__(hass, coordinator, device, product, button_mapping.description)
         self._mapping = button_mapping
 
-    def press(self) -> None:
-        """Write the fixed press value, or toggle the mapped boolean datapoint."""
-        if self._mapping.press_value is not None:
-            self.send_dp_value(
-                self._mapping.dp_id,
-                TuyaBLEDataPointType.DT_BOOL,
-                self._mapping.press_value,
-            )
-            return
+    async def async_press(self) -> None:
+        """Write the fixed press value, or toggle the mapped boolean datapoint.
+
+        The write is awaited so a failed or unacknowledged command is reported
+        to the caller instead of being lost in a background task. The toggle
+        is read when the press runs, so rapid presses each send their own.
+        """
         datapoint = self.device.datapoints.get_or_create(
             self._mapping.dp_id,
             TuyaBLEDataPointType.DT_BOOL,
             False,
         )
-        self.hass.create_task(datapoint.set_value(not bool(datapoint.value)))
+        value = self._mapping.press_value
+        if value is None:
+            value = not bool(datapoint.value)
+        try:
+            await datapoint.set_value(value)
+        except BLE_CONNECTION_EXCEPTIONS as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="button_press_failed",
+            ) from err
 
     @property
     def available(self) -> bool:

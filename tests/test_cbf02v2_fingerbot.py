@@ -165,10 +165,8 @@ async def test_invert_status_button_always_writes_true(hass: HomeAssistant) -> N
     entity = button.TuyaBLEButton(hass, coordinator, device, product, mapping)
     entity.hass = hass
     with patch.object(device, "send_datapoints", new_callable=AsyncMock) as send:
-        entity.press()
-        await hass.async_block_till_done()
-        entity.press()
-        await hass.async_block_till_done()
+        await entity.async_press()
+        await entity.async_press()
     assert [call.args[0] for call in send.await_args_list] == [[102], [102]]
     datapoint = device.datapoints[102]
     assert datapoint is not None
@@ -185,8 +183,7 @@ async def test_push_button_toggles_dp1(hass: HomeAssistant) -> None:
     entity.hass = hass
     add_dp(device, 1, TuyaBLEDataPointType.DT_BOOL, True)
     with patch.object(device, "send_datapoints", new_callable=AsyncMock) as send:
-        entity.press()
-        await hass.async_block_till_done()
+        await entity.async_press()
     send.assert_awaited_once_with([1])
     datapoint = device.datapoints[1]
     assert datapoint is not None

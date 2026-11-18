@@ -439,6 +439,11 @@
       "message": "Unsupported cleaning mode {fan_speed}. Choose one of: {fan_speeds}."
     }
   },
+  "exceptions": {
+    "button_press_failed": {
+      "message": "The device did not accept the button press. Check that it is in Bluetooth range and try again."
+    }
+  },
   "options": {
     "error": {
       "device_not_registered": "Device is not registered in Tuya cloud",

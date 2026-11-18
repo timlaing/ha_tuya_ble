@@ -503,14 +503,27 @@ async def test_timeout_returns_false() -> None:
 
 
 async def test_send_packet_raises_on_response_timeout() -> None:
-    """A missing response must surface from _send_packet, not be discarded."""
+    """A missing response surfaces and releases the session without a replay."""
     h = ProtocolHarness()
+    disconnected: list[bool] = []
+    h.device.register_disconnected_callback(lambda: disconnected.append(True))
 
     with (
         patch("asyncio.wait_for", side_effect=TimeoutError),
+        patch.object(h.device, "_schedule_reconnect") as reconnect,
         pytest.raises(TuyaBLEResponseTimeoutError),
     ):
         await h.device._send_packet(TuyaBLECode.FUN_SENDER_DEVICE_STATUS, b"")
+
+    sent = list(h.writes())
+    assert sent
+    await asyncio.sleep(0)
+    assert h.writes() == sent
+    assert h.device._client is None
+    assert not h.client.is_connected
+    assert not h.device._input_expected_responses
+    assert disconnected == [True]
+    reconnect.assert_called_once_with()
 
 
 async def test_no_wait_for_response() -> None:
@@ -551,72 +564,29 @@ async def test_bleak_error_raises() -> None:
         await h.device._int_send_packet_while_connected([b"\x00"])
 
 
-async def test_bleak_dbus_error_paired_resends() -> None:
-    """BleakDBusError with _is_paired triggers _resend_packets."""
+@pytest.mark.parametrize("paired", [True, False])
+@pytest.mark.parametrize(
+    "error",
+    [BleakDBusError("org.bluez.Error.Failed", ["test"]), BleakError("test")],
+    ids=["dbus", "bleak"],
+)
+async def test_failed_write_is_never_replayed(paired: bool, error: BleakError) -> None:
+    """A failed write is never re-sent; only an unpaired link schedules a reconnect."""
     h = ProtocolHarness()
-    h.device._is_paired = True
-    ex = BleakDBusError("org.bluez.Error.Failed", ["test"])
-
-    async def fail(*args: object, **kwargs: object) -> None:
-        raise ex
+    h.device._is_paired = paired
 
     with (
-        patch.object(h.device, "_int_send_packets_locked", side_effect=fail),
+        patch.object(h.device, "_int_send_packets_locked", side_effect=error) as send,
+        patch.object(h.device, "_schedule_reconnect") as reconnect,
         patch("asyncio.sleep"),
-        patch("asyncio.create_task", side_effect=_close_task),
         pytest.raises(BleakError),
     ):
         await h.device._send_packets_locked([b"\x00"])
 
-
-async def test_bleak_dbus_error_not_paired_reconnects() -> None:
-    """BleakDBusError without _is_paired triggers _reconnect."""
-    h = ProtocolHarness()
-    h.device._is_paired = False
-    ex = BleakDBusError("org.bluez.Error.Failed", ["test"])
-
-    async def fail(*args: object, **kwargs: object) -> None:
-        raise ex
-
-    with (
-        patch.object(h.device, "_int_send_packets_locked", side_effect=fail),
-        patch("asyncio.sleep"),
-        patch("asyncio.create_task", side_effect=_close_task),
-        pytest.raises(BleakError),
-    ):
-        await h.device._send_packets_locked([b"\x00"])
-
-
-async def test_bleak_error_paired_resends() -> None:
-    """BleakError with _is_paired triggers _resend_packets."""
-    h = ProtocolHarness()
-    h.device._is_paired = True
-
-    async def fail(*args: object, **kwargs: object) -> None:
-        raise BleakError("test")
-
-    with (
-        patch.object(h.device, "_int_send_packets_locked", side_effect=fail),
-        patch("asyncio.create_task", side_effect=_close_task),
-        pytest.raises(BleakError),
-    ):
-        await h.device._send_packets_locked([b"\x00"])
-
-
-async def test_bleak_error_not_paired_reconnects() -> None:
-    """BleakError without _is_paired triggers _reconnect."""
-    h = ProtocolHarness()
-    h.device._is_paired = False
-
-    async def fail(*args: object, **kwargs: object) -> None:
-        raise BleakError("test")
-
-    with (
-        patch.object(h.device, "_int_send_packets_locked", side_effect=fail),
-        patch("asyncio.create_task", side_effect=_close_task),
-        pytest.raises(BleakError),
-    ):
-        await h.device._send_packets_locked([b"\x00"])
+    send.assert_awaited_once_with([b"\x00"])
+    assert reconnect.call_count == (0 if paired else 1)
+    assert not hasattr(h.device, "_resend_packets")
+    assert not hasattr(h.device, "_schedule_resend")
 
 
 async def test_client_none_raises_bleak_error() -> None:
@@ -644,22 +614,6 @@ async def test_write_exception_clears_client() -> None:
     ):
         await h.device._int_send_packets_locked([b"\x00"])
     mock_disc.assert_called_once_with(client)
-
-
-async def test_resend_packets_returns_early_when_expected_disconnect() -> None:
-    """Return early when expected_disconnect is True."""
-    h = ProtocolHarness()
-    h.device._expected_disconnect = True
-    await h.device._resend_packets([b"\x00"])
-
-
-async def test_resend_packets_sends() -> None:
-    """Normal _resend_packets call reaches _int_send_packet_while_connected."""
-    h = ProtocolHarness()
-    h.device._client = h.client  # type: ignore[assignment]
-    with patch.object(h.device, "_int_send_packet_while_connected") as mock_send:
-        await h.device._resend_packets([b"\x00"])
-        mock_send.assert_called_once_with([b"\x00"])
 
 
 async def test_stale_response_resets() -> None:
@@ -830,17 +784,6 @@ async def test_client_becomes_none_during_send() -> None:
 # --- protocol_mixin.py additional coverage ---
 
 
-async def test_resend_packets_expected_disconnect_during_ensure() -> None:
-    """Return early when expected_disconnect becomes True during ensure."""
-    h = ProtocolHarness()
-
-    async def set_disconnect() -> None:
-        h.device._expected_disconnect = True
-
-    with patch.object(h.device, "_ensure_connected", side_effect=set_disconnect):
-        await h.device._resend_packets([b"\x00"])
-
-
 def test_string_datapoint() -> None:
     """DT_STRING datapoint is parsed correctly."""
     h = ProtocolHarness()
@@ -939,8 +882,10 @@ async def test_one_failed_write_spawns_one_reconnect() -> None:
         await h.device._send_packets_locked([b"\x00"])
 
     await asyncio.gather(*scheduled, return_exceptions=True)
-    assert len(created) == 1
-    assert len(scheduled) == 1
+    reconnects = [
+        coro for coro in created if getattr(coro, "__name__", "") == "_reconnect"
+    ]
+    assert len(reconnects) == 1
 
 
 async def test_repeated_failures_do_not_multiply_reconnect_tasks() -> None:
@@ -966,20 +911,6 @@ async def test_schedule_reconnect_skipped_when_stopping() -> None:
     dev._expected_disconnect = True
     dev._schedule_reconnect()
     assert dev._reconnect_task is None
-
-
-async def test_schedule_resend_does_not_multiply() -> None:
-    """Only one resend task may be outstanding at a time."""
-    dev = make_device(manager=FakeBLEManager(make_credentials()))
-    dev._schedule_resend([b"\x00"])
-    first = dev._resend_task
-    assert first is not None
-    dev._schedule_resend([b"\x00"])
-    assert dev._resend_task is first
-
-    dev._expected_disconnect = True
-    await dev.stop()
-    assert first.cancelled()
 
 
 async def test_stop_does_not_wait_for_connect_loop() -> None:
@@ -1384,7 +1315,6 @@ async def test_fingerbot_touch_write_failure_keeps_new_client(
         with (
             patch.object(old_client, "write_gatt_char", side_effect=fail_write),
             patch.object(dev, "_schedule_reconnect") as reconnect,
-            patch.object(dev, "_schedule_resend") as resend,
         ):
             write = asyncio.create_task(
                 dev._send_packet_while_connected(
@@ -1406,7 +1336,6 @@ async def test_fingerbot_touch_write_failure_keeps_new_client(
             assert dev._is_ready()
             assert not new_client.writes
             reconnect.assert_called_once_with()
-            resend.assert_not_called()
     finally:
         loop.set_exception_handler(previous_handler)
 
@@ -1456,7 +1385,6 @@ async def test_fingerbot_touch_closes_current_client_on_write_failure(
     with (
         patch.object(client, "write_gatt_char", side_effect=BleakError("write failed")),
         patch.object(dev, "_schedule_reconnect") as reconnect,
-        patch.object(dev, "_schedule_resend") as resend,
         pytest.raises(BleakError),
     ):
         await dev._send_packet_while_connected(
@@ -1468,7 +1396,6 @@ async def test_fingerbot_touch_closes_current_client_on_write_failure(
     assert not dev._is_ready()
     assert disconnected == [True]
     reconnect.assert_called_once_with()
-    resend.assert_not_called()
 
 
 async def test_fingerbot_touch_logs_error_closing_failed_client(
@@ -1495,19 +1422,19 @@ async def test_fingerbot_touch_logs_error_closing_failed_client(
 
 
 @pytest.mark.parametrize(
-    ("category", "product_id", "reject_stale_write"),
+    ("category", "product_id"),
     [
-        ("kg", "bs3ubslo", True),
-        ("kg", "gnpbj0bq", True),
-        ("kg", "6jcvqwh0", False),
-        ("wk", "bs3ubslo", False),
-        ("wk", "gnpbj0bq", False),
+        ("kg", "bs3ubslo"),
+        ("kg", "gnpbj0bq"),
+        ("kg", "6jcvqwh0"),
+        ("wk", "bs3ubslo"),
+        ("wk", "gnpbj0bq"),
     ],
 )
-async def test_waiting_write_handles_client_replacement_by_product(
-    category: str, product_id: str, reject_stale_write: bool
+async def test_waiting_write_rejects_client_replacement(
+    category: str, product_id: str
 ) -> None:
-    """The verified Fingerbots reject queued writes when their client changes."""
+    """Every device rejects queued writes when their client changes."""
     credentials = make_credentials(category=category, product_id=product_id)
     dev = make_device(manager=FakeBLEManager(credentials))
     dev.initialize_with_credentials(credentials)
@@ -1527,13 +1454,9 @@ async def test_waiting_write_handles_client_replacement_by_product(
         assert not write.done()
         dev._client = replacement_client  # type: ignore[assignment]
 
-    if reject_stale_write:
-        with pytest.raises(BleakError, match="Connection changed"):
-            await write
-        assert not replacement_client.writes
-    else:
+    with pytest.raises(BleakError, match="Connection changed"):
         await write
-        assert replacement_client.writes == [packet]
+    assert not replacement_client.writes
     assert not previous_client.writes
     assert cast(object, dev._client) is replacement_client
     assert replacement_client.is_connected
@@ -1546,28 +1469,36 @@ def test_protocol_send_default_is_not_fingerbot_touch() -> None:
 
 
 @pytest.mark.parametrize(
-    ("state", "expect_disconnect"),
-    [("missing", False), ("disconnected", False), ("live", True)],
+    ("state", "expect_recovery"),
+    [("missing", False), ("replaced", False), ("disconnected", True), ("live", True)],
 )
-async def test_non_touch_write_failure_tracks_live_link(
-    state: str, expect_disconnect: bool
+async def test_recover_session_releases_only_the_failed_client(
+    state: str, expect_recovery: bool
 ) -> None:
-    """A non-Touch write failure only fires disconnect while the link is live."""
+    """Session recovery releases the failed client and never a replacement."""
     credentials = make_credentials()
     dev = make_device(manager=FakeBLEManager(credentials))
     dev.initialize_with_credentials(credentials)
-    if state == "missing":
-        dev._client = None
-    elif state == "disconnected":
-        dev._client = FakeBleakClient(is_connected=False)  # type: ignore[assignment]
+    failed: Any = FakeBleakClient(is_connected=state != "disconnected")
+    current: Any = {
+        "missing": None,
+        "replaced": FakeBleakClient(),
+        "disconnected": failed,
+        "live": failed,
+    }[state]
+    dev._client = current
+    dev._is_paired = current is not None
+    with patch.object(dev, "_schedule_reconnect") as reconnect:
+        await dev._recover_session(failed)
+    if expect_recovery:
+        assert dev._client is None
+        assert not failed.is_connected
+        reconnect.assert_called_once_with()
     else:
-        dev._client = FakeBleakClient()  # type: ignore[assignment]
-    with patch.object(dev, "_disconnected") as disconnected:
-        await dev._handle_write_failure(FakeBleakClient())  # type: ignore[arg-type]
-    if expect_disconnect:
-        disconnected.assert_called_once()
-    else:
-        disconnected.assert_not_called()
+        assert dev._client is current
+        reconnect.assert_not_called()
+    if current is not None and current is not failed:
+        assert current.is_connected
 
 
 async def test_close_fingerbot_touch_client_ignores_dead_link(
@@ -1636,9 +1567,7 @@ async def test_fingerbot_touch_propagates_dbus_write_error(
             side_effect=BleakDBusError("org.bluez.Error.Failed", ["test"]),
         ),
         patch.object(dev, "_schedule_reconnect") as reconnect,
-        patch.object(dev, "_schedule_resend") as resend,
         pytest.raises(BleakDBusError),
     ):
         await dev._send_packets_locked([b"packet"])
     reconnect.assert_not_called()
-    resend.assert_not_called()

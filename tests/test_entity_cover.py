@@ -121,6 +121,7 @@ async def test_shade_services_use_acknowledged_enum_commands(
             await entity.async_stop_cover()
             await entity.async_set_cover_position(**{ATTR_POSITION: 25})
         await device.stop()
+        await coordinator.async_shutdown()
     writes = [frame[2][5:] for frame in firmware.received if frame[0] == 0x27]
     expected = [
         klv(1, TuyaBLEDataPointType.DT_ENUM, bytes([value])) for value in (0, 2, 1)

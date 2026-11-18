@@ -153,8 +153,7 @@ async def test_simart_push_and_manual_control_use_bool_datapoints(
     )
     push.hass = manual.hass = hass
     with patch.object(device, "send_datapoints", new_callable=AsyncMock) as send:
-        push.press()
-        await hass.async_block_till_done()
+        await push.async_press()
         manual.turn_on()
         await hass.async_block_till_done()
     for dp_id in (108, 107):

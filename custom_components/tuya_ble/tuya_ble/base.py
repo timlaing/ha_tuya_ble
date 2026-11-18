@@ -140,7 +140,6 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
         self._status_range: dict[str, TuyaBLEDeviceFunction] = {}
 
         self._reconnect_task: asyncio.Task[None] | None = None
-        self._resend_task: asyncio.Task[None] | None = None
         self._initialize_reconnect_state()
         self._send_response_tasks: set[asyncio.Task[None]] = set()
 
@@ -493,7 +492,6 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
             task
             for task in (
                 self._reconnect_task,
-                self._resend_task,
                 self._identity_connect_task,
                 *self._send_response_tasks,
             )
@@ -514,17 +512,15 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
                 self.address,
             )
             return
-        fingerbot_touch = self._is_fingerbot_touch
-        if (
-            fingerbot_touch or self._connection_profile is not None
-        ) and self._client is not client:
+        # A backend can deliver the callback of a replaced or closed link after
+        # a new session started; it must not tear the new session down.
+        if self._client is not client:
             return
         was_paired = self._is_paired
         self._is_paired = False
-        if fingerbot_touch:
-            self._client = None
-            self._clean_input()
-            self._cancel_pending_responses()
+        self._client = None
+        self._clean_input()
+        self._cancel_pending_responses()
         self._fire_disconnected_callbacks()
         if self._expected_disconnect:
             _LOGGER.debug(
@@ -533,11 +529,8 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
                 self.rssi,
             )
             return
-        self._client = None
         self._session_key = None
         self._auth_key = None
-        self._clean_input()
-        self._cancel_pending_responses()
         _LOGGER.log(
             logging.WARNING if was_paired else logging.DEBUG,
             "%s: Device unexpectedly disconnected; RSSI: %s",
@@ -558,14 +551,16 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
         self._cancel_pending_responses()
         async with self._connect_lock:
             client = self._client
-            if self._is_fingerbot_touch and client is not None:
+            if client is not None and self._is_fingerbot_touch:
                 try:
                     await self._close_fingerbot_touch_client(client)
                 finally:
                     self._disconnected(client)
-            else:
-                self._client = None
-                if client and client.is_connected:
+            elif client is not None:
+                # Notify listeners now: the backend callback for this client
+                # arrives after it is no longer current and is ignored.
+                self._disconnected(client)
+                if client.is_connected:
                     await client.stop_notify(self._notify_char)
                     await client.disconnect()
                     self._pending_client_cleanup.discard(client)
@@ -601,21 +596,19 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
             await asyncio.shield(task)
             raise
 
-    async def _handle_write_failure(self, client: BleakClientWithServiceCache) -> None:
-        """Handle a failed GATT write for this device.
+    async def _recover_session(self, client: BleakClientWithServiceCache) -> None:
+        """Release a session whose write failed or whose response never came.
 
-        Fingerbot Touch closes only the client whose write failed so a
-        replacement link is left alone; other devices keep the original
-        behavior of treating a failed write on a live link as a disconnect.
+        Only the client that failed is released, so a replacement link is left
+        alone. Its packets are never re-sent: they were encrypted for that
+        session and the device may already have executed them. The link is
+        discarded through the cleanup barrier, so a reconnect cannot start
+        until it is closed.
         """
-        if not self._is_fingerbot_touch:
-            if self._client and self._client.is_connected:
-                self._disconnected(self._client)
-        elif self._client is client:
-            try:
-                await self._close_fingerbot_touch_client(client)
-            finally:
-                self._disconnected(client)
+        if self._client is not client:
+            return
+        self._disconnected(client)
+        await self._discard_client(client)
 
     def _cancel_pending_responses(self) -> None:
         """Fail every awaited response so no sender waits for its full timeout."""
