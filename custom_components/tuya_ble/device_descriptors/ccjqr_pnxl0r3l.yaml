@@ -1,0 +1,97 @@
+category: ccjqr
+product_id: pnxl0r3l
+# Experimental: reporter-tested in the ha-tuya-ble fork (PRs #159, #237, #282),
+# not yet confirmed on this integration. The status and mode lists are in the
+# device's enum order.
+device_name: Window Cleaner Robot
+model_name: CHYW200.ABIR
+entities:
+  vacuum:
+    - dp_id: 1
+      translation_key: window_cleaner
+      legacy_keys: [vacuum]
+      icon: mdi:robot-vacuum
+      status_dp_id: 4
+      status_activities:
+        standby: idle
+        cleaning: cleaning
+        smart_clean: cleaning
+        z_clean: cleaning
+        n_clean: cleaning
+        edge_clean: cleaning
+        spot_clean: cleaning
+        pause: paused
+        stop: idle
+        charge: docked
+      mode_dp_id: 2
+      fan_speeds:
+        - smart
+        - z_mode
+        - n_mode
+        - edge
+        - spot
+  switch:
+    # Superseded by the vacuum entity's start and stop, so hidden by default.
+    - dp_id: 1
+      translation_key: window_cleaner_switch
+      name: Cleaning
+      icon: mdi:window-open
+      enabled_by_default: false
+    - dp_id: 103
+      translation_key: water_auto
+      name: Automatic water spray
+      icon: mdi:water-auto
+      entity_category: config
+  select:
+    - dp_id: 2
+      translation_key: mode
+      name: Cleaning mode
+      icon: mdi:tune
+      entity_category: config
+      options:
+        - smart
+        - z_mode
+        - n_mode
+        - edge
+        - spot
+    - dp_id: 3
+      translation_key: direction_control
+      name: Direction
+      icon: mdi:navigation
+      options:
+        - forward
+        - backward
+        - turn_left
+        - turn_right
+        - stop
+  sensor:
+    - dp_id: 4
+      translation_key: status
+      name: Status
+      icon: mdi:robot
+      device_class: enum
+      options:
+        - standby
+        - cleaning
+        - smart_clean
+        - z_clean
+        - n_clean
+        - edge_clean
+        - spot_clean
+        - pause
+        - stop
+        - charge
+    - dp_id: 6
+      translation_key: clean_time
+      name: Cleaning time
+      icon: mdi:timer-outline
+      device_class: duration
+      unit: min
+      state_class: measurement
+  binary_sensor:
+    - dp_id: 11
+      translation_key: fault
+      name: Fault
+      icon: mdi:alert-circle-outline
+      device_class: problem
+      entity_category: diagnostic

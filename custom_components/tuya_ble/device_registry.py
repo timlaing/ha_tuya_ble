@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from homeassistant.components.climate.const import HVACMode
+from homeassistant.components.vacuum.const import VacuumActivity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 import yaml
@@ -162,6 +163,8 @@ def _parse_entity(platform: str, raw: dict[str, Any]) -> EntityDescriptor:
             )
     if platform == "climate":
         _validate_climate_modes(raw)
+    elif platform == "vacuum":
+        _validate_vacuum(raw)
     return EntityDescriptor(
         platform=platform,
         dp_id=int(raw.get("dp_id", 0)),
@@ -222,6 +225,45 @@ def _validate_climate_modes(raw: dict[str, Any]) -> None:
                 f"Climate entity {raw.get('translation_key', dp_id)!r} has unknown "
                 f"hvac_switch_mode: {switch_mode!r}"
             ) from exc
+
+
+def _validate_vacuum(raw: dict[str, Any]) -> None:
+    """Validate vacuum status activities and fan speeds.
+
+    ``status_activities`` maps each status value, in the data point's enum
+    order, to a ``VacuumActivity``; ``fan_speeds`` lists the mode values, in
+    enum order, that ``mode_dp_id`` accepts.
+    """
+    name = raw.get("translation_key", raw.get("dp_id", "?"))
+    activities = raw.get("status_activities", {})
+    if not isinstance(activities, dict):
+        raise DeviceRegistryError(
+            f"Vacuum entity {name!r} status_activities must be a mapping, "
+            f"got {type(activities).__name__}"
+        )
+    for value, activity in activities.items():
+        try:
+            VacuumActivity(activity)
+        except ValueError as exc:
+            raise DeviceRegistryError(
+                f"Vacuum entity {name!r} has unknown activity {activity!r} "
+                f"for status {value!r}"
+            ) from exc
+    if activities and "status_dp_id" not in raw:
+        raise DeviceRegistryError(
+            f"Vacuum entity {name!r} declares status_activities without status_dp_id"
+        )
+    fan_speeds = raw.get("fan_speeds", [])
+    if not isinstance(fan_speeds, list) or not all(
+        isinstance(item, str) for item in fan_speeds
+    ):
+        raise DeviceRegistryError(
+            f"Vacuum entity {name!r} fan_speeds must be a list of strings"
+        )
+    if ("mode_dp_id" in raw) != bool(fan_speeds):
+        raise DeviceRegistryError(
+            f"Vacuum entity {name!r} needs both mode_dp_id and fan_speeds, or neither"
+        )
 
 
 _BASE_ENTITY_KEYS = {

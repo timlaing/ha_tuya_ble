@@ -148,6 +148,10 @@ reference, including every category this integration does not use, is in
 - **`znhsb` officially means "Smart glass,"** although the `cdlandip` product listed above is a
   smart water bottle. There is no glass device to compare it to, so the name is not a guide.
 
+## Window cleaning robots (category_id `ccjqr`)
+
+- **CHYW200.ABIR Window Cleaner Robot** (product_id `pnxl0r3l`) — **experimental**. A vacuum entity starts and stops cleaning (DP 1), reports its activity from the status (DP 4) and offers the cleaning mode (DP 2: smart, Z pattern, N pattern, edge, spot) as its fan speed. Also exposed: cleaning mode and direction (DP 3) selects, a status sensor, cleaning time in minutes (DP 6), a fault problem sensor (DP 11), an automatic water spray switch (DP 103) and a hidden-by-default cleaning switch on DP 1. Tested by the reporter in the ha-tuya-ble fork, not yet on this integration. Limitations: no pause or return-to-base (the device has no data point for them); choosing a cleaning mode does not start cleaning; the status and mode orders come from the reporter's mapping, not the Tuya cloud schema.
+
 ## Generators (category_id `qt`)
 
 - **MaXpeedingRods MXR4000GT** (product_id `jlblyn8z`): engine start/stop, eco mode, output voltage, frequency and power, fuel level, current and total run time.

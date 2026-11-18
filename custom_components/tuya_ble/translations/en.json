@@ -361,6 +361,27 @@
       "valve": {
         "name": "Valve"
       }
+    },
+    "vacuum": {
+      "window_cleaner": {
+        "name": "Window cleaner",
+        "state_attributes": {
+          "fan_speed": {
+            "state": {
+              "edge": "Edge",
+              "n_mode": "N pattern",
+              "smart": "Smart",
+              "spot": "Spot",
+              "z_mode": "Z pattern"
+            }
+          }
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "invalid_fan_speed": {
+      "message": "Unsupported cleaning mode {fan_speed}. Choose one of: {fan_speeds}."
     }
   },
   "options": {

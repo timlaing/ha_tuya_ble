@@ -21,6 +21,7 @@ from custom_components.tuya_ble import (
     sensor,
     switch,
     text,
+    vacuum,
     valve,
 )
 from custom_components.tuya_ble.const import DOMAIN
@@ -37,6 +38,7 @@ PLATFORMS = {
     "sensor": (sensor, "TuyaBLESensor"),
     "switch": (switch, "TuyaBLESwitch"),
     "text": (text, "TuyaBLEText"),
+    "vacuum": (vacuum, "TuyaBLEVacuum"),
     "valve": (valve, "TuyaBLEValve"),
 }
 

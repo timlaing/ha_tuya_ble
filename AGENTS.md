@@ -77,6 +77,7 @@ If a file falls below the threshold, add tests until it passes before committing
 | `tests/test_entity_switch.py`                                              | switch entity methods                                                                              |
 | `tests/test_entity_text.py`                                                | text entity methods                                                                                |
 | `tests/test_entity_valve.py`                                               | valve entity methods                                                                               |
+| `tests/test_entity_vacuum.py`                                              | vacuum entity, descriptor validation and vacuum services                                           |
 | `tests/test_entity_lock.py`                                                | lock entity methods                                                                                |
 | `tests/test_entity_cover.py`                                               | cover entity methods                                                                               |
 | `tests/test_entity_light.py`                                               | light entity methods                                                                               |
@@ -163,7 +164,7 @@ All public BLE symbols — `TuyaBLEDevice`, `TuyaBLEDataPoint`, `TuyaBLEDataPoin
 
 ## Entity platforms
 
-There are **12 platform files** (binary_sensor, button, climate, cover, light, lock, number, select, sensor, switch, text, valve) and they all follow the same pattern: a `_build_mapping()` function that walks `get_registry().products.values()` and returns a dict keyed by Tuya category ID → product ID → list of data-point mappings. The mappings are **built from the YAML descriptors, not authored by hand**, so adding a device means writing one descriptor file and no platform edits.
+There are **13 platform files** (binary_sensor, button, climate, cover, light, lock, number, select, sensor, switch, text, vacuum, valve) and they all follow the same pattern: a `_build_mapping()` function that walks `get_registry().products.values()` and returns a dict keyed by Tuya category ID → product ID → list of data-point mappings. The mappings are **built from the YAML descriptors, not authored by hand**, so adding a device means writing one descriptor file and no platform edits.
 
 Some platforms carry bespoke per-device logic beyond the mapping dict. It lives in YAML descriptor `handlers:` blocks that name a callable under `device_descriptors/handlers/`, not in the platform files — `battery.battery_enum` and `rssi.rssi` for sensors, `raw.raw_hex`, `water_valve.*` for valves, and the shared Fingerbot handlers under `handlers/fingerbot/` (`program.get_program`, `program.set_program`, `mode.in_program_mode`, `program.set_repeat_forever`), consumed by `text.py`, `switch.py`, `number.py` and `button.py`. `select.py` also defines a `TemperatureUnitDescription` entity-description subclass. Editing a device that needs special handling means adding or changing a handler module and referencing it from the descriptor, not editing the mappings.
 

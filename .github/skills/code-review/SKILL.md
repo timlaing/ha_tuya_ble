@@ -93,7 +93,7 @@ This command reports coverage but does not enforce per-file thresholds. Inspect 
 - Some hooks apply fixes. A review-only request does not authorize worktree edits: record `git status --short` first and use non-mutating tool modes where practical. If a required check modifies files, disclose exactly what changed and do not silently include those edits in the review.
 - cspell words in `.vscode/cspell.json` must be **lowercase and sorted alphabetically**.
 - `# noqa` suppressions in source: only acceptable for S7503 (HA platform setup), S4790 (MD5 protocol), S5542 (AES-CBC protocol), S2583 (async flag false positive).
-- `# pylint: disable` in source: only acceptable for `too-many-lines` (sensor.py), `abstract-method` (number.py), `unexpected-keyword-arg` (valve.py).
+- `# pylint: disable` in source: only acceptable for `too-many-lines` (sensor.py), `abstract-method` (number.py, vacuum.py — unsupported vacuum actions are never advertised), `unexpected-keyword-arg` (valve.py).
 - Do not suppress SonarQube issues that can be fixed with code changes.
 
 ## 9. SonarQube Rules

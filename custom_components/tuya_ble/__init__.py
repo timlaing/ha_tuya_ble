@@ -58,6 +58,7 @@ PLATFORMS: list[Platform] = [
     Platform.SWITCH,
     Platform.TEXT,
     Platform.VALVE,
+    Platform.VACUUM,
 ]
 
 
