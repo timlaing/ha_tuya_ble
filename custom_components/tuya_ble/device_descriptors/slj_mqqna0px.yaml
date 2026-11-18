@@ -1,0 +1,83 @@
+# RESTMO FML026A Bluetooth water meter. Experimental.
+# DP IDs, codes and the 0.1 scale come from ha-tuya-ble/ha_tuya_ble#165, whose
+# author reported DPs 2, 4, 5, 107 and 108 working on the device; DPs 1 and
+# 101 had not reported yet. tuya-local `restmo_fml026a_water_meter.yaml`
+# independently gives DP5 (L/min) and DP107 (L) a scale of 10 and DP4 as %.
+# All DPs are read-only integers (DT_VALUE).
+#   DP1   water_use_data           0.1 L  cumulative total
+#   DP2   water_once               0.1 L  current/last session, restarts at 0
+#   DP4   voltage_current          %      battery
+#   DP5   flow_velocity            0.1 L/min
+#   DP101 day_water_usage          0.1 L  today, restarts at 0 each day
+#   DP107 total_usage_after_reset  0.1 L  since the user last reset it
+#   DP108 day_usage_after_reset    0.1 L  today since the user last reset it
+# Every counter restarts from zero rather than decreasing, which Home
+# Assistant models as `total_increasing`; `total` would book each restart as
+# negative consumption. No reset command is mapped: none is documented.
+category: slj
+product_id: mqqna0px
+device_name: FML026A water meter
+model_name: mqqna0px
+manufacturer: RESTMO
+entities:
+  sensor:
+    - dp_id: 4
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+    - dp_id: 5
+      translation_key: flow_velocity
+      name: Flow rate
+      icon: mdi:water-pump
+      device_class: volume_flow_rate
+      unit: L/min
+      state_class: measurement
+      coefficient: 10
+      suggested_display_precision: 1
+    - dp_id: 2
+      translation_key: water_once
+      name: Session water usage
+      icon: mdi:water
+      device_class: water
+      unit: L
+      state_class: total_increasing
+      coefficient: 10
+      suggested_display_precision: 1
+    - dp_id: 1
+      translation_key: water_use_data
+      name: Total water usage
+      icon: mdi:water
+      device_class: water
+      unit: L
+      state_class: total_increasing
+      coefficient: 10
+      suggested_display_precision: 1
+    - dp_id: 101
+      translation_key: day_water_usage
+      name: Daily water usage
+      icon: mdi:water
+      device_class: water
+      unit: L
+      state_class: total_increasing
+      coefficient: 10
+      suggested_display_precision: 1
+    - dp_id: 107
+      translation_key: total_usage_after_reset
+      name: Water usage since reset
+      icon: mdi:water
+      device_class: water
+      unit: L
+      state_class: total_increasing
+      coefficient: 10
+      suggested_display_precision: 1
+    - dp_id: 108
+      translation_key: day_usage_after_reset
+      name: Daily water usage since reset
+      icon: mdi:water
+      device_class: water
+      unit: L
+      state_class: total_increasing
+      coefficient: 10
+      suggested_display_precision: 1

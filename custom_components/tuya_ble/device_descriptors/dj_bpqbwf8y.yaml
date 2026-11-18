@@ -1,0 +1,26 @@
+# LED BULB B509Z2. Experimental: not tested over BLE.
+# The Tuya cloud functions in ha-tuya-ble/ha_tuya_ble#253 list switch_led
+# (bool), work_mode (enum [white, colour, scene, music]), bright_value_v2
+# (value 10-1000, scale 0), temp_value_v2 (value 0-1000, scale 0) and
+# countdown_1 (value 0-86400 s). The bulb has no colour_data, so unlike the
+# `_category_dj.yaml` default it offers no RGB colour. The cloud report carries
+# no local_strategy, so the DP IDs below are Tuya's standard `dj` IDs for those
+# codes (the same ones the category default uses) and still need diagnostics.
+# countdown_1 is not mapped: the source fork bound it to DP 0, which no device
+# reports, and there is no evidence for its real DP ID.
+category: dj
+product_id: bpqbwf8y
+device_name: LED BULB B509Z2
+model_name: bpqbwf8y
+entities:
+  light:
+    - translation_key: switch_led
+      name: Light
+      switch_dp_id: 20
+      color_mode_dp_id: 21
+      brightness_dp_id: 22
+      color_temp_dp_id: 23
+      brightness_min: 10
+      brightness_max: 1000
+      color_temp_min: 0
+      color_temp_max: 1000

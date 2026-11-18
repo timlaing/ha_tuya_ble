@@ -201,6 +201,7 @@
         "state": {
           "high": "High",
           "low": "Low",
+          "middle": "Medium",
           "normal": "Normal"
         }
       },
