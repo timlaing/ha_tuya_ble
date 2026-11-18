@@ -8,14 +8,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from importlib import import_module
-from typing import TypeVar, cast
+from typing import cast
 
 _HANDLER_PREFIX = "custom_components.tuya_ble.device_descriptors.handlers"
 
-_HandlerT = TypeVar("_HandlerT", bound=Callable[..., object])
 
-
-def requires_dp_ids(*keys: str) -> Callable[[_HandlerT], _HandlerT]:
+def requires_dp_ids[HandlerT: Callable[..., object]](
+    *keys: str,
+) -> Callable[[HandlerT], HandlerT]:
     """Declare the auxiliary ``*_dp_id`` descriptor fields a handler reads.
 
     The registry rejects a descriptor that references the handler without
@@ -23,7 +23,7 @@ def requires_dp_ids(*keys: str) -> Callable[[_HandlerT], _HandlerT]:
     missing one at runtime.
     """
 
-    def decorate(handler: _HandlerT) -> _HandlerT:
+    def decorate(handler: HandlerT) -> HandlerT:
         setattr(handler, "required_dp_ids", keys)  # noqa: B010
         return handler
 
