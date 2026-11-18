@@ -70,7 +70,7 @@ async def test_fd50_setup(hass: HomeAssistant, version: int) -> None:
 
     with (
         patch(
-            "custom_components.tuya_ble.config_flow."
+            "custom_components.tuya_ble.config_flow_scan."
             "bluetooth.async_process_advertisements",
             side_effect=process_advertisements,
         ),

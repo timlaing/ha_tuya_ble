@@ -7,6 +7,8 @@ __version__ = "0.1.0"
 
 from .advertisement import (
     TuyaBLEAdvertisementInfo,
+    TuyaBLEClassicRecord,
+    decode_classic_record,
     decode_tuya_ble_advertisement,
 )
 from .base import TuyaBLEDevice, TuyaBLEDeviceFunction
@@ -46,12 +48,14 @@ __all__ = [
     "SERVICE_UUID_V4",
     "SERVICE_UUIDS",
     "TuyaBLEAdvertisementInfo",
+    "TuyaBLEClassicRecord",
     "TuyaBLEDataPoint",
     "TuyaBLEDataPoints",
     "TuyaBLEDataPointType",
     "TuyaBLEDevice",
     "TuyaBLEDeviceCredentials",
     "TuyaBLEDeviceFunction",
+    "decode_classic_record",
     "decode_tuya_ble_advertisement",
     "is_valid_sec_key",
     "async_probe_authenticated_status",

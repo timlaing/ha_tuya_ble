@@ -860,3 +860,66 @@ async def test_unsolicited_dp_is_not_proof(monkeypatch: pytest.MonkeyPatch) -> N
         )
         == ProbeOutcome.RETRYABLE
     )
+
+
+def _issue_155_input(bound: bool = True) -> tuple[BLEDevice, AdvertisementData]:
+    """Build the reporter's undecodable bound classic capture (#155)."""
+    manufacturer = bytearray.fromhex("8003000001000787bd4688072ba81c56f054895a98be")
+    if not bound:
+        manufacturer[0] &= 0x7F
+    adv = cast(
+        AdvertisementData,
+        FakeAdvertisementData(
+            service_data={SERVICE_UUID: bytes.fromhex("006273337562736c6f")},
+            manufacturer_data={MANUFACTURER_DATA_ID: bytes(manufacturer)},
+        ),
+    )
+    return cast(BLEDevice, FakeBLEAddress()), adv
+
+
+async def test_probe_accepts_undecoded_bound_classic_record(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The authenticated read, not the advertisement, proves the candidate."""
+    ble, adv = _issue_155_input()
+    client = FakeBleakClient()
+    pairing: list[bytes] = []
+
+    async def connect(_device: _ProbeDevice) -> Any:
+        return client
+
+    async def send(
+        device: _ProbeDevice, code: TuyaBLECode, data: bytes, *_args: Any
+    ) -> bool:
+        if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO:
+            reply = bytearray(46)
+            reply[2], reply[5] = 3, 1
+            device._handle_device_info_response(bytes(reply))
+        elif code == TuyaBLECode.FUN_SENDER_PAIR:
+            pairing.append(data)
+            device._handle_pair_response(b"\x02")
+        elif code == TuyaBLECode.FUN_SENDER_DEVICE_STATUS:
+            device._handle_device_status_response(b"\x00")
+            device._parse_datapoints_v3(0.0, 0, b"\x01\x01\x01\x01", 0)
+        return True
+
+    monkeypatch.setattr(_ProbeDevice, "_try_establish_connection", connect)
+    monkeypatch.setattr(_ProbeDevice, "_send_packet_while_connected", send)
+    result = await async_probe_authenticated_status(
+        ble, adv, make_credentials(uuid="cloud-uuid"), "cloud-uuid", frozenset({1})
+    )
+    assert result == ProbeOutcome.MATCHED
+    assert pairing[0].startswith(b"cloud-uuid")
+
+
+async def test_probe_rejects_undecoded_unbound_classic_record() -> None:
+    """An unbound undecodable record is never probed."""
+    ble, adv = _issue_155_input(bound=False)
+    with patch.object(
+        _ProbeDevice, "_try_establish_connection", new_callable=AsyncMock
+    ) as connect:
+        result = await async_probe_authenticated_status(
+            ble, adv, make_credentials(), "cloud-uuid", frozenset({1})
+        )
+    assert result == ProbeOutcome.INCONCLUSIVE
+    connect.assert_not_awaited()

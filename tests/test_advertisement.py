@@ -14,6 +14,8 @@ from custom_components.tuya_ble.tuya_ble import (
     MANUFACTURER_DATA_ID,
     SERVICE_UUID,
     SERVICE_UUID_V4,
+    TuyaBLEClassicRecord,
+    decode_classic_record,
     decode_tuya_ble_advertisement,
 )
 from custom_components.tuya_ble.tuya_ble.advertisement import (
@@ -408,3 +410,83 @@ async def test_paired_fd50_connection_survives_beacon() -> None:
     ) as send:
         await dev.update()
     send.assert_awaited_once()
+
+
+# Issue #155: a bound Fingerbot Touch whose readable A201 record does not key
+# the identity it was merged with.
+ISSUE_155_SERVICE = bytes.fromhex("006273337562736c6f")
+ISSUE_155_MANUFACTURER = bytes.fromhex("8003000001000787bd4688072ba81c56f054895a98be")
+
+
+def test_issue_155_capture_is_a_bound_classic_record() -> None:
+    """Keep strict decoding closed while exposing the classic header fields."""
+    adv = advertisement(ISSUE_155_SERVICE, ISSUE_155_MANUFACTURER, SERVICE_UUID)
+    assert decode_tuya_ble_advertisement(adv) is None
+    assert decode_classic_record(adv) == TuyaBLEClassicRecord(
+        product_id="bs3ubslo", is_bound=True, protocol_version=3
+    )
+
+
+@pytest.mark.parametrize(
+    ("service", "manufacturer", "expected"),
+    [
+        # A decodable record parses the same header.
+        (
+            bytes.fromhex("003082897c084b161b"),
+            bytes.fromhex("8003000001003fa8bf83e3125ec3085a623a4d80d569"),
+            TuyaBLEClassicRecord(None, True, 3),
+        ),
+        (
+            b"\x00abcdefgh",
+            b"\x02\x02" + bytes(20),
+            TuyaBLEClassicRecord("abcdefgh", False, 2),
+        ),
+        # Product keys are not product IDs.
+        (
+            b"\x01abcdefghijklmnop",
+            b"\x80\x03" + bytes(20),
+            TuyaBLEClassicRecord(None, True, 3),
+        ),
+        (b"", b"\x80\x03" + bytes(20), None),
+        (b"\x00", b"\x80\x03" + bytes(20), None),
+        (b"\x02abcdefgh", b"\x80\x03" + bytes(20), None),
+        (b"\x00abcdefgh", b"\x80\x03" + bytes(4), None),
+        (b"\x00abcdefgh", b"\x80\x04" + bytes(20), None),
+        (b"\x00abcdefgh", b"\x80\x03" + bytes(21), None),
+    ],
+)
+def test_classic_record_layout(
+    service: bytes, manufacturer: bytes, expected: TuyaBLEClassicRecord | None
+) -> None:
+    """Accept only well-formed classic headers, without decrypting the identity."""
+    adv = advertisement(service, manufacturer, SERVICE_UUID)
+    assert decode_classic_record(adv) == expected
+
+
+def test_classic_record_requires_manufacturer_data() -> None:
+    """A service record alone is not a classic advertisement."""
+    adv = cast(
+        AdvertisementData,
+        FakeAdvertisementData(
+            service_data={SERVICE_UUID: ISSUE_155_SERVICE}, manufacturer_data=None
+        ),
+    )
+    assert decode_classic_record(adv) is None
+
+
+def test_classic_record_defers_to_fd50() -> None:
+    """Never read a stale classic header when an FD50 record is present."""
+    adv = v4_advertisement()
+    adv.service_data[SERVICE_UUID] = ISSUE_155_SERVICE
+    adv.manufacturer_data[MANUFACTURER_DATA_ID] = ISSUE_155_MANUFACTURER
+    assert decode_classic_record(adv) is None
+
+
+def test_runtime_uses_undecoded_classic_header() -> None:
+    """Pair with the stored identity, using the header's bound flag and version."""
+    dev = make_device()
+    adv = advertisement(ISSUE_155_SERVICE, ISSUE_155_MANUFACTURER, SERVICE_UUID)
+    dev.set_ble_device_and_advertisement_data(dev._ble_device, adv)
+    dev.initialize_with_credentials(make_credentials())
+    assert dev._protocol_version == 3
+    assert dev._is_bound is True

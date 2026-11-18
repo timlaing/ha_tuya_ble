@@ -8,7 +8,6 @@ import logging
 import time
 from typing import Any
 
-from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import (
     BluetoothServiceInfoBleak,
     async_discovered_service_info,
@@ -29,6 +28,7 @@ from . import _build_credentials_from_entry
 from .cloud import HASSTuyaBLEDeviceManager
 from .config_flow_options import TuyaBLEOptionsFlow
 from .config_flow_qr import UNKNOWN_ERROR, _QRCodeLoginMixin
+from .config_flow_scan import async_scan_device, bound_classic_advertisement
 from .config_flow_state import PROBE_CLAIM_TTL, _consume_probe_result
 from .config_flow_state import advertisement_hex as _advertisement_hex
 from .config_flow_state import probe_state as _probe_state
@@ -65,7 +65,6 @@ from .const import (
 from .device_registry import async_setup_registry, get_mapped_dp_ids
 from .tuya_ble import (
     MANUFACTURER_DATA_ID,
-    SERVICE_UUID,
     SERVICE_UUID_V4,
     SERVICE_UUIDS,
     ConnectionProfile,
@@ -79,7 +78,6 @@ from .tuya_ble import (
     is_valid_sec_key,
 )
 
-ACTIVE_SCAN_TIMEOUT = 60
 PROBE_MAX_CANDIDATES = 4
 
 _LOGGER = logging.getLogger(__name__)
@@ -212,47 +210,11 @@ class TuyaBLEConfigFlow(
             description_placeholders=placeholders,
         )
 
-    @staticmethod
-    def _has_complete_identity(service_info: BluetoothServiceInfoBleak) -> bool:
-        """Return True when the scan response carries a usable Tuya identity."""
-        manufacturer_data = service_info.manufacturer_data
-        if service_info.service_data is None or manufacturer_data is None:
-            return False
-        manufacturer_data_raw = manufacturer_data.get(MANUFACTURER_DATA_ID)
-        if manufacturer_data_raw is None:
-            return False
-        if SERVICE_UUID_V4 in service_info.service_data:
-            return (
-                len(service_info.service_data[SERVICE_UUID_V4]) >= 4
-                and len(manufacturer_data_raw) == 20
-                and decode_tuya_ble_advertisement(service_info.advertisement)
-                is not None
-            )
-        return (
-            SERVICE_UUID in service_info.service_data
-            and len(manufacturer_data_raw) > 6
-            and (len(manufacturer_data_raw) - 6) % 16 == 0
-        )
-
     async def _async_scan_device(
         self, address: str
     ) -> BluetoothServiceInfoBleak | None:
         """Actively scan until Tuya service and manufacturer data are available."""
-        _LOGGER.debug(
-            "%s: active scan started, timeout %ss", address, ACTIVE_SCAN_TIMEOUT
-        )
-
-        try:
-            return await bluetooth.async_process_advertisements(
-                self.hass,
-                self._has_complete_identity,
-                {"address": address, "connectable": True},
-                bluetooth.BluetoothScanningMode.ACTIVE,
-                ACTIVE_SCAN_TIMEOUT,
-            )
-        except TimeoutError:
-            _LOGGER.debug("%s: active scan timed out", address)
-            return None
+        return await async_scan_device(self.hass, address)
 
     async def _async_setup_address(
         self, address: str
@@ -289,7 +251,9 @@ class TuyaBLEConfigFlow(
             _LOGGER.debug("%s: bluetooth_scan_failed", address)
             return None, "bluetooth_scan_failed"
 
-        advertisement = decode_tuya_ble_advertisement(discovery_info.advertisement)
+        advertisement = decode_tuya_ble_advertisement(
+            discovery_info.advertisement
+        ) or bound_classic_advertisement(discovery_info)
         if advertisement is None:
             _LOGGER.debug(
                 "%s: identity_not_decoded, %s",
@@ -298,25 +262,17 @@ class TuyaBLEConfigFlow(
             )
             return None, "identity_not_decoded"
 
-        refresh_failed = False
-        try:
-            credentials = await self._manager.get_device_credentials_by_uuid(
-                advertisement.uuid,
-                force_update=self._get_device_info_error,
+        if advertisement.uuid:
+            credentials, refresh_failed = await self._async_lookup_credentials(
+                self._manager, address, advertisement.uuid
             )
-            self._abort_if_flow_removed()
-            if credentials is None and not self._get_device_info_error:
-                credentials = await self._manager.get_device_credentials_by_uuid(
-                    advertisement.uuid, force_update=True
-                )
-        except AbortFlow:
-            raise
-        except Exception:  # pylint: disable=broad-exception-caught
-            # A cached candidate may still pass a genuine authenticated read.
-            # Do not log SDK exceptions: they can contain cloud credentials.
-            _LOGGER.warning("%s: Tuya cloud refresh failed", address)
-            credentials = None
-            refresh_failed = True
+        else:
+            _LOGGER.debug(
+                "%s: bound classic identity not decoded, probing cloud candidates, %s",
+                address,
+                _advertisement_hex(discovery_info),
+            )
+            credentials, refresh_failed = None, False
         self._abort_if_flow_removed()
         pairing_uuid: str | None = None
         self._verified_profile = None
@@ -347,6 +303,28 @@ class TuyaBLEConfigFlow(
             discovery_info, advertisement, credentials, pairing_uuid
         ), None
 
+    async def _async_lookup_credentials(
+        self, manager: HASSTuyaBLEDeviceManager, address: str, uuid: str
+    ) -> tuple[TuyaBLEDeviceCredentials | None, bool]:
+        """Look up a decoded identity, forcing one cache refresh on a miss."""
+        try:
+            credentials = await manager.get_device_credentials_by_uuid(
+                uuid, force_update=self._get_device_info_error
+            )
+            self._abort_if_flow_removed()
+            if credentials is None and not self._get_device_info_error:
+                credentials = await manager.get_device_credentials_by_uuid(
+                    uuid, force_update=True
+                )
+        except AbortFlow:
+            raise
+        except Exception:  # pylint: disable=broad-exception-caught
+            # A cached candidate may still pass a genuine authenticated read.
+            # Do not log SDK exceptions: they can contain cloud credentials.
+            _LOGGER.warning("%s: Tuya cloud refresh failed", address)
+            return None, True
+        return credentials, False
+
     def _create_device_entry(
         self,
         discovery_info: BluetoothServiceInfoBleak,
@@ -359,7 +337,7 @@ class TuyaBLEConfigFlow(
             CONF_ADDRESS: discovery_info.address,
             CONF_UUID: pairing_uuid or credentials.uuid,
             CONF_CLOUD_UUID: credentials.uuid,
-            CONF_ADVERTISED_UUID: advertisement.uuid,
+            CONF_ADVERTISED_UUID: advertisement.uuid or None,
             CONF_LOCAL_KEY: credentials.local_key,
             CONF_DEVICE_ID: credentials.device_id,
             CONF_CATEGORY: credentials.category,
@@ -606,7 +584,8 @@ class TuyaBLEConfigFlow(
         if not expected:
             return None, None
         failure = ProbeOutcome.REJECTED
-        for uuid in dict.fromkeys((advertisement.uuid, credentials.uuid)):
+        # An undecoded identity has no advertised UUID to try.
+        for uuid in dict.fromkeys(filter(None, (advertisement.uuid, credentials.uuid))):
             if advertisement.protocol_version == 4:
                 profile = await async_detect_v4_profile(
                     discovery_info.device,

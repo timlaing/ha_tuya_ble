@@ -36,7 +36,7 @@ from custom_components.tuya_ble.tuya_ble.const import MANUFACTURER_DATA_ID
 from tests.conftest import FakeAdvertisementData, make_device
 
 _SCAN_PATCH = (
-    "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements"
+    "custom_components.tuya_ble.config_flow_scan.bluetooth.async_process_advertisements"
 )
 
 
@@ -640,7 +640,7 @@ async def test_async_scan_device_waits_for_complete_tuya_identity(
         return discovery
 
     with patch(
-        "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements",
+        _SCAN_PATCH,
         side_effect=process_advertisements,
     ):
         result = await flow._async_scan_device(discovery.address)
@@ -668,7 +668,7 @@ async def test_async_scan_device_accepts_block_aligned_extra_manufacturer_bytes(
         return discovery
 
     with patch(
-        "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements",
+        _SCAN_PATCH,
         side_effect=process_advertisements,
     ):
         result = await flow._async_scan_device(discovery.address)
@@ -696,7 +696,7 @@ async def test_async_scan_device_rejects_non_block_aligned_manufacturer_bytes(
         return discovery
 
     with patch(
-        "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements",
+        _SCAN_PATCH,
         side_effect=process_advertisements,
     ):
         result = await flow._async_scan_device(discovery.address)
@@ -722,7 +722,7 @@ async def test_async_scan_device_tolerates_missing_manufacturer_data(
         return discovery
 
     with patch(
-        "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements",
+        _SCAN_PATCH,
         side_effect=process_advertisements,
     ):
         result = await flow._async_scan_device(discovery.address)
@@ -748,7 +748,7 @@ async def test_async_scan_device_tolerates_missing_service_data(
         return discovery
 
     with patch(
-        "custom_components.tuya_ble.config_flow.bluetooth.async_process_advertisements",
+        _SCAN_PATCH,
         side_effect=process_advertisements,
     ):
         result = await flow._async_scan_device(discovery.address)

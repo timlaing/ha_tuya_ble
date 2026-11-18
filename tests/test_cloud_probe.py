@@ -69,6 +69,38 @@ async def test_probe_candidates_filter_and_order(hass: HomeAssistant) -> None:
         assert [d.device_id for d in candidates] == ["other"]
 
 
+@pytest.mark.parametrize(
+    ("advertised_uuid", "product_id", "expected"),
+    [
+        # No decoded identity (#155): only the readable product is probed.
+        ("", "target", ["a-target", "c-target"]),
+        # No identity and no product hint: every eligible record.
+        ("", None, ["a-target", "b-other", "c-target"]),
+        # A decoded identity keeps other products, ordered after the match.
+        ("ble-uuid", "target", ["a-target", "c-target", "b-other"]),
+    ],
+)
+async def test_probe_candidates_without_identity_filter_by_product(
+    hass: HomeAssistant,
+    advertised_uuid: str,
+    product_id: str | None,
+    expected: list[str],
+) -> None:
+    """Bound the candidate count by product only when no UUID was decoded."""
+    cloud_devices = [
+        make_device(id="a-target", uuid="a", product_id="target", local_key="123456"),
+        make_device(id="b-other", uuid="b", product_id="other", local_key="123456"),
+        make_device(id="c-target", uuid="c", product_id="target", local_key="123456"),
+    ]
+    manager = HASSTuyaBLEDeviceManager(hass, {})
+    manager._manager = cast(
+        Any, SimpleNamespace(device_map={d.id: d for d in cloud_devices})
+    )
+    count, candidates = await manager.get_probe_candidates(advertised_uuid, product_id)
+    assert count == len(expected)
+    assert [c.device_id for c in candidates] == expected
+
+
 async def test_probe_candidates_options_claim(hass: HomeAssistant) -> None:
     """Device ownership comes from entry data, not QR reauth options."""
     MockConfigEntry(

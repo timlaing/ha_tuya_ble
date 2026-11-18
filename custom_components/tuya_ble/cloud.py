@@ -136,6 +136,8 @@ class HASSTuyaBLEDeviceManager:
 
         The caller checks the count against its safety cap before consuming the
         iterator, so an oversized cloud account builds no probe credentials.
+        Without a decoded identity (empty ``advertised_uuid``) a readable
+        product ID is the only hint, so only records of that product are kept.
         """
         if self._manager is None:
             await self.initialize()
@@ -145,11 +147,13 @@ class HASSTuyaBLEDeviceManager:
             entry.data.get(CONF_DEVICE_ID)
             for entry in self._hass.config_entries.async_entries(DOMAIN)
         }
+        product_only = not advertised_uuid and product_id is not None
         candidates = sorted(
             (
                 device
                 for device in self._manager.device_map.values()
                 if _is_probe_candidate(device, advertised_uuid, configured)
+                and (not product_only or device.product_id == product_id)
             ),
             key=lambda device: (device.product_id != product_id, device.id),
         )
