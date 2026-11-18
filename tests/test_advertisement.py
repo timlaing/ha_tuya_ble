@@ -172,6 +172,40 @@ def test_v4_null_padding() -> None:
     assert info.uuid == "identity"
 
 
+def classic_advertisement(
+    service: bytes, header: bytes = b"\x89\x03"
+) -> AdvertisementData:
+    """Encrypt a classic vector with MD5 of the bytes after the product type."""
+    key = hashlib.md5(service[1:], usedforsecurity=False).digest()
+    encrypted = AES.new(key, AES.MODE_CBC, key).encrypt(b"1234567890abcdef")
+    return advertisement(service, header + bytes(4) + encrypted, SERVICE_UUID)
+
+
+@pytest.mark.parametrize(
+    ("service", "product_id"),
+    [
+        (b"\x00abcdefgh", "abcdefgh"),
+        # Product key (#158): not a product ID.
+        (b"\x01abcdefghijklmnop", None),
+    ],
+)
+def test_classic_product_types(service: bytes, product_id: str | None) -> None:
+    """Accept classic product ID and product key records with one derivation."""
+    info = decode_tuya_ble_advertisement(classic_advertisement(service))
+    assert info is not None
+    assert info.uuid == "1234567890abcdef"
+    assert info.product_id == product_id
+    assert info.is_bound is True
+    assert info.protocol_version == 3
+
+
+@pytest.mark.parametrize("product_type", [2, 0x10, 0xFF])
+def test_classic_unknown_product_type(product_type: int) -> None:
+    """Reject unknown classic product types even with decryptable identities."""
+    service = bytes((product_type,)) + b"abcdefgh"
+    assert decode_tuya_ble_advertisement(classic_advertisement(service)) is None
+
+
 @pytest.mark.parametrize("version", [0, 4, 5, 6])
 def test_classic_unknown_version(version: int) -> None:
     """Classic layout must not silently accept v4/v5 manufacturer headers."""
@@ -210,6 +244,17 @@ def test_runtime_uses_v4_metadata() -> None:
     dev.initialize_with_credentials(make_credentials())
     assert dev.uuid == "1234567890abcdef"
     assert dev._protocol_version == 4
+    assert dev._is_bound is True
+
+
+def test_runtime_uses_classic_product_key_identity() -> None:
+    """Initialize a classic product-key device from its decoded identity."""
+    dev = make_device()
+    adv = classic_advertisement(b"\x01abcdefghijklmnop")
+    dev.set_ble_device_and_advertisement_data(dev._ble_device, adv)
+    dev.initialize_with_credentials(make_credentials())
+    assert dev._uuid == "1234567890abcdef"
+    assert dev._protocol_version == 3
     assert dev._is_bound is True
 
 

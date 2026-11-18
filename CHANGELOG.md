@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+### Fixed
+
+- **Classic product-key advertisements** (#158): decode classic A201 records whose product type is 1 (product key) as well as 0 (product ID), using the same key derivation. This fixes `identity_not_decoded` during setup of bound Wi-Fi+BLE combo bulbs. Product keys are not reported as product IDs, and unknown product types are still rejected. Thanks to @zdenax for the report and fix.
+
 ## [2.10.0-beta.6] - 2026-11-17
 
 > **Beta — for testing only.** This build supersedes beta.5 with support for Tuya BLE protocol v4 devices that use the newer "Security V2" login, and lets you add a device even when the Bluetooth check fails so its diagnostics can be shared. It has not yet been tested on a Security V2 device; if a device was added with an earlier beta, remove it and add it again so the new login details are fetched.
