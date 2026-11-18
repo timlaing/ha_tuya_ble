@@ -470,7 +470,7 @@ async def test_async_step_device_classic_product_key(hass: HomeAssistant) -> Non
             local_key="abc",
             device_id="dev",
             category="dj",
-            product_id="prod",
+            product_id="cloudpid",
             device_name="Bulb",
             product_model=None,
             product_name="Product",
@@ -488,6 +488,8 @@ async def test_async_step_device_classic_product_key(hass: HomeAssistant) -> Non
         result = await flow.async_step_device(user_input={CONF_ADDRESS: d.address})
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_ADVERTISED_UUID] == "1234567890abcdef"
+    assert result["data"][CONF_UUID] == "1234567890abcdef"
+    assert result["data"][CONF_PRODUCT_ID] == "cloudpid"
     assert manager.calls == [("1234567890abcdef", False)]
 
 
