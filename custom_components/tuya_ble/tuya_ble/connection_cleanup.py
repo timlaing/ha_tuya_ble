@@ -21,6 +21,10 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 _probe_cleanup_state: dict[str, Callable[[str], Awaitable[bool]]] = {}
+# Cleanup of stopped devices that still holds links, keyed by upper-case address.
+# A stop no longer waits for an in-flight connect, so its late client can be
+# retained after the replacement device for the same address is created.
+_orphaned_cleanups: dict[str, set[_ConnectionCleanup]] = {}
 
 
 def set_probe_cleanup_waiter(waiter: Callable[[str], Awaitable[bool]]) -> None:
@@ -65,6 +69,27 @@ class _ConnectionCleanup:
         self.tasks: dict[BleakClientWithServiceCache, asyncio.Task[None]] = {}
         self._proxy_sources: dict[BleakClientWithServiceCache, _ProxySource] = {}
         self._native_sources: dict[BleakClientWithServiceCache, _BlueZSource] = {}
+        self._orphaned = False
+
+    def orphan(self) -> None:
+        """Let later devices for this address finish this stopped owner's cleanup."""
+        self._orphaned = True
+        self._publish()
+
+    def _publish(self) -> None:
+        """Expose retained links of a stopped owner to its successors."""
+        if self._orphaned and self.pending:
+            _orphaned_cleanups.setdefault(self.address.upper(), set()).add(self)
+
+    def _peers(self) -> tuple[_ConnectionCleanup, ...]:
+        """Return stopped owners for this address other than this one."""
+        peers = _orphaned_cleanups.get(self.address.upper(), set())
+        for peer in tuple(peers):
+            if not peer.pending:
+                peers.discard(peer)
+        if not peers:
+            _orphaned_cleanups.pop(self.address.upper(), None)
+        return tuple(peer for peer in peers if peer is not self)
 
     def capture_source(self, client: BleakClientWithServiceCache) -> None:
         """Capture a returned source before failure can discard its session state."""
@@ -143,6 +168,7 @@ class _ConnectionCleanup:
         self.discarded.add(client)
         self.pending.add(client)
         self.capture_source(client)
+        self._publish()
 
         task = self.tasks.get(client)
         if task is None or task.done():
@@ -181,10 +207,24 @@ class _ConnectionCleanup:
         current_client: BleakClientWithServiceCache | None,
         cleanup_duration: float,
     ) -> bool:
-        """Resolve unused connection ownership before a replacement can connect."""
+        """Resolve unused connection ownership before a replacement can connect.
+
+        Links retained by a stopped device for the same address hold the gate too.
+        """
+        peers = self._peers()
+        for peer in peers:
+            await peer.async_cleanup_own(None, cleanup_duration)
+        await self.async_cleanup_own(current_client, cleanup_duration)
+        return not self.pending and not any(peer.pending for peer in peers)
+
+    async def async_cleanup_own(
+        self,
+        current_client: BleakClientWithServiceCache | None,
+        cleanup_duration: float,
+    ) -> None:
+        """Retry teardown of every unused link this owner still retains."""
         for client in tuple(self.pending):
             if client is current_client:
                 continue
             # Proxy-local state can be false before disconnect is acknowledged.
             await self.async_discard(client, cleanup_duration)
-        return not self.pending

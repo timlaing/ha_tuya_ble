@@ -36,7 +36,9 @@ from custom_components.tuya_ble.const import (
     DOMAIN,
 )
 from custom_components.tuya_ble.devices import TuyaBLEData
+from custom_components.tuya_ble.tuya_ble import TuyaBLEDevice
 from custom_components.tuya_ble.tuya_ble.const import TuyaBLECode
+from custom_components.tuya_ble.tuya_ble.manager import AbstractTuyaBLEDeviceManager
 from tests.conftest import make_credentials, make_device
 from tests.protocol_harness import v4_advertisement
 from tests.test_probe import _input
@@ -86,6 +88,7 @@ class AbsentFirmware:
 
     advertising: bool = False
     failures: list[str] = field(default_factory=list)
+    cleanup_failures: list[str] = field(default_factory=list)
     clients: list[DroppingFirmwareClient] = field(default_factory=list)
     devices: list[BLEDevice] = field(default_factory=list)
     overlaps: int = 0
@@ -115,8 +118,9 @@ class AbsentFirmware:
         if any(client.physical_connected for client in self.clients):
             self.overlaps += 1
         failure = self.failures.pop(0) if self.failures else "none"
+        cleanup = self.cleanup_failures.pop(0) if self.cleanup_failures else "none"
         client = DroppingFirmwareClient(
-            failure, disconnected_callback, len(self.clients)
+            failure, disconnected_callback, len(self.clients), cleanup
         )
         self.clients.append(client)
         return cast(BleakClientWithServiceCache, client)
@@ -454,3 +458,63 @@ async def test_abandoned_live_link_is_released_before_reconnecting(
     assert not first.physical_connected
     assert firmware.overlaps == 0
     assert runtime.data.device._client is firmware.clients[1]
+
+
+def _paired_device() -> TuyaBLEDevice:
+    """Build a device with stored credentials and a protocol-3 advertisement."""
+    ble, advertisement = _input()
+    device = TuyaBLEDevice(cast(AbstractTuyaBLEDeviceManager, None), ble, advertisement)
+    device.initialize_with_credentials(make_credentials())
+    return device
+
+
+@pytest.mark.parametrize("firmware", ["gated"], indirect=True)
+@pytest.mark.parametrize("cleanup", ["cleanup_error", "cleanup_blocked"])
+async def test_replacement_waits_for_a_stopped_devices_late_link(
+    firmware: AbsentFirmware, cleanup: str
+) -> None:
+    """A reload must not connect over a link the stopped device still holds.
+
+    The stopped device's in-flight attempt closes its own late client. When
+    that teardown fails, the device replacing it retries it first, and does not
+    connect for as long as the link stays up.
+    """
+    firmware.advertising = True
+    firmware.cleanup_failures = [cleanup]
+    stopped = _paired_device()
+    attempt = asyncio.create_task(stopped.update())
+    await _until(lambda: firmware.in_flight == 1)
+    gate = firmware.gate
+    assert gate is not None
+
+    async with asyncio.timeout(TIMEOUT):
+        await stopped.stop()
+    firmware.gate = None
+    gate.set()
+    await attempt  # a stopped device's request ends quietly
+    late = firmware.clients[0]
+    assert late.disconnect_calls == 1
+    assert late.physical_connected
+    assert stopped._pending_client_cleanup == {cast(BleakClientWithServiceCache, late)}
+
+    replacement = _paired_device()
+    try:
+        if cleanup == "cleanup_blocked":
+            with pytest.raises(BleakNotFoundError):
+                await replacement.update()
+            assert len(firmware.clients) == 1
+            assert late.physical_connected
+            late.release_disconnect.set()
+            await _until(replacement._is_ready)
+        else:
+            await replacement.update()
+        assert not late.physical_connected
+        assert not stopped._pending_client_cleanup
+        assert firmware.overlaps == 0
+        assert replacement._client is firmware.clients[1]
+        await replacement.update()
+        datapoint = replacement.datapoints[3]
+        assert datapoint is not None
+        assert datapoint.value == 42
+    finally:
+        await replacement.stop()

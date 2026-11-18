@@ -477,6 +477,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
         # Set before touching any lock: an in-flight connect checks it before
         # adopting its client, so stop() need not wait behind its retry loop.
         self._expected_disconnect = True
+        self._connection_cleanup.orphan()
         for task in self._background_tasks():
             if not task.done():
                 task.cancel()
