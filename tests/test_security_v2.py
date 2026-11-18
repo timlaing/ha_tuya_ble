@@ -9,6 +9,7 @@ keys to the classic frame. All vectors are synthetic.
 # pylint: disable=protected-access
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
 import hashlib
@@ -37,6 +38,7 @@ from custom_components.tuya_ble.const import (
 from custom_components.tuya_ble.devices import TuyaBLEData
 from custom_components.tuya_ble.diagnostics import async_get_config_entry_diagnostics
 from custom_components.tuya_ble.tuya_ble import (
+    BLE_CONNECTION_EXCEPTIONS,
     SERVICE_UUID,
     ConnectionProfile,
     ProbeOutcome,
@@ -79,6 +81,7 @@ SEC_KEY = "fedcba9876543210"
 V2_SERVICE = b"\x41\x04\x00\x08abcdefgh"
 CLASSIC_SERVICE = b"\x49\x00\x00\x08abcdefgh"
 PROBE_CONNECT = "custom_components.tuya_ble.tuya_ble.probe.establish_connection"
+RUNTIME_CONNECT = "custom_components.tuya_ble.tuya_ble.base.establish_connection"
 DETECT = "custom_components.tuya_ble.config_flow.async_detect_v4_profile"
 SHADE_DATA = report(
     klv(1, TuyaBLEDataPointType.DT_ENUM, b"\x01")
@@ -232,19 +235,39 @@ async def test_session_frames_require_the_channel_flag(
     caplog: pytest.LogCaptureFixture, sec_key: str | None, flag: int, accepted: bool
 ) -> None:
     """Each channel only decrypts its own session flag."""
+    credentials = v2_credentials(sec_key)
+    firmware = (
+        SecurityV2Firmware(credentials, SHADE_DATA)
+        if sec_key is not None
+        else FakeV4Firmware(credentials, SHADE_DATA)
+    )
     device = make_device()
-    device.initialize_with_credentials(v2_credentials(sec_key))
-    device._protocol_version = 4
-    device._session_key = b"S" * 16  # test setup: an established session
-    data = report(klv(3, TuyaBLEDataPointType.DT_VALUE, pack(">i", 7)))
-    frame = encrypt_payload(device._session_key, flag, 1, 0, TuyaBLECode(0x8006), data)
+    device.set_ble_device_and_advertisement_data(
+        device._ble_device,
+        v4_advertisement(
+            uuid=credentials.uuid.encode(),
+            service=V2_SERVICE if sec_key is not None else CLASSIC_SERVICE,
+        ),
+    )
+    device.initialize_with_credentials(credentials)
+    with patch(RUNTIME_CONNECT, return_value=firmware):
+        await device.update()
+        await asyncio.wait_for(firmware.acknowledged.wait(), 1)
+        assert device._session_key is not None
+        data = report(klv(30, TuyaBLEDataPointType.DT_VALUE, pack(">i", 7)), sn=9)
+        frame = encrypt_payload(
+            device._session_key, flag, 99, 0, TuyaBLECode(0x8006), data
+        )
+        assert firmware.notify_handler is not None
+        assert firmware.notify_char is not None
+        with caplog.at_level(logging.DEBUG):
+            # Delivered through the callback the runtime subscribed with.
+            for packet in fragment(frame, protocol_version=4):
+                firmware.notify_handler(firmware.notify_char, bytearray(packet))
+            await drain_responses(device)
+        await device.stop()
 
-    with caplog.at_level(logging.DEBUG):
-        for packet in fragment(frame, protocol_version=4):
-            device._safe_notification_handler(None, bytearray(packet))
-        await drain_responses(device)
-
-    datapoint = device.datapoints[3]
+    datapoint = device.datapoints[30]
     if accepted:
         assert datapoint is not None
         assert datapoint.value == 7
@@ -646,3 +669,58 @@ async def test_classic_characteristics_keep_default_notifications() -> None:
     await run_session(device, firmware)
     assert firmware.notify_char == CHARACTERISTIC_NOTIFY
     assert not firmware.notify_kwargs
+
+
+async def test_runtime_never_pairs_an_unbound_v4_device(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An unverified entry does not pair a device that reports it is unbound."""
+    credentials = v2_credentials()
+    firmware = SecurityV2Firmware(credentials, SHADE_DATA, bound=False)
+    device = make_device()
+    device.set_ble_device_and_advertisement_data(
+        device._ble_device,
+        v4_advertisement(uuid=credentials.uuid.encode(), service=V2_SERVICE),
+    )
+    device.initialize_with_credentials(credentials)
+    with (
+        caplog.at_level(logging.DEBUG),
+        patch(RUNTIME_CONNECT, return_value=firmware),
+        pytest.raises(BLE_CONNECTION_EXCEPTIONS),
+    ):
+        await device.update()
+    await device.stop()
+    codes = {frame[0] for frame in firmware.received}
+    assert TuyaBLECode.FUN_SENDER_PAIR.value not in codes
+    assert "not added to an account; not pairing" in caplog.text
+
+
+class RefusingPairFirmware(SecurityV2Firmware):
+    """Refuse the pair request explicitly, as for a mismatched device ID."""
+
+    def _answer(self, seq_num: int, code: int, data: bytes, flag: int) -> None:
+        if code == TuyaBLECode.FUN_SENDER_PAIR.value:
+            self._reply(code, seq_num, b"\x01", 5)
+            return
+        super()._answer(seq_num, code, data, flag)
+
+
+async def test_explicit_pair_refusal_reports_its_own_stage() -> None:
+    """Only a refusal, not a timeout, is reported as a rejected login."""
+    credentials = v2_credentials()
+    clients: list[FakeV4Firmware] = []
+    stages: list[ProbeStage] = []
+    establish = _probe_establish(
+        clients, lambda: RefusingPairFirmware(credentials, SHADE_DATA)
+    )
+    with patch(PROBE_CONNECT, side_effect=establish):
+        outcome = await async_probe_authenticated_status(
+            make_device()._ble_device,
+            v4_advertisement(uuid=credentials.uuid.encode(), service=V2_SERVICE),
+            credentials,
+            credentials.uuid,
+            frozenset({1, 3}),
+            stages,
+        )
+    assert outcome == ProbeOutcome.REJECTED
+    assert stages == [ProbeStage.PAIR_REJECTED]

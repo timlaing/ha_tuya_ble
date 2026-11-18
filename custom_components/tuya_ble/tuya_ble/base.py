@@ -705,6 +705,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
         return (
             await self._try_start_notifications()
             and await self._try_send_device_info()
+            and self._may_pair()
             and await self._try_send_pairing()
         )
 
@@ -882,9 +883,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
 
         try:
             self._select_characteristics(client)
-            await client.start_notify(
-                self._notify_char, handle_notification, **self._notify_kwargs()
-            )
+            await self._start_notify(client, handle_notification)
             await self._configure_packet_size(client)
             return True
         except BLE_CONNECTION_EXCEPTIONS as err:

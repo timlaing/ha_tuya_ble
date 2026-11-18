@@ -36,7 +36,9 @@ _STAGE_ERRORS: dict[ProbeStage, str] = {
     ProbeStage.DEVICE_INFO: "v4_failed_no_reply",
     ProbeStage.UNBOUND: "v4_failed_not_added",
     ProbeStage.UNSUPPORTED: "v4_failed_unsupported_version",
-    ProbeStage.PAIR: "v4_failed_login",
+    # A PAIR timeout or drop is not a refusal of the cloud login details.
+    ProbeStage.PAIR: "v4_failed_no_reply",
+    ProbeStage.PAIR_REJECTED: "v4_failed_login",
     ProbeStage.STATUS: "v4_failed_no_data",
     ProbeStage.DATAPOINTS: "v4_failed_no_data",
 }

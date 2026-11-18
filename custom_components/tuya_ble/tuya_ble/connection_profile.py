@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 import asyncio
+from collections.abc import Callable
 import logging
 from struct import pack
 from typing import Any
@@ -37,6 +38,7 @@ class TuyaBLEConnectionProfile:
     _write_char: str
     _client: Any
     _expected_disconnect: bool
+    _is_bound: bool
 
     @property
     @abstractmethod
@@ -69,14 +71,34 @@ class TuyaBLEConnectionProfile:
             self._protocol_version,
         )
 
-    def _notify_kwargs(self) -> dict[str, Any]:
-        """Use BlueZ StartNotify on FD50; AcquireNotify can lose its reports.
+    def _may_pair(self) -> bool:
+        """Never pair a v4 device whose device-info reply reports it unbound.
+
+        Pairing an unbound device would register it with these credentials,
+        which setup verification also refuses. Classic devices keep their
+        existing behaviour.
+        """
+        if self._protocol_version == PROTOCOL_VERSION_V4 and not self._is_bound:
+            _LOGGER.debug(
+                "%s: Device reports it is not added to an account; not pairing",
+                self.address,
+            )
+            return False
+        return True
+
+    async def _start_notify(
+        self,
+        client: BleakClientWithServiceCache,
+        handler: Callable[[Any, bytearray], None],
+    ) -> None:
+        """Subscribe, using BlueZ StartNotify on FD50; AcquireNotify can lose reports.
 
         Other backends ignore the BlueZ-specific argument.
         """
+        kwargs: dict[str, Any] = {}
         if self._notify_char == CHARACTERISTIC_NOTIFY_V4:
-            return {"bluez": {"use_start_notify": True}}
-        return {}
+            kwargs["bluez"] = {"use_start_notify": True}
+        await client.start_notify(self._notify_char, handler, **kwargs)
 
     def _build_device_info_request(self) -> bytes:
         """v4 requests exactly two bytes specifying safe ATT data capacity."""

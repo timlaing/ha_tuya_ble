@@ -118,6 +118,7 @@ class ProbeStage(StrEnum):
     UNBOUND = "unbound"
     UNSUPPORTED = "unsupported"
     PAIR = "pair"
+    PAIR_REJECTED = "pair_rejected"
     STATUS = "status"
     DATAPOINTS = "datapoints"
 
@@ -497,6 +498,7 @@ class _ProbeDevice(TuyaBLEDevice):
     def _failed_pair_outcome(self) -> ProbeOutcome:
         """Classify only an explicit PAIR refusal as conclusive."""
         if self.pair_rejected:
+            self.stage = ProbeStage.PAIR_REJECTED
             return ProbeOutcome.REJECTED
         return ProbeOutcome.INCONCLUSIVE
 
@@ -550,9 +552,7 @@ class _ProbeDevice(TuyaBLEDevice):
         self._client = client
         self.stage = ProbeStage.NOTIFY
         self._select_characteristics(client)
-        await client.start_notify(
-            self._notify_char, self._safe_notification_handler, **self._notify_kwargs()
-        )
+        await self._start_notify(client, self._safe_notification_handler)
         await self._configure_packet_size(client)
         self.stage = ProbeStage.DEVICE_INFO
         if not await self._send_packet_while_connected(
