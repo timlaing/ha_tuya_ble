@@ -6,6 +6,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+from homeassistant.components.sensor import SensorDeviceClass
+from homeassistant.components.sensor.const import DEVICE_CLASS_UNITS
 import pytest
 
 import custom_components.tuya_ble.device_registry as dr
@@ -18,6 +20,7 @@ from custom_components.tuya_ble.device_registry import (
     get_registry,
 )
 from custom_components.tuya_ble.devices import get_product_info_by_ids
+from custom_components.tuya_ble.util import resolve_unit
 
 
 def _descriptor() -> EntityDescriptor:
@@ -1274,3 +1277,22 @@ def test_sgs01b_jr_descriptor_matches_the_sgs01_plant_sensor() -> None:
     assert product.entities == reference.entities
     assert product.device_name == "SGS01B-JR Soil Sensor"
     assert product.model_name == "gpkyrocn"
+
+
+def test_numeric_sensor_device_classes_declare_a_valid_unit() -> None:
+    """A sensor's device class must accept the unit its descriptor declares.
+
+    Home Assistant logs a warning for a sensor whose unit is not valid for its
+    device class -- for example a ``current`` sensor with no unit, which is
+    what DP 157 on the older Parkside batteries had.
+    """
+    invalid = []
+    for (category, product_id), product in get_registry().products.items():
+        for desc in product.get("sensor"):
+            if desc.device_class is None:
+                continue
+            units = DEVICE_CLASS_UNITS.get(SensorDeviceClass(desc.device_class))
+            unit = resolve_unit(desc.unit)
+            if units is not None and unit not in units:
+                invalid.append(f"{category}/{product_id} DP {desc.dp_id}")
+    assert not invalid, invalid
