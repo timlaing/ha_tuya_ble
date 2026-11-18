@@ -56,7 +56,7 @@ async def test_qr_code_issued_is_logged_without_token(
     """A granted QR request is traced, but the token itself is never logged."""
     flow = build_flow(hass)
     with caplog.at_level(logging.DEBUG):
-        result = await flow.async_step_user(user_input={CONF_USER_CODE: "code1"})
+        result = await flow.async_step_login(user_input={CONF_USER_CODE: "code1"})
     assert result["step_id"] == "qr"
     assert "QR code issued" in caplog.text
     assert "token123" not in caplog.text
@@ -69,7 +69,7 @@ async def test_qr_code_rejection_is_logged(
     """A rejected QR request logs the message and code, but never the user code."""
     flow = build_flow(hass, qr_success=False)
     with caplog.at_level(logging.DEBUG):
-        await flow.async_step_user(user_input={CONF_USER_CODE: "code1"})
+        await flow.async_step_login(user_input={CONF_USER_CODE: "code1"})
     assert "QR code request rejected: bad (code 1)" in caplog.text
     assert "code1" not in caplog.text
 
@@ -80,7 +80,7 @@ async def test_user_step_login_error_is_logged(
     """The surfaced login_error carries the message and code into the log."""
     flow = build_flow(hass, qr_success=False)
     with caplog.at_level(logging.DEBUG):
-        await flow.async_step_user(user_input={CONF_USER_CODE: "code1"})
+        await flow.async_step_login(user_input={CONF_USER_CODE: "code1"})
     assert "Login failed: bad (code 1)" in caplog.text
     assert "code1" not in caplog.text
 
