@@ -2,12 +2,43 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 
 from .const import SECURITY_V2_KEY_LENGTH, SecurityMode
 from .exceptions import TuyaBLEDeviceError
 
 CLASSIC_LOCAL_KEY_LENGTH = 6
+
+# Byte 54 of a long DEVICE_INFO reply mirrors the advertised Security V2 state:
+# bit 1 is "supported" and bit 2 "enabled" (V2 keys provisioned).
+DEVICE_INFO_SECURITY_POS = 54
+DEVICE_INFO_SECURITY_V2 = 0x02
+DEVICE_INFO_SECURITY_V2_ENABLED = 0x04
+
+
+@dataclass(frozen=True)
+class DeviceInfoSecurity:
+    """Security V2 state reported in a DEVICE_INFO reply, for diagnostics only."""
+
+    raw: int
+
+    @property
+    def security_v2(self) -> bool:
+        """Return whether the firmware supports Security V2."""
+        return bool(self.raw & DEVICE_INFO_SECURITY_V2)
+
+    @property
+    def security_v2_enabled(self) -> bool:
+        """Return whether the firmware has Security V2 keys provisioned."""
+        return bool(self.raw & DEVICE_INFO_SECURITY_V2_ENABLED)
+
+    @classmethod
+    def from_device_info(cls, data: bytes) -> DeviceInfoSecurity | None:
+        """Read the flags from a reply, or None when it is too short to carry them."""
+        if len(data) <= DEVICE_INFO_SECURITY_POS:
+            return None
+        return cls(data[DEVICE_INFO_SECURITY_POS])
 
 
 def is_valid_sec_key(sec_key: str) -> bool:

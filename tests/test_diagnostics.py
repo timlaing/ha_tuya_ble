@@ -37,7 +37,11 @@ from custom_components.tuya_ble.diagnostics import (
     async_get_device_diagnostics,
 )
 from custom_components.tuya_ble.mobile_snapshot import capture_mobile_snapshot
-from custom_components.tuya_ble.tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
+from custom_components.tuya_ble.tuya_ble import (
+    SERVICE_UUID_V4,
+    TuyaBLEDataPointType,
+    TuyaBLEDevice,
+)
 
 from .conftest import FakeBLEManager, make_credentials
 
@@ -725,3 +729,51 @@ async def test_stored_mobile_snapshot_is_safe_without_a_loaded_device(
     assert "cloud_info" in payload
     for value in ("SECRET_SECURITY_KEY", "SECRET_LOCAL_KEY", "PRIVATE_OWNER"):
         assert value not in repr(payload)
+
+
+async def test_diagnostics_security_v2_state_without_advertisement(
+    hass: HomeAssistant,
+) -> None:
+    """No stored FD50 record and no DEVICE_INFO reply report nothing announced."""
+    entry = _add_entry(hass)
+    _live_device(hass, entry)
+
+    payload = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert payload["device"]["security_v2_state"] == {
+        "advertisement": None,
+        "device_info": None,
+    }
+
+
+async def test_diagnostics_security_v2_state_from_stored_advertisement(
+    hass: HomeAssistant,
+) -> None:
+    """A passive FD50 record alone is enough to report its frame control."""
+    entry = _add_entry(hass)
+    device = _live_device(hass, entry)
+    device.set_ble_device_and_advertisement_data(
+        cast(Any, SimpleNamespace(address="AA:BB:CC:DD:EE:FF", name="TestDevice")),
+        SimpleNamespace(
+            rssi=-60,
+            service_data={SERVICE_UUID_V4: b"\x45\x04\x00\x08abcdefgh"},
+            manufacturer_data={},
+        ),
+    )
+
+    payload = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert payload["device"]["security_v2_state"] == {
+        "advertisement": {
+            "frame_control": "4504",
+            "bound": False,
+            "shared": True,
+            "supported": True,
+            "enabled": False,
+        },
+        "device_info": None,
+    }
+    # Only the two frame-control bytes are exported, never the identity.
+    assert "abcdefgh" not in repr(payload["device"])
+    assert "1234567890abcdef" not in repr(payload["device"])
+    assert "not-a-real-key" not in repr(payload)

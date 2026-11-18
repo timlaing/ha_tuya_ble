@@ -8,8 +8,10 @@ import logging
 from struct import pack, unpack
 import time
 
+from bleak.backends.scanner import AdvertisementData
 from Crypto.Cipher import AES
 
+from .advertisement import TuyaBLEIdentityRecord, decode_fd50_identity_record
 from .const import (
     V4_VALUE_WIDTHS,
     TuyaBLECode,
@@ -23,6 +25,7 @@ from .exceptions import (
     TuyaBLEDeviceError,
 )
 from .protocol_send import TuyaBLEProtocolSendMixin
+from .security import DeviceInfoSecurity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -47,6 +50,46 @@ type DataPointValue = bytes | bool | int | str
 
 class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
     """Mixin providing packet decryption, parsing and dispatch."""
+
+    _advertisement_data: AdvertisementData | None
+    # The Security V2 state announced by the last long DEVICE_INFO reply.
+    _device_info_security: DeviceInfoSecurity | None = None
+    _security_v2_mismatch_logged = False
+
+    @property
+    def advertised_identity_record(self) -> TuyaBLEIdentityRecord | None:
+        """Return the FD50 identity record of the last stored advertisement."""
+        if self._advertisement_data is None:
+            return None
+        return decode_fd50_identity_record(self._advertisement_data)
+
+    @property
+    def device_info_security(self) -> DeviceInfoSecurity | None:
+        """Return the Security V2 state of the last long DEVICE_INFO reply."""
+        return self._device_info_security
+
+    def _log_security_v2_mismatch(self) -> None:
+        """Log once when the advertised Security V2 state contradicts the key.
+
+        Diagnostics only: the key choice itself is left unchanged.
+        """
+        if self._security_v2_mismatch_logged or self._device_info is None:
+            return
+        record = self.advertised_identity_record
+        if record is None:
+            return
+        if record.security_v2_enabled and self._security_v2_key is None:
+            reason = "enabled but has no valid sec_key"
+        elif (
+            record.security_v2
+            and not record.security_v2_enabled
+            and self._security_v2_key is not None
+        ):
+            reason = "supported but not enabled; using sec_key"
+        else:
+            return
+        self._security_v2_mismatch_logged = True
+        _LOGGER.debug("%s: Device advertises Security V2 %s", self.address, reason)
 
     def _get_key(self, security_flag: int) -> bytes:
         """Return the encryption key for the given security flag."""
@@ -297,6 +340,10 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
         self._is_bound = data[5] != 0
         self._device_info_protocol = self._protocol_version
         self._device_info_bound = self._is_bound
+        # Diagnostics only: the reported state never selects the key.
+        security = self._device_info_security = DeviceInfoSecurity.from_device_info(
+            data
+        )
 
         srand = data[6:12]
         if self._local_key is None:
@@ -308,7 +355,8 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
         self._auth_key = data[14:46]
         _LOGGER.debug(
             "%s: Device info: firmware %s, protocol %s, hardware %s,"
-            " flags 0x%02x, bound %s, security %s",
+            " flags 0x%02x, bound %s, security %s, reported V2 supported %s,"
+            " enabled %s",
             self.address,
             self._device_version,
             self._protocol_version_str,
@@ -316,6 +364,8 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
             self._flags,
             self._is_bound,
             "v2" if self._security_v2_key is not None else "classic",
+            security.security_v2 if security else "unknown",
+            security.security_v2_enabled if security else "unknown",
         )
 
     def _handle_pair_response(self, data: bytes) -> int:

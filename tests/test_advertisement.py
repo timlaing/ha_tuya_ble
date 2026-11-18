@@ -490,3 +490,83 @@ def test_runtime_uses_undecoded_classic_header() -> None:
     dev.initialize_with_credentials(make_credentials())
     assert dev._protocol_version == 3
     assert dev._is_bound is True
+
+
+# FD50 frame control: byte 0 bit 3 bound, bit 2 shared; byte 1 bit 2 Security
+# V2 supported, bit 3 Security V2 enabled (#183).
+FRAME_CONTROL_HIGH = (0x41, 0x45, 0x49, 0x4D)
+FRAME_CONTROL_LOW = (0x00, 0x04, 0x08, 0x0C)
+
+
+@pytest.mark.parametrize("high", FRAME_CONTROL_HIGH)
+@pytest.mark.parametrize("low", FRAME_CONTROL_LOW)
+def test_fd50_frame_control_flags(high: int, low: int) -> None:
+    """Every combination decodes into its own independent flag."""
+    service = bytes((high, low)) + b"\x00\x08abcdefgh"
+    expected = TuyaBLEIdentityRecord(
+        is_bound=bool(high & 0x08),
+        protocol_version=4,
+        security_v2=bool(low & 0x04),
+        security_v2_enabled=bool(low & 0x08),
+        shared=bool(high & 0x04),
+    )
+
+    info = decode_tuya_ble_advertisement(v4_advertisement(service))
+    assert info is not None
+    assert info.is_bound is expected.is_bound
+    assert info.shared is expected.shared
+    assert info.security_v2 is expected.security_v2
+    assert info.security_v2_enabled is expected.security_v2_enabled
+    # The advertisement alone, without the scan response, carries the flags.
+    for adv in (v4_advertisement(service), service_only(service)):
+        record = decode_fd50_identity_record(adv)
+        assert record == expected
+        assert record.frame_control == bytes((high, low))
+
+
+@pytest.mark.parametrize(
+    ("frame_control", "supported", "enabled"),
+    [
+        ("4100", False, False),  # SRB-PM01
+        ("4104", True, False),  # Battery BLE Roller (#39)
+        ("490c", True, True),  # Parkside KC8B105 (#181)
+    ],
+)
+def test_observed_frame_control(
+    frame_control: str, supported: bool, enabled: bool
+) -> None:
+    """Captured frame-control bytes decode to their reported Security V2 state."""
+    service = bytes.fromhex(frame_control) + b"\x00\x08abcdefgh"
+    info = decode_tuya_ble_advertisement(v4_advertisement(service))
+    assert info is not None
+    assert (info.security_v2, info.security_v2_enabled) == (supported, enabled)
+    assert info.shared is False
+
+
+def test_classic_advertisement_has_no_frame_control_flags() -> None:
+    """A201 records carry none of the FD50 flags."""
+    adv = classic_advertisement(b"\x00abcdefgh")
+    info = decode_tuya_ble_advertisement(adv)
+    assert info is not None
+    assert (info.security_v2, info.security_v2_enabled, info.shared) == (
+        False,
+        False,
+        False,
+    )
+    record = decode_classic_record(adv)
+    assert record is not None
+    assert (record.security_v2, record.security_v2_enabled, record.shared) == (
+        False,
+        False,
+        False,
+    )
+    assert decode_fd50_identity_record(adv) is None
+
+
+@pytest.mark.parametrize(
+    "service",
+    [b"\x48\x0c\x00\x08abcdefgh", b"\x59\x0c\x00\x08abcdefgh"],  # beacon, v5
+)
+def test_frame_control_flags_need_an_identity_record(service: bytes) -> None:
+    """Beacons and other versions give no flags, even with V2 bits set."""
+    assert decode_fd50_identity_record(service_only(service)) is None

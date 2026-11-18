@@ -182,6 +182,36 @@ def _device_section(device: TuyaBLEDevice | None) -> dict[str, Any]:
         "protocol_version": device.protocol_version,
         "connection_profile": device.connection_profile,
         "security_v2": device.security_v2,
+        "security_v2_state": _security_v2_state(device),
+    }
+
+
+def _security_v2_state(device: TuyaBLEDevice) -> dict[str, Any]:
+    """Report the announced Security V2 state, never identity or key material.
+
+    ``security_v2`` above is the channel in use; this is what the last FD50
+    advertisement and the last long DEVICE_INFO reply announced, so a key
+    mismatch can be diagnosed from a report.
+    """
+    record = device.advertised_identity_record
+    reported = device.device_info_security
+    return {
+        "advertisement": None
+        if record is None
+        else {
+            "frame_control": record.frame_control.hex(),
+            "bound": record.is_bound,
+            "shared": record.shared,
+            "supported": record.security_v2,
+            "enabled": record.security_v2_enabled,
+        },
+        "device_info": None
+        if reported is None
+        else {
+            "flags": f"{reported.raw:02x}",
+            "supported": reported.security_v2,
+            "enabled": reported.security_v2_enabled,
+        },
     }
 
 
