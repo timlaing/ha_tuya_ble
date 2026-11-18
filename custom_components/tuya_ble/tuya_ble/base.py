@@ -891,53 +891,35 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
 
     async def _try_send_device_info(self) -> bool:
         """Send device info request. Returns True on success."""
-        if not self._client or not self._client.is_connected:
-            return False
-        _LOGGER.debug("%s: Sending device info request", self.address)
-        try:
-            if not await self._send_packet_while_connected(
-                TuyaBLECode.FUN_SENDER_DEVICE_INFO,
-                self._build_device_info_request(),
-                0,
-                True,
-            ):
-                self._client = None
-                _LOGGER.debug("%s: Sending device info request failed", self.address)
-                return False
-            return True
-        except BLE_CONNECTION_EXCEPTIONS:
-            self._client = None
-            _LOGGER.debug(
-                "%s: Sending device info request failed",
-                self.address,
-                exc_info=True,
-            )
-            return False
+        return await self._try_send_handshake_request(
+            TuyaBLECode.FUN_SENDER_DEVICE_INFO,
+            self._build_device_info_request,
+            "device info",
+        )
 
     async def _try_send_pairing(self) -> bool:
         """Send pairing request. Returns True on success."""
+        return await self._try_send_handshake_request(
+            TuyaBLECode.FUN_SENDER_PAIR, self._build_pairing_request, "pairing"
+        )
+
+    async def _try_send_handshake_request(
+        self, code: TuyaBLECode, build: Callable[[], bytes], name: str
+    ) -> bool:
+        """Send one handshake request, dropping the client if it fails."""
         if not self._client or not self._client.is_connected:
             return False
-        _LOGGER.debug("%s: Sending pairing request", self.address)
+        _LOGGER.debug("%s: Sending %s request", self.address, name)
         try:
-            if not await self._send_packet_while_connected(
-                TuyaBLECode.FUN_SENDER_PAIR,
-                self._build_pairing_request(),
-                0,
-                True,
-            ):
-                self._client = None
-                _LOGGER.debug("%s: Sending pairing request failed", self.address)
-                return False
-            return True
+            if await self._send_packet_while_connected(code, build(), 0, True):
+                return True
+            _LOGGER.debug("%s: Sending %s request failed", self.address, name)
         except BLE_CONNECTION_EXCEPTIONS:
-            self._client = None
             _LOGGER.debug(
-                "%s: Sending pairing request failed",
-                self.address,
-                exc_info=True,
+                "%s: Sending %s request failed", self.address, name, exc_info=True
             )
-            return False
+        self._client = None
+        return False
 
     def _log_connection_status(self) -> None:
         """Log final connection status after setup."""
