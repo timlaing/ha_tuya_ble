@@ -82,6 +82,7 @@ class FakeManager:
         self.credentials = credentials
         self.initialized = False
         self.calls: list[tuple[str, bool]] = []
+        self.refreshes = 0
 
     async def initialize(self) -> None:
         """Mark the fake manager as initialized."""
@@ -96,6 +97,10 @@ class FakeManager:
         """Return the fake credentials and record the call."""
         self.calls.append((uuid, force_update))
         return self.credentials
+
+    async def async_refresh(self) -> None:
+        """Record a cloud device-list refresh."""
+        self.refreshes += 1
 
     async def get_probe_candidates(
         self, advertised_uuid: str, product_id: str | None

@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning].
 - **More useful debug logs**: each Bluetooth check logs how far it got, which login it used and the type of any error, and a reply using an unexpected security scheme is logged with its security flag.
 - **Bluetooth notifications on the Pi's own adapter**: Tuya BLE protocol v4 devices now use BlueZ's StartNotify, which other integrations found necessary for these devices.
 - **Classic product-key advertisements** (#158): setup now reads older Tuya BLE advertisements that carry a product key instead of a product ID, so bound Wi-Fi and Bluetooth combo bulbs no longer fail with `identity_not_decoded`. Thanks to @zdenax for the report and fix.
-- **Bound classic devices with an undecodable identity** (#155): keep the setup scan running until a classic advertisement decodes, instead of stopping at a snapshot that pairs a stale readable A201 record with a bound identity. On timeout, a bound record is matched by authenticated probe of cloud candidates for its readable product ID, rather than failing with `identity_not_decoded`. Unbound undecodable records still fail, and strict identity decoding is unchanged. Reported for the Fingerbot Touch (`kg` / `bs3ubslo`); thanks to @njubinho for the capture.
+- **Bound classic devices that could not be identified** (#155): setup now keeps scanning until an older Tuya BLE device's advertisement can be read, and if it still cannot, finds the device by logging in to each matching device from your Tuya account instead of failing with `identity_not_decoded`. Reported for the Fingerbot Touch (`kg` / `bs3ubslo`); thanks to @njubinho for the capture.
 
 ## [2.10.0-beta.5] - 2026-11-17
 

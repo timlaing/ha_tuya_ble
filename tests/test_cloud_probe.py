@@ -76,6 +76,8 @@ async def test_probe_candidates_filter_and_order(hass: HomeAssistant) -> None:
         ("", "target", ["a-target", "c-target"]),
         # No identity and no product hint: every eligible record.
         ("", None, ["a-target", "b-other", "c-target"]),
+        # Printable bound bytes that match no record are not a product filter.
+        ("", "unmapped", ["a-target", "b-other", "c-target"]),
         # A decoded identity keeps other products, ordered after the match.
         ("ble-uuid", "target", ["a-target", "c-target", "b-other"]),
     ],
@@ -99,6 +101,23 @@ async def test_probe_candidates_without_identity_filter_by_product(
     count, candidates = await manager.get_probe_candidates(advertised_uuid, product_id)
     assert count == len(expected)
     assert [c.device_id for c in candidates] == expected
+
+
+async def test_async_refresh_reloads_device_cache(hass: HomeAssistant) -> None:
+    """Refresh an initialised cloud list off the event loop."""
+    manager = HASSTuyaBLEDeviceManager(hass, {})
+    update = Mock()
+    manager._manager = cast(Any, SimpleNamespace(update_device_cache=update))
+    await manager.async_refresh()
+    update.assert_called_once_with()
+
+
+async def test_async_refresh_initialises_missing_manager(hass: HomeAssistant) -> None:
+    """Initialising loads the device list, so it is not refreshed twice."""
+    manager = HASSTuyaBLEDeviceManager(hass, {})
+    with patch.object(manager, "initialize", new_callable=AsyncMock) as initialize:
+        await manager.async_refresh()
+    initialize.assert_awaited_once_with()
 
 
 async def test_probe_candidates_options_claim(hass: HomeAssistant) -> None:

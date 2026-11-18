@@ -19,7 +19,8 @@ from .tuya_ble import (
 
 ACTIVE_SCAN_TIMEOUT = 60
 
-_LOGGER = logging.getLogger(__name__)
+# Scan messages stay on the documented config-flow logger.
+_LOGGER = logging.getLogger(f"{__package__}.config_flow")
 
 
 def has_complete_identity(service_info: BluetoothServiceInfoBleak) -> bool:
@@ -58,11 +59,14 @@ async def async_scan_device(
     classic: BluetoothServiceInfoBleak | None = None
 
     def is_complete(service_info: BluetoothServiceInfoBleak) -> bool:
-        """Retain the latest well-formed classic record for a timeout."""
+        """Retain the latest classic record, preferring a readable product ID."""
         nonlocal classic
         if has_complete_identity(service_info):
             return True
-        if decode_classic_record(service_info.advertisement) is not None:
+        record = decode_classic_record(service_info.advertisement)
+        if record is not None and (
+            record.product_id is not None or not _has_product_id(classic)
+        ):
             classic = service_info
         return False
 
@@ -82,6 +86,14 @@ async def async_scan_device(
             return classic
         _LOGGER.debug("%s: active scan timed out", address)
         return None
+
+
+def _has_product_id(service_info: BluetoothServiceInfoBleak | None) -> bool:
+    """Return True when a retained classic record carries a readable product ID."""
+    if service_info is None:
+        return False
+    record = decode_classic_record(service_info.advertisement)
+    return record is not None and record.product_id is not None
 
 
 def bound_classic_advertisement(

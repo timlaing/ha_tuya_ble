@@ -48,7 +48,8 @@ deferred address always requires a fresh, decoded identity before cloud
 credential lookup or entry creation. Configured addresses are still removed
 after cancellation cleanup. Cancelling the parent flow also cleans up its tasks.
 
-Compressed 20-character identities (manufacturer byte 3, bit 0) are also rejected
+Compressed 20-character identities (FD50 protocol-4 manufacturer byte 3, bit 0)
+are also rejected
 until their pairing representation is supported. Truncated records, invalid
 lengths/types and undecodable or non-printable plaintext fail closed. There is no alternate-key
 guessing or fallback from FD50 to a possibly stale classic service record.

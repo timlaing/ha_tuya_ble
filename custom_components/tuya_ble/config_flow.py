@@ -272,7 +272,10 @@ class TuyaBLEConfigFlow(
                 address,
                 _advertisement_hex(discovery_info),
             )
-            credentials, refresh_failed = None, False
+            credentials, refresh_failed = (
+                None,
+                await self._async_refresh_cloud(self._manager, address),
+            )
         self._abort_if_flow_removed()
         pairing_uuid: str | None = None
         self._verified_profile = None
@@ -324,6 +327,18 @@ class TuyaBLEConfigFlow(
             _LOGGER.warning("%s: Tuya cloud refresh failed", address)
             return None, True
         return credentials, False
+
+    async def _async_refresh_cloud(
+        self, manager: HASSTuyaBLEDeviceManager, address: str
+    ) -> bool:
+        """Refresh cloud candidates, returning True when the refresh failed."""
+        try:
+            await manager.async_refresh()
+        except Exception:  # pylint: disable=broad-exception-caught
+            # Do not log SDK exceptions: they can contain cloud credentials.
+            _LOGGER.warning("%s: Tuya cloud refresh failed", address)
+            return True
+        return False
 
     def _create_device_entry(
         self,

@@ -129,6 +129,13 @@ class HASSTuyaBLEDeviceManager:
         _LOGGER.debug("Retrieved credentials for Tuya UUID %s", uuid)
         return _build_credentials(device)
 
+    async def async_refresh(self) -> None:
+        """Reload the cloud device list, e.g. for a device added after login."""
+        if self._manager is None:
+            await self.initialize()
+            return
+        await self._hass.async_add_executor_job(self._manager.update_device_cache)
+
     async def get_probe_candidates(
         self, advertised_uuid: str, product_id: str | None
     ) -> tuple[int, Iterator[TuyaBLEDeviceCredentials]]:
@@ -138,6 +145,8 @@ class HASSTuyaBLEDeviceManager:
         iterator, so an oversized cloud account builds no probe credentials.
         Without a decoded identity (empty ``advertised_uuid``) a readable
         product ID is the only hint, so only records of that product are kept.
+        The hint is unverified (bound bytes can be printable), so it is ignored
+        when no eligible record has that product.
         """
         if self._manager is None:
             await self.initialize()
@@ -147,14 +156,17 @@ class HASSTuyaBLEDeviceManager:
             entry.data.get(CONF_DEVICE_ID)
             for entry in self._hass.config_entries.async_entries(DOMAIN)
         }
-        product_only = not advertised_uuid and product_id is not None
+        eligible = [
+            device
+            for device in self._manager.device_map.values()
+            if _is_probe_candidate(device, advertised_uuid, configured)
+        ]
+        if not advertised_uuid and product_id is not None:
+            eligible = [
+                device for device in eligible if device.product_id == product_id
+            ] or eligible
         candidates = sorted(
-            (
-                device
-                for device in self._manager.device_map.values()
-                if _is_probe_candidate(device, advertised_uuid, configured)
-                and (not product_only or device.product_id == product_id)
-            ),
+            eligible,
             key=lambda device: (device.product_id != product_id, device.id),
         )
         return len(candidates), _iter_probe_credentials(candidates)
