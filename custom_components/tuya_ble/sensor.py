@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 from typing import Any
 
@@ -91,6 +91,8 @@ class TuyaBLESensorMapping:
     icons: list[str] | None = None
     unit_dp_id: int | None = None
     is_available: TuyaBLESensorIsAvailable = None
+    # Descriptor-only fields (such as active_dp_id) for the read handler.
+    handler_options: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -144,6 +146,7 @@ def _build_sensor_mapping(desc: EntityDescriptor) -> TuyaBLESensorMapping:
         icons=desc.extra.get("icons"),
         unit_dp_id=desc.extra.get("unit_dp_id"),
         is_available=desc.resolved_handler("when"),
+        handler_options=dict(desc.extra),
     )
 
 
@@ -208,11 +211,23 @@ class TuyaBLESensor(TuyaBLERestoreEntity, SensorEntity):
         super().__init__(hass, coordinator, device, product, sensor_mapping.description)
         self._mapping = sensor_mapping
         self._attr_restore = sensor_mapping.restore
+        # Per-entity scratch state owned by the read handler.
+        self.handler_state: dict[str, Any] = {}
 
     @property
     def dp_id(self) -> int:
         """Return the data point id this entity reports."""
         return self._mapping.dp_id
+
+    @property
+    def coefficient(self) -> float:
+        """Return the divisor that scales the raw data point value."""
+        return self._mapping.coefficient
+
+    @property
+    def handler_options(self) -> dict[str, Any]:
+        """Return the descriptor options for the read handler."""
+        return self._mapping.handler_options
 
     @property
     def _restore_dp_id(self) -> int:

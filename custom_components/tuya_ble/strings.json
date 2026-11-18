@@ -186,6 +186,23 @@
       },
       "beep_volume": {
         "name": "Lock Volume"
+      },
+      "heater_level": {
+        "name": "Heater level",
+        "state": {
+          "1": "1",
+          "2": "2",
+          "3": "3",
+          "4": "4",
+          "5": "5"
+        }
+      },
+      "heater_mode": {
+        "name": "Heater mode",
+        "state": {
+          "auto": "Auto",
+          "smart": "Smart"
+        }
       }
     },
     "binary_sensor": {
@@ -334,6 +351,15 @@
       },
       "probe_6_temperature": {
         "name": "Probe 6 temperature"
+      },
+      "heat_exchanger_temperature": {
+        "name": "Heat exchanger temperature"
+      },
+      "heater_work_state": {
+        "name": "Work state",
+        "state": {
+          "heating": "Heating"
+        }
       }
     },
     "switch": {
@@ -437,11 +463,12 @@
   "exceptions": {
     "invalid_fan_speed": {
       "message": "Unsupported cleaning mode {fan_speed}. Choose one of: {fan_speeds}."
-    }
-  },
-  "exceptions": {
+    },
     "button_press_failed": {
       "message": "The device did not confirm the button press. Check the device before pressing again, as the press may already have been carried out."
+    },
+    "option_not_settable": {
+      "message": "{option} can only be reported by this device, not set. Choose one of: {settable}."
     }
   },
   "options": {

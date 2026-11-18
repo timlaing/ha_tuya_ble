@@ -1,4 +1,4 @@
-"""Climate platform for Tuya BLE thermostatic radiator valves."""
+"""Climate platform for Tuya BLE thermostats and heaters."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from homeassistant.components.climate.const import (
     HVACMode,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfTemperature
+from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -38,6 +38,9 @@ class TuyaBLEClimateMapping:
 
     hvac_switch_dp_id: int = 0
     hvac_switch_mode: HVACMode | None = None
+    # Report hvac_action from the switch alone (off, or the action matching
+    # hvac_switch_mode while on), for devices without a room temperature.
+    hvac_action_from_switch: bool = False
 
     preset_mode_dp_ids: dict[str, int] | None = None
 
@@ -56,6 +59,17 @@ class TuyaBLEClimateMapping:
     target_humidity_coefficient: float = 1.0
     target_humidity_max: float = 100.0
     target_humidity_min: float = 0.0
+
+
+# The action a switch-driven climate reports while its switch is on. Only
+# these modes have an unambiguous running action; the registry rejects any
+# other ``hvac_switch_mode`` combined with ``hvac_action_from_switch``.
+SWITCH_MODE_ACTIONS: dict[HVACMode, HVACAction] = {
+    HVACMode.HEAT: HVACAction.HEATING,
+    HVACMode.COOL: HVACAction.COOLING,
+    HVACMode.DRY: HVACAction.DRYING,
+    HVACMode.FAN_ONLY: HVACAction.FAN,
+}
 
 
 @dataclass
@@ -106,6 +120,8 @@ def _build_climate_mapping(desc: EntityDescriptor) -> TuyaBLEClimateMapping:
         kwargs["preset_mode_dp_ids"] = dict(extra["preset_mode_dp_ids"])
     if "temperature_unit" in extra:
         kwargs["temperature_unit"] = extra["temperature_unit"]
+    if "hvac_action_from_switch" in extra:
+        kwargs["hvac_action_from_switch"] = extra["hvac_action_from_switch"]
     return TuyaBLEClimateMapping(**kwargs)
 
 
@@ -248,7 +264,16 @@ class TuyaBLEClimate(TuyaBLEEntity, ClimateEntity):
         self._read_scaled_attrs()
         self._read_hvac_mode()
         self._read_preset_mode()
+        self._attr_hvac_action = (
+            self._switch_hvac_action()
+            if self._mapping.hvac_action_from_switch
+            else self._thermostat_hvac_action()
+        )
+        self.async_write_ha_state()
 
+    @callback
+    def _thermostat_hvac_action(self) -> HVACAction:
+        """Return the action inferred from preset, mode and temperatures."""
         if (
             self._attr_preset_mode == PRESET_AWAY
             or self._attr_hvac_mode == HVACMode.OFF
@@ -258,11 +283,26 @@ class TuyaBLEClimate(TuyaBLEEntity, ClimateEntity):
                 and self._attr_target_temperature <= self._attr_current_temperature
             )
         ):
-            self._attr_hvac_action = HVACAction.IDLE
-        else:
-            self._attr_hvac_action = HVACAction.HEATING
+            return HVACAction.IDLE
+        return HVACAction.HEATING
 
-        self.async_write_ha_state()
+    @callback
+    def _switch_hvac_action(self) -> HVACAction | None:
+        """Return the action reported by the on/off switch alone.
+
+        Unknown until the switch has been reported, so a device that has not
+        sent its state yet is not shown as running.
+        """
+        switch_mode = self._mapping.hvac_switch_mode
+        if (
+            self._mapping.hvac_switch_dp_id == 0
+            or switch_mode is None
+            or self.device.datapoints[self._mapping.hvac_switch_dp_id] is None
+        ):
+            return None
+        if self._attr_hvac_mode == HVACMode.OFF:
+            return HVACAction.OFF
+        return SWITCH_MODE_ACTIONS.get(switch_mode)
 
     @callback
     def _read_hvac_mode(self) -> None:
@@ -303,10 +343,9 @@ class TuyaBLEClimate(TuyaBLEEntity, ClimateEntity):
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set new target temperature."""
-        if self._mapping.target_temperature_dp_id != 0:
-            int_value = int(
-                kwargs["temperature"] * self._mapping.target_temperature_coefficient
-            )
+        temperature = kwargs.get(ATTR_TEMPERATURE)
+        if self._mapping.target_temperature_dp_id != 0 and temperature is not None:
+            int_value = int(temperature * self._mapping.target_temperature_coefficient)
             datapoint = self.device.datapoints.get_or_create(
                 self._mapping.target_temperature_dp_id,
                 TuyaBLEDataPointType.DT_VALUE,

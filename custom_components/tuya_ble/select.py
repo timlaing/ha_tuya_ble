@@ -13,6 +13,7 @@ from homeassistant.components.select import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
@@ -38,6 +39,9 @@ class TuyaBLESelectMapping:
     restore: bool = False
     dp_type: TuyaBLEDataPointType | None = None
     values: list[str] | None = None
+    # Options the device accepts; the others are reported but read-only.
+    # None means every option can be set.
+    settable_options: list[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -99,6 +103,7 @@ def _build_select_mapping(desc: EntityDescriptor) -> TuyaBLESelectMapping:
             TuyaBLEDataPointType(desc.dp_type) if desc.dp_type is not None else None
         ),
         values=desc.values,
+        settable_options=desc.extra.get("settable_options"),
     )
 
 
@@ -195,6 +200,16 @@ class TuyaBLESelect(TuyaBLERestoreEntity, SelectEntity):
 
     def select_option(self, option: str) -> None:
         """Change the selected option."""
+        settable = self._mapping.settable_options
+        if settable is not None and option not in settable:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="option_not_settable",
+                translation_placeholders={
+                    "option": option,
+                    "settable": ", ".join(settable),
+                },
+            )
         if option in self._attr_options:
             int_value = self._attr_options.index(option)
             if self._mapping.values:

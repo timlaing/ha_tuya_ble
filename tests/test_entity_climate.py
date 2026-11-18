@@ -12,9 +12,11 @@ from homeassistant.components.climate.const import (
 )
 from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
+import pytest
 
 from custom_components.tuya_ble import climate
 from custom_components.tuya_ble.climate import TuyaBLEClimate
+from custom_components.tuya_ble.device_registry import SWITCH_ACTION_MODES
 from custom_components.tuya_ble.devices import (
     TuyaBLECoordinator,
     TuyaBLEProductInfo,
@@ -378,3 +380,156 @@ async def test_mode_from_value_no_datapoint(hass: HomeAssistant) -> None:
     coordinator.async_set_updated_data({})
     await hass.async_block_till_done()
     assert entity.hvac_mode is None
+
+
+def _make_heater_entity(
+    hass: HomeAssistant,
+    device: TuyaBLEDevice,
+    coordinator: TuyaBLECoordinator,
+    product: TuyaBLEProductInfo,
+    switch_mode: HVACMode = HVACMode.HEAT,
+) -> TuyaBLEClimate:
+    """Build a switch-driven climate with no room temperature."""
+    mapping = climate.TuyaBLEClimateMapping(
+        description=ClimateEntityDescription(key="heater"),
+        hvac_switch_dp_id=1,
+        hvac_switch_mode=switch_mode,
+        hvac_action_from_switch=True,
+        target_temperature_dp_id=2,
+        target_temperature_min=0.0,
+        target_temperature_max=40.0,
+    )
+    entity = climate.TuyaBLEClimate(hass, coordinator, device, product, mapping)
+    entity.hass = hass
+    return entity
+
+
+async def test_switch_action_unknown_until_switch_reported(
+    hass: HomeAssistant,
+) -> None:
+    """A switch-driven action is not reported before the switch DP arrives."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_heater_entity(hass, device, coordinator, product)
+    await entity.async_added_to_hass()
+    add_dp(device, 2, TuyaBLEDataPointType.DT_VALUE, 19)
+    coordinator.async_set_updated_data({})
+    await hass.async_block_till_done()
+    assert entity.hvac_action is None
+    assert entity.target_temperature == 19.0
+    assert entity.current_temperature is None
+
+
+@pytest.mark.parametrize(
+    ("switch_mode", "running_action"),
+    [
+        (HVACMode.HEAT, HVACAction.HEATING),
+        (HVACMode.COOL, HVACAction.COOLING),
+        (HVACMode.DRY, HVACAction.DRYING),
+        (HVACMode.FAN_ONLY, HVACAction.FAN),
+        (HVACMode.AUTO, None),
+    ],
+)
+async def test_switch_action_follows_switch(
+    hass: HomeAssistant, switch_mode: HVACMode, running_action: HVACAction | None
+) -> None:
+    """On reports the switch mode's action; off reports OFF, not IDLE."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_heater_entity(hass, device, coordinator, product, switch_mode)
+    await entity.async_added_to_hass()
+    add_dp(device, 1, TuyaBLEDataPointType.DT_BOOL, True)
+    # A set point below any plausible room temperature must not imply idle.
+    add_dp(device, 2, TuyaBLEDataPointType.DT_VALUE, 0)
+    coordinator.async_set_updated_data({})
+    await hass.async_block_till_done()
+    assert entity.hvac_mode == switch_mode
+    assert entity.hvac_action == running_action
+    add_dp(device, 1, TuyaBLEDataPointType.DT_BOOL, False)
+    coordinator.async_set_updated_data({})
+    await hass.async_block_till_done()
+    assert entity.hvac_mode == HVACMode.OFF
+    assert entity.hvac_action == HVACAction.OFF
+
+
+async def test_switch_action_without_switch_dp_is_unknown(
+    hass: HomeAssistant,
+) -> None:
+    """A mapping that asks for a switch action but has no switch reports None."""
+    device, coordinator, product = build_context(hass)
+    mapping = climate.TuyaBLEClimateMapping(
+        description=ClimateEntityDescription(key="heater"),
+        hvac_action_from_switch=True,
+    )
+    entity = climate.TuyaBLEClimate(hass, coordinator, device, product, mapping)
+    entity.hass = hass
+    await entity.async_added_to_hass()
+    coordinator.async_set_updated_data({})
+    await hass.async_block_till_done()
+    assert entity.hvac_action is None
+
+
+async def test_thermostat_action_unchanged_without_switch_action(
+    hass: HomeAssistant,
+) -> None:
+    """Without hvac_action_from_switch an off switch still reports IDLE."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_switch_entity(hass, device, coordinator, product)
+    await entity.async_added_to_hass()
+    add_dp(device, 101, TuyaBLEDataPointType.DT_BOOL, False)
+    coordinator.async_set_updated_data({})
+    await hass.async_block_till_done()
+    actions = [entity.hvac_action]
+    add_dp(device, 101, TuyaBLEDataPointType.DT_BOOL, True)
+    add_dp(device, 102, TuyaBLEDataPointType.DT_VALUE, 180)
+    add_dp(device, 103, TuyaBLEDataPointType.DT_VALUE, 215)
+    coordinator.async_set_updated_data({})
+    await hass.async_block_till_done()
+    actions.append(entity.hvac_action)
+    assert actions == [HVACAction.IDLE, HVACAction.HEATING]
+
+
+async def test_target_scale_independent_of_current_and_step(
+    hass: HomeAssistant,
+) -> None:
+    """Target scaling uses only its own coefficient, on read and on write."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_heater_entity(hass, device, coordinator, product)
+    assert (entity.min_temp, entity.max_temp) == (0.0, 40.0)
+    await entity.async_added_to_hass()
+    add_dp(device, 2, TuyaBLEDataPointType.DT_VALUE, 22)
+    coordinator.async_set_updated_data({})
+    await hass.async_block_till_done()
+    assert entity.target_temperature == 22.0
+    await entity.async_set_temperature(temperature=10.0)
+    await hass.async_block_till_done()
+    datapoint = device.datapoints[2]
+    assert datapoint is not None
+    assert datapoint.dp_type == TuyaBLEDataPointType.DT_VALUE
+    assert datapoint.value == 10
+
+
+async def test_trv_half_degree_target_keeps_coefficient(hass: HomeAssistant) -> None:
+    """The TRV path still multiplies by its coefficient, not by step or 2."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_switch_entity(hass, device, coordinator, product)
+    await entity.async_set_temperature(temperature=21.5)
+    await hass.async_block_till_done()
+    datapoint = device.datapoints[103]
+    assert datapoint is not None
+    assert datapoint.value == 215
+
+
+async def test_set_temperature_without_temperature_is_noop(
+    hass: HomeAssistant,
+) -> None:
+    """A set_temperature call carrying only other fields writes nothing."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_heater_entity(hass, device, coordinator, product)
+    await entity.async_set_temperature(hvac_mode=HVACMode.HEAT)
+    await hass.async_block_till_done()
+    assert device.datapoints[2] is None
+    assert device.datapoints[1] is None
+
+
+def test_switch_action_modes_match_registry() -> None:
+    """The registry's allowed switch-action modes match the platform's map."""
+    assert {mode.value for mode in climate.SWITCH_MODE_ACTIONS} == (SWITCH_ACTION_MODES)

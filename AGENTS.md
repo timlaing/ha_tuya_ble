@@ -47,54 +47,54 @@ If a file falls below the threshold, add tests until it passes before committing
 
 ### Test files
 
-| File                                                                       | Covers                                                                                             |
-| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `tests/conftest.py`                                                        | `sys.path`, fakes (`FakeBLEManager`, `FakeBleakClient`, …), `make_device()`, `make_credentials()`  |
-| `tests/protocol_harness.py`                                                | packet building/encryption helpers for protocol tests                                              |
-| `tests/test_datapoints.py`                                                 | `TuyaBLEDataPoint`/`TuyaBLEDataPoints`                                                             |
-| `tests/test_manager.py`, `tests/test_const.py`, `tests/test_exceptions.py` | manager, consts, exceptions                                                                        |
-| `tests/test_protocol.py`                                                   | `protocol_mixin` packet/AES logic                                                                  |
-| `tests/test_protocol_v4.py`                                                | protocol 4 (FD50) handshake, characteristic choice, `0x8006`/`0x8007` reports, SDK firmware double |
-| `tests/test_protocol_v4_identity.py`                                       | protocol 4 version from the advertisement: identity record, stored advertisement, beacon wait      |
-| `tests/test_base.py`                                                       | `base.IntegerTypeData`/`EnumTypeData`                                                              |
-| `tests/test_device.py`                                                     | `TuyaBLEDevice` connection/state (mocked connect flow)                                             |
-| `tests/test_connection.py`                                                 | BLE connection lifecycle, error paths, protocol edge cases                                         |
-| `tests/test_cloud.py`                                                      | `cloud.py`                                                                                         |
-| `tests/test_coordinator.py`                                                | `coordinator.py` connect/disconnect transitions, update batches, delayed-disconnect timer          |
-| `tests/test_entity.py`                                                     | `entity.py` unique-id resolution, DP-code matching, data point sends                               |
-| `tests/test_devices.py`                                                    | product lookup, coordinator and device-info helpers; descriptor-vs-cloud-metadata precedence tests |
-| `tests/test_mappings.py`                                                   | per-platform `get_mapping_by_device` + pure Fingerbot/sensor helpers                               |
-| `tests/test_device_registry.py`                                            | `device_registry.py` (load/validate/resolve, `EntityDescriptor`)                                   |
-| `tests/test_registry_init.py`                                              | off-event-loop registry initialisation, caching, concurrency, failure/retry                        |
-| `tests/test_parkside_batteries.py`                                         | PARKSIDE `dcb` battery descriptors: units, scaling, status order, read paths                       |
-| `tests/test_handlers.py`                                                   | YAML descriptor handler callables (`battery`, `raw`, `rssi`, `water_valve`, Fingerbot)             |
-| `tests/test_entity_binary_sensor.py`                                       | binary_sensor entity methods                                                                       |
-| `tests/test_entity_button.py`                                              | button entity methods                                                                              |
-| `tests/test_entity_climate.py`                                             | climate entity methods                                                                             |
-| `tests/test_entity_number.py`                                              | number entity methods (incl. fingerbot number handler aliases)                                     |
-| `tests/test_entity_select.py`                                              | select entity methods                                                                              |
-| `tests/test_entity_sensor.py`                                              | sensor entity methods                                                                              |
-| `tests/test_entity_switch.py`                                              | switch entity methods                                                                              |
-| `tests/test_entity_text.py`                                                | text entity methods                                                                                |
-| `tests/test_entity_valve.py`                                               | valve entity methods                                                                               |
-| `tests/test_entity_vacuum.py`                                              | vacuum entity, descriptor validation and vacuum services                                           |
-| `tests/test_entity_lock.py`                                                | lock entity methods                                                                                |
-| `tests/test_entity_cover.py`                                               | cover entity methods                                                                               |
-| `tests/test_entity_light.py`                                               | light entity methods                                                                               |
-| `tests/test_config_flow.py`                                                | config/options flow steps                                                                          |
-| `tests/test_config_flow_logging.py`                                        | `config_flow.py` debug/warning log output (reuses the fakes from `test_config_flow.py`)            |
-| `tests/test_config_flow_classic_bound.py`                                  | bound classic records whose identity does not decode (#155): scan fallback, probe-only setup       |
-| `tests/test_init.py`                                                       | integration `async_setup_entry`/`async_unload_entry`, offline manager, update listener             |
-| `tests/test_setup_entries.py`                                              | per-platform `async_setup_entry` boilerplate                                                       |
-| `tests/test_util.py`                                                       | `util.py` (e.g. `remap_value`)                                                                     |
-| `tests/test_diagnostics.py`                                                | config-entry and device diagnostics, redaction, schema refresh and fallback                        |
-| `tests/test_security_v2.py`                                                | FD50 Security V2 keys, flags 14/15, pair frame, verification, cloud `sec_key`, diagnostics         |
-| `tests/test_config_flow_unverified.py`                                     | opt-in setup of protocol-4 devices whose verification failed                                       |
-| `tests/test_cbf02v2_fingerbot.py`                                          | CBF02V2 Finger Robot descriptor: two modes, inverted switch, fixed-value DP102 button, scaling     |
-| `tests/test_swtz_thermometers.py`                                          | `swtz` cooking thermometers: battery and signed 0.1 °C probe readings, incl. wire decoding         |
-| `tests/test_config_flow_manual.py`                                         | manual credential entry: validation, Bluetooth verification, errors and claims                     |
-| `tests/test_config_flow_options_credentials.py`                            | options-flow key-pair replacement, security-key clearing and refusal                               |
-| `tests/test_session_recovery.py`                                           | failed/unanswered command recovery: no replay after reconnect, stale clients, waiters              |
+| File                                                                       | Covers                                                                                                |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `tests/conftest.py`                                                        | `sys.path`, fakes (`FakeBLEManager`, `FakeBleakClient`, …), `make_device()`, `make_credentials()`     |
+| `tests/protocol_harness.py`                                                | packet building/encryption helpers for protocol tests                                                 |
+| `tests/test_datapoints.py`                                                 | `TuyaBLEDataPoint`/`TuyaBLEDataPoints`                                                                |
+| `tests/test_manager.py`, `tests/test_const.py`, `tests/test_exceptions.py` | manager, consts, exceptions                                                                           |
+| `tests/test_protocol.py`                                                   | `protocol_mixin` packet/AES logic                                                                     |
+| `tests/test_protocol_v4.py`                                                | protocol 4 (FD50) handshake, characteristic choice, `0x8006`/`0x8007` reports, SDK firmware double    |
+| `tests/test_protocol_v4_identity.py`                                       | protocol 4 version from the advertisement: identity record, stored advertisement, beacon wait         |
+| `tests/test_base.py`                                                       | `base.IntegerTypeData`/`EnumTypeData`                                                                 |
+| `tests/test_device.py`                                                     | `TuyaBLEDevice` connection/state (mocked connect flow)                                                |
+| `tests/test_connection.py`                                                 | BLE connection lifecycle, error paths, protocol edge cases                                            |
+| `tests/test_cloud.py`                                                      | `cloud.py`                                                                                            |
+| `tests/test_coordinator.py`                                                | `coordinator.py` connect/disconnect transitions, update batches, delayed-disconnect timer             |
+| `tests/test_entity.py`                                                     | `entity.py` unique-id resolution, DP-code matching, data point sends                                  |
+| `tests/test_devices.py`                                                    | product lookup, coordinator and device-info helpers; descriptor-vs-cloud-metadata precedence tests    |
+| `tests/test_mappings.py`                                                   | per-platform `get_mapping_by_device` + pure Fingerbot/sensor helpers                                  |
+| `tests/test_device_registry.py`                                            | `device_registry.py` (load/validate/resolve, `EntityDescriptor`)                                      |
+| `tests/test_registry_init.py`                                              | off-event-loop registry initialisation, caching, concurrency, failure/retry                           |
+| `tests/test_parkside_batteries.py`                                         | PARKSIDE `dcb` battery descriptors: units, scaling, status order, read paths                          |
+| `tests/test_handlers.py`                                                   | YAML descriptor handler callables (`battery`, `measurement`, `raw`, `rssi`, `water_valve`, Fingerbot) |
+| `tests/test_entity_binary_sensor.py`                                       | binary_sensor entity methods                                                                          |
+| `tests/test_entity_button.py`                                              | button entity methods                                                                                 |
+| `tests/test_entity_climate.py`                                             | climate entity methods                                                                                |
+| `tests/test_entity_number.py`                                              | number entity methods (incl. fingerbot number handler aliases)                                        |
+| `tests/test_entity_select.py`                                              | select entity methods                                                                                 |
+| `tests/test_entity_sensor.py`                                              | sensor entity methods                                                                                 |
+| `tests/test_entity_switch.py`                                              | switch entity methods                                                                                 |
+| `tests/test_entity_text.py`                                                | text entity methods                                                                                   |
+| `tests/test_entity_valve.py`                                               | valve entity methods                                                                                  |
+| `tests/test_entity_vacuum.py`                                              | vacuum entity, descriptor validation and vacuum services                                              |
+| `tests/test_entity_lock.py`                                                | lock entity methods                                                                                   |
+| `tests/test_entity_cover.py`                                               | cover entity methods                                                                                  |
+| `tests/test_entity_light.py`                                               | light entity methods                                                                                  |
+| `tests/test_config_flow.py`                                                | config/options flow steps                                                                             |
+| `tests/test_config_flow_logging.py`                                        | `config_flow.py` debug/warning log output (reuses the fakes from `test_config_flow.py`)               |
+| `tests/test_config_flow_classic_bound.py`                                  | bound classic records whose identity does not decode (#155): scan fallback, probe-only setup          |
+| `tests/test_init.py`                                                       | integration `async_setup_entry`/`async_unload_entry`, offline manager, update listener                |
+| `tests/test_setup_entries.py`                                              | per-platform `async_setup_entry` boilerplate                                                          |
+| `tests/test_util.py`                                                       | `util.py` (e.g. `remap_value`)                                                                        |
+| `tests/test_diagnostics.py`                                                | config-entry and device diagnostics, redaction, schema refresh and fallback                           |
+| `tests/test_security_v2.py`                                                | FD50 Security V2 keys, flags 14/15, pair frame, verification, cloud `sec_key`, diagnostics            |
+| `tests/test_config_flow_unverified.py`                                     | opt-in setup of protocol-4 devices whose verification failed                                          |
+| `tests/test_cbf02v2_fingerbot.py`                                          | CBF02V2 Finger Robot descriptor: two modes, inverted switch, fixed-value DP102 button, scaling        |
+| `tests/test_swtz_thermometers.py`                                          | `swtz` cooking thermometers: battery and signed 0.1 °C probe readings, incl. wire decoding            |
+| `tests/test_config_flow_manual.py`                                         | manual credential entry: validation, Bluetooth verification, errors and claims                        |
+| `tests/test_config_flow_options_credentials.py`                            | options-flow key-pair replacement, security-key clearing and refusal                                  |
+| `tests/test_session_recovery.py`                                           | failed/unanswered command recovery: no replay after reconnect, stale clients, waiters                 |
 
 ### prek
 
@@ -172,7 +172,7 @@ All public BLE symbols — `TuyaBLEDevice`, `TuyaBLEDataPoint`, `TuyaBLEDataPoin
 
 There are **13 platform files** (binary_sensor, button, climate, cover, light, lock, number, select, sensor, switch, text, vacuum, valve) and they all follow the same pattern: a `_build_mapping()` function that walks `get_registry().products.values()` and returns a dict keyed by Tuya category ID → product ID → list of data-point mappings. The mappings are **built from the YAML descriptors, not authored by hand**, so adding a device means writing one descriptor file and no platform edits.
 
-Some platforms carry bespoke per-device logic beyond the mapping dict. It lives in YAML descriptor `handlers:` blocks that name a callable under `device_descriptors/handlers/`, not in the platform files — `battery.battery_enum` and `rssi.rssi` for sensors, `raw.raw_hex`, `water_valve.*` for valves, and the shared Fingerbot handlers under `handlers/fingerbot/` (`program.get_program`, `program.set_program`, `mode.in_program_mode`, `program.set_repeat_forever`), consumed by `text.py`, `switch.py`, `number.py` and `button.py`. `select.py` also defines a `TemperatureUnitDescription` entity-description subclass. Editing a device that needs special handling means adding or changing a handler module and referencing it from the descriptor, not editing the mappings.
+Some platforms carry bespoke per-device logic beyond the mapping dict. It lives in YAML descriptor `handlers:` blocks that name a callable under `device_descriptors/handlers/`, not in the platform files — `battery.battery_enum`, `rssi.rssi` and `measurement.active_throttled` (blank while a switch DP is off, throttled by `report_min_change`/`report_max_interval`) for sensors, `raw.raw_hex`, `water_valve.*` for valves, and the shared Fingerbot handlers under `handlers/fingerbot/` (`program.get_program`, `program.set_program`, `mode.in_program_mode`, `program.set_repeat_forever`), consumed by `text.py`, `switch.py`, `number.py` and `button.py`. `select.py` also defines a `TemperatureUnitDescription` entity-description subclass. Editing a device that needs special handling means adding or changing a handler module and referencing it from the descriptor, not editing the mappings.
 
 ## Dependencies
 

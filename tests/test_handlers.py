@@ -4,12 +4,17 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import patch
 
+from homeassistant.components.sensor import SensorEntityDescription
+from homeassistant.core import HomeAssistant
 import pytest
 
+from custom_components.tuya_ble import sensor as sensor_platform
 from custom_components.tuya_ble.device_descriptors import handlers
 from custom_components.tuya_ble.device_descriptors.handlers import (
     battery,
+    measurement,
     raw,
     rssi,
     water_valve,
@@ -25,7 +30,7 @@ from custom_components.tuya_ble.device_descriptors.handlers.fingerbot import (
 )
 from custom_components.tuya_ble.devices import TuyaBLEProductInfo
 from custom_components.tuya_ble.tuya_ble import TuyaBLEDataPointType
-from tests.conftest import make_product_info
+from tests.conftest import add_dp, build_context, make_product_info
 
 pytestmark = pytest.mark.filterwarnings("ignore::RuntimeWarning")
 
@@ -639,3 +644,155 @@ def test_inverted_switch_writes_opposite_value(value: bool, written: bool) -> No
     owner: Any = SimpleNamespace(send_dp_value=lambda *args: calls.append(args))
     fingerbot_polarity.set_inverted_switch(owner, make_product_info(switch=1), value)
     assert calls == [(1, TuyaBLEDataPointType.DT_BOOL, written)]
+
+
+class _Clock:
+    """A settable stand-in for ``time.monotonic``."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def _measurement_sensor(
+    hass: HomeAssistant, **options: Any
+) -> tuple[Any, sensor_platform.TuyaBLESensor]:
+    """Build a real sensor on DP 3 read by ``measurement.active_throttled``."""
+    device, coordinator, product = build_context(hass)
+    mapping = sensor_platform.TuyaBLESensorMapping(
+        dp_id=3,
+        description=SensorEntityDescription(key="exchanger"),
+        getter=measurement.active_throttled,
+        handler_options=options,
+    )
+    entity = sensor_platform.TuyaBLESensor(hass, coordinator, device, product, mapping)
+    return device, entity
+
+
+async def test_measurement_without_options_shows_every_reading(
+    hass: HomeAssistant,
+) -> None:
+    """No gate and no throttle: every scaled reading is shown."""
+    device, entity = _measurement_sensor(hass)
+    entity.handler_state.clear()
+    measurement.active_throttled(entity)
+    assert entity.native_value is None
+    for raw_value in (100, 101, 102):
+        add_dp(device, 3, TuyaBLEDataPointType.DT_VALUE, raw_value)
+        measurement.active_throttled(entity)
+        assert entity.native_value == float(raw_value)
+
+
+async def test_measurement_applies_coefficient(hass: HomeAssistant) -> None:
+    """The sensor coefficient scales the raw value."""
+    device, coordinator, product = build_context(hass)
+    mapping = sensor_platform.TuyaBLESensorMapping(
+        dp_id=3,
+        description=SensorEntityDescription(key="exchanger"),
+        getter=measurement.active_throttled,
+        coefficient=10.0,
+    )
+    entity = sensor_platform.TuyaBLESensor(hass, coordinator, device, product, mapping)
+    add_dp(device, 3, TuyaBLEDataPointType.DT_VALUE, 215)
+    measurement.active_throttled(entity)
+    assert entity.native_value == 21.5
+
+
+@pytest.mark.parametrize("value", [True, "hot", b"\x01"])
+async def test_measurement_ignores_non_numeric_values(
+    hass: HomeAssistant, value: Any
+) -> None:
+    """Booleans, strings and raw payloads leave the value unchanged."""
+    device, entity = _measurement_sensor(hass)
+    add_dp(device, 3, TuyaBLEDataPointType.DT_VALUE, value)
+    measurement.active_throttled(entity)
+    assert entity.native_value is None
+
+
+async def test_measurement_blank_while_off_and_stale_after_on(
+    hass: HomeAssistant,
+) -> None:
+    """Off blanks the value; a pre-off reading is not shown again after on."""
+    device, entity = _measurement_sensor(hass, active_dp_id=1)
+    add_dp(device, 3, TuyaBLEDataPointType.DT_VALUE, 160)
+    measurement.active_throttled(entity)
+    assert entity.native_value == 160.0  # switch not reported yet: shown
+    add_dp(device, 1, TuyaBLEDataPointType.DT_BOOL, False)
+    measurement.active_throttled(entity)
+    assert entity.native_value is None
+    add_dp(device, 1, TuyaBLEDataPointType.DT_BOOL, True)
+    measurement.active_throttled(entity)
+    assert entity.native_value is None  # DP 3 has not been reported since off
+    add_dp(device, 3, TuyaBLEDataPointType.DT_VALUE, 160)  # equal value, fresh
+    measurement.active_throttled(entity)
+    assert entity.native_value == 160.0
+
+
+async def test_measurement_off_before_first_reading(hass: HomeAssistant) -> None:
+    """Off with no reading yet blanks the value and accepts the first report."""
+    device, entity = _measurement_sensor(hass, active_dp_id=1)
+    add_dp(device, 1, TuyaBLEDataPointType.DT_BOOL, False)
+    measurement.active_throttled(entity)
+    assert entity.native_value is None
+    add_dp(device, 1, TuyaBLEDataPointType.DT_BOOL, True)
+    add_dp(device, 3, TuyaBLEDataPointType.DT_VALUE, 12)
+    measurement.active_throttled(entity)
+    assert entity.native_value == 12.0
+
+
+async def test_measurement_throttles_small_frequent_changes(
+    hass: HomeAssistant,
+) -> None:
+    """Small changes wait for the interval; large ones show immediately."""
+    device, entity = _measurement_sensor(
+        hass, active_dp_id=1, report_min_change=5, report_max_interval=30
+    )
+    clock = _Clock()
+    add_dp(device, 1, TuyaBLEDataPointType.DT_BOOL, True)
+    with patch.object(measurement, "monotonic", clock):
+        for elapsed, raw_value, expected in (
+            (0, 100, 100.0),  # first reading
+            (1, 104, 100.0),  # < 5 degrees, < 30 s
+            (2, 95, 95.0),  # 5 degree drop
+            (20, 97, 95.0),  # < 5 degrees, 18 s since shown
+            (32, 97, 97.0),  # 30 s since the last shown reading
+            (33, 102, 102.0),  # exactly 5 degrees
+        ):
+            clock.now = 1000.0 + elapsed
+            add_dp(device, 3, TuyaBLEDataPointType.DT_VALUE, raw_value)
+            measurement.active_throttled(entity)
+            assert entity.native_value == expected
+
+
+async def test_measurement_throttle_restarts_after_off(hass: HomeAssistant) -> None:
+    """The first fresh reading after switching back on is never throttled."""
+    device, entity = _measurement_sensor(
+        hass, active_dp_id=1, report_min_change=5, report_max_interval=30
+    )
+    clock = _Clock()
+    with patch.object(measurement, "monotonic", clock):
+        add_dp(device, 1, TuyaBLEDataPointType.DT_BOOL, True)
+        add_dp(device, 3, TuyaBLEDataPointType.DT_VALUE, 200)
+        measurement.active_throttled(entity)
+        add_dp(device, 1, TuyaBLEDataPointType.DT_BOOL, False)
+        measurement.active_throttled(entity)
+        clock.now += 1
+        add_dp(device, 1, TuyaBLEDataPointType.DT_BOOL, True)
+        add_dp(device, 3, TuyaBLEDataPointType.DT_VALUE, 199)
+        measurement.active_throttled(entity)
+    assert entity.native_value == 199.0
+
+
+@pytest.mark.parametrize("previous", ["stale", True])
+async def test_measurement_replaces_non_numeric_previous_value(
+    hass: HomeAssistant, previous: Any
+) -> None:
+    """A restored non-numeric value never blocks the next reading."""
+    device, entity = _measurement_sensor(hass, report_min_change=5)
+    entity.set_native_value(previous)
+    entity.handler_state["last_shown"] = 0.0
+    add_dp(device, 3, TuyaBLEDataPointType.DT_VALUE, 1)
+    measurement.active_throttled(entity)
+    assert entity.native_value == 1.0
