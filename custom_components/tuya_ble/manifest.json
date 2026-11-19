@@ -20,7 +20,8 @@
   "issue_tracker": "https://github.com/timlaing/ha_tuya_ble/issues",
   "requirements": [
     "pycryptodome>=3.20.0",
-    "tuya-device-sharing-sdk>=0.2.15"
+    "tuya-device-sharing-sdk>=0.2.15",
+    "tuya-mobile==1.2.0"
   ],
   "version": "2.10.0-beta.6"
 }

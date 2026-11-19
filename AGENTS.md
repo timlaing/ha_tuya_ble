@@ -1,5 +1,7 @@
 # AGENTS.md
 
+<!-- cspell:ignore ecode -->
+
 ## Project
 
 Home Assistant custom integration (HACS) for Tuya BLE devices. Handles encryption and device protocol locally over Bluetooth — no cloud dependency after initial key exchange.
@@ -95,6 +97,9 @@ If a file falls below the threshold, add tests until it passes before committing
 | `tests/test_config_flow_manual.py`                                         | manual credential entry: validation, Bluetooth verification, errors and claims                        |
 | `tests/test_config_flow_options_credentials.py`                            | options-flow key-pair replacement, security-key clearing and refusal                                  |
 | `tests/test_session_recovery.py`                                           | failed/unanswered command recovery: no replay after reconnect, stale clients, waiters                 |
+| `tests/test_mobile_cloud.py`                                               | one-time mobile app login, target identity, atomic key pairs and optional enrichment                  |
+| `tests/test_mobile_snapshot.py`                                            | bounded recursive mobile metadata sanitization, export revalidation and privacy                       |
+| `tests/test_config_flow_mobile.py`                                         | conditional app-key recovery, numeric country validation, cancellation and reconfiguration            |
 | `tests/test_reconnect_absent_device.py`                                    | absent at startup: advertising, duplicate connects, failed handshakes, unload, drops                  |
 
 ### prek
@@ -151,6 +156,9 @@ All public BLE symbols — `TuyaBLEDevice`, `TuyaBLEDataPoint`, `TuyaBLEDataPoin
 | `config_flow.py`                         | QR code login flow (menu → user code → scan → device selection)                                                                            |
 | `config_flow_manual.py`                  | Manual credential fallback: form validation and Bluetooth verification before entry creation                                               |
 | `config_flow_options.py`                 | Options flow (QR-code re-authentication, transactional local/security key-pair replacement)                                                |
+| `config_flow_mobile.py`                  | Conditional app login for missing Security V2 keys; password/session data stays ephemeral                                                  |
+| `mobile_cloud.py`                        | Read-only exact-device mobile API access using tuya-mobile; import matching local/security keys together                                   |
+| `mobile_snapshot.py`                     | Pure bounded sanitization of device metadata before persistence and again before diagnostics export                                        |
 | `cloud.py`                               | `tuya_sharing.Manager` wrapper, MAC-based device credential lookup                                                                         |
 | `const.py`                               | Constants — imports shared names from `homeassistant.components.tuya.const`; re-exports `DPType` from `tuya_ble.const`                     |
 | `device_registry.py`                     | `EntityDescriptor`, YAML descriptor loading/validation, `get_registry`, `get_mapped_dp_ids` — the product registry                         |
@@ -182,7 +190,7 @@ Some platforms carry bespoke per-device logic beyond the mapping dict. It lives 
 - **`bleak` / `bleak_retry_connector`** — BLE communication — provided by HA core
 - **`homeassistant.components.tuya.const`** — shared constants (`TUYA_CLIENT_ID`, `CONF_USER_CODE`, etc.)
 
-Runtime deps are only `tuya-device-sharing-sdk` (manifest.json). Development tools (`ruff`, `mypy`, `pylint`, `pytest`, `prek`, `homeassistant`, `pycryptodome`) live in `requirements-dev.txt`.
+Runtime deps are `tuya-device-sharing-sdk` and pinned `tuya-mobile` (manifest.json); the latter is used only for conditional, one-time app login. Development tools (`ruff`, `mypy`, `pylint`, `pytest`, `prek`, `homeassistant`, `pycryptodome`) live in `requirements-dev.txt`.
 
 Do not add `tuya-iot-py-sdk` back. The integration migrated away from it in `e5ca99f`.
 
@@ -194,6 +202,7 @@ Do not add `tuya-iot-py-sdk` back. The integration migrated away from it in `e5c
 - Diivoo timers using the **Homgar app** (not Tuya Smart Life) won't appear in Tuya cloud — no local key extractable
 - `functions` / `status_range` on `TuyaBLEDeviceCredentials` carry the device specs from cloud, under the `CONF_FUNCTIONS` / `CONF_STATUS_RANGE` keys
 - `sec_key` on `TuyaBLEDeviceCredentials` is the cloud Security V2 key. It is persisted under `CONF_SEC_KEY` only when the FD50 advertisement announces Security V2, is excluded from `repr`, masked in `__str__`, redacted in diagnostics and never logged
+- Mobile login is only offered for eligible missing/unusable-key failures. Never persist or log the mobile password, username, SID, ecode or login tokens; do not reuse the standalone probe's session cache in the integration. Persist sanitized mobile metadata under `CONF_MOBILE_SNAPSHOT`; never persist a raw mobile response for later redaction.
 - `local_schema` on `TuyaBLEDeviceCredentials` carries the captured cloud schema (full local strategy, full status range with `report_type`, and `captured_at`), persisted under `CONF_LOCAL_SCHEMA` in the config entry's `data` by `config_flow.py` and exported by `diagnostics.py`. DP metadata only — never credentials
 - `tuya_ble/tuya_ble.py` and `tuya_ble/protocol_mixin.py` use `from Crypto.Cipher import AES` (pycryptodome/pycryptodomex) — not a listed runtime requirement but always available in HA
 - `select.py` subclasses `SelectEntityDescription` as `TemperatureUnitDescription` (select.py:43) purely to supply the `icon` and `entity_category` defaults for the `temperature_unit` translation key. Descriptions are always assembled into a `kwargs` dict that already contains `key`, so a subclass never has to repeat it — add a new subclass for its defaults, not for `key`.

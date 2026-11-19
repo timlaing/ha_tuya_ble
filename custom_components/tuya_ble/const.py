@@ -59,6 +59,9 @@ CONF_FUNCTIONS: Final = "functions"
 CONF_STATUS_RANGE: Final = "status_range"
 CONF_LOCAL_SCHEMA: Final = "local_schema"
 CONF_CLOUD_INFO: Final = "cloud_info"
+CONF_CLOUD_REGION: Final = "cloud_region"
+CONF_MOBILE_SNAPSHOT: Final = "mobile_cloud_info"
+CONF_CREDENTIAL_SOURCE: Final = "credential_source"
 
 TUYA_DOMAIN: Final = "tuya"
 

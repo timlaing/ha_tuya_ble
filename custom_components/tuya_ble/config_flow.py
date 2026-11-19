@@ -25,11 +25,12 @@ from homeassistant.data_entry_flow import AbortFlow
 import probatio
 from tuya_sharing import LoginControl
 
-from . import _build_credentials_from_entry
 from .cloud import HASSTuyaBLEDeviceManager
 from .config_flow_manual import MANUAL_STEP, _ManualCredentialsMixin
+from .config_flow_mobile import _MobileLoginMixin, needs_mobile_login
 from .config_flow_options import TuyaBLEOptionsFlow
 from .config_flow_qr import UNKNOWN_ERROR, _QRCodeLoginMixin
+from .config_flow_reconfigure import _ReconfigureMixin
 from .config_flow_scan import (
     async_scan_device,
     awaits_fd50_scan_response,
@@ -94,11 +95,15 @@ PROBE_MAX_CANDIDATES = 4
 _LOGGER = logging.getLogger(__name__)
 
 
+# Small workflow mixins keep independent HA form lifecycles out of this module.
+# pylint: disable-next=too-many-ancestors
 class TuyaBLEConfigFlow(
     ConfigFlow,
     _QRCodeLoginMixin,
     _UnverifiedSetupMixin,
     _ManualCredentialsMixin,
+    _MobileLoginMixin,
+    _ReconfigureMixin,
     domain=DOMAIN,
 ):
     """Handle a config flow for Tuya BLE."""
@@ -137,6 +142,7 @@ class TuyaBLEConfigFlow(
     def async_remove(self) -> None:
         """Cancel pending verification and release only this flow's device claims."""
         self._flow_removed = True
+        self._cancel_mobile_login()
         if self._probe_task is not None and not self._probe_task.done():
             self._probe_task.cancel()
         if self._reconfigure_unloaded:
@@ -399,6 +405,7 @@ class TuyaBLEConfigFlow(
             # Only a device advertising Security V2 needs, and receives, the key.
             # A malformed key is never stored: runtime could not load the entry.
             entry_data[CONF_SEC_KEY] = credentials.sec_key
+        entry_data.update(self._mobile_entry_updates())
         _LOGGER.debug(
             "%s: config entry created (category: %s, product_id: %s, device_name: %s)",
             discovery_info.address,
@@ -482,9 +489,17 @@ class TuyaBLEConfigFlow(
         if unverified is not None:
             # Only a failed v4 verification leaves these; show why it failed.
             error = unverified[1]
+            if not self._mobile_attempted and needs_mobile_login(
+                advertisement, unverified[0], error
+            ):
+                await self._async_restore_entry()
+                self._mobile_pending = (discovery, advertisement, *unverified)
+                self._unverified_setup = self._mobile_pending
+                return await self.async_step_mobile_offer()
         if self._probe_source_step == "reconfigure":
             self._probe_error = error
             await self._async_restore_entry()
+            self._store_mobile_diagnostics()
             return await self._async_reconfigure_locked(None)
         if unverified is not None:
             self._unverified_setup = (discovery, advertisement, *unverified)
@@ -509,7 +524,7 @@ class TuyaBLEConfigFlow(
             self._reconfigure_unloaded = False
             return self.async_update_reload_and_abort(
                 self._get_reconfigure_entry(),
-                data_updates={CONF_CONNECTION_PROFILE: str(profile)},
+                data_updates=self._mobile_reconfigure_updates(credentials),
                 reload_even_if_entry_is_unchanged=True,
             )
         if profile is not None:
@@ -751,60 +766,6 @@ class TuyaBLEConfigFlow(
                 self._get_reconfigure_entry().entry_id
             )
 
-    async def async_step_reconfigure(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Verify compatibility for an existing entry without changing entity IDs."""
-        async with self._setup_lock:
-            return await self._async_reconfigure_locked(user_input)
-
-    async def _async_reconfigure_locked(
-        self, user_input: dict[str, Any] | None
-    ) -> ConfigFlowResult:
-        """Keep the task check and all awaited setup stages under one flow lock."""
-        self._abort_if_flow_removed()
-        errors: dict[str, str] = {}
-        if self._probe_error is not None:
-            errors["base"], self._probe_error = self._probe_error, None
-        if self._probe_task is not None:
-            return await self.async_step_probe()
-        if user_input is not None:
-            entry = self._get_reconfigure_entry()
-            await self.async_set_unique_id(entry.unique_id)
-            self._abort_if_flow_removed()
-            self._abort_if_unique_id_mismatch()
-            discovery = await self._async_scan_device(entry.data[CONF_ADDRESS])
-            self._abort_if_flow_removed()
-            if discovery is None:
-                errors["base"] = "bluetooth_scan_failed"
-            elif (
-                advertisement := decode_tuya_ble_advertisement(discovery.advertisement)
-            ) is None:
-                errors["base"] = "identity_not_decoded"
-            elif advertisement.protocol_version != 4:
-                return self.async_abort(reason="unsupported_device")
-            elif not await self.hass.config_entries.async_unload(entry.entry_id):
-                self._abort_if_flow_removed()
-                errors["base"] = "v4_verification_failed"
-            else:
-                self._reconfigure_unloaded = True
-                if self._flow_removed:
-                    await self._async_restore_entry()
-                    self._abort_if_flow_removed()
-                self._probe_source_step = "reconfigure"
-                self._probe_discovery = discovery
-                self._probe_advertisement = advertisement
-                self._probe_task = self.hass.async_create_task(
-                    self._async_verify_v4(
-                        discovery, _build_credentials_from_entry(entry)
-                    )
-                )
-                self._probe_task.add_done_callback(_consume_probe_result)
-                return await self.async_step_probe()
-        return self.async_show_form(
-            step_id="reconfigure", data_schema=probatio.Schema({}), errors=errors
-        )
-
     async def async_step_discovered_device(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -979,6 +940,8 @@ class TuyaBLEConfigFlow(
 
         self._manager = HASSTuyaBLEDeviceManager(self.hass, self._data)
         await self._manager.initialize()
+        if self._mobile_region_login:
+            return await self._async_mobile_region_ready()
         if self.discovery_info is not None:
             _LOGGER.debug(
                 "Login complete, setting up discovered device %s directly",

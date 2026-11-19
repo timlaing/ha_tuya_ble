@@ -1,1 +1,2 @@
 tuya-device-sharing-sdk
+tuya-mobile==1.2.0

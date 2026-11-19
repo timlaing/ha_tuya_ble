@@ -22,6 +22,7 @@ from custom_components.tuya_ble.const import (
     CONF_FUNCTIONS,
     CONF_LOCAL_KEY,
     CONF_LOCAL_SCHEMA,
+    CONF_MOBILE_SNAPSHOT,
     CONF_PRODUCT_ID,
     CONF_STATUS_RANGE,
     CONF_TERMINAL_ID,
@@ -35,6 +36,7 @@ from custom_components.tuya_ble.diagnostics import (
     async_get_config_entry_diagnostics,
     async_get_device_diagnostics,
 )
+from custom_components.tuya_ble.mobile_snapshot import capture_mobile_snapshot
 from custom_components.tuya_ble.tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
 from .conftest import FakeBLEManager, make_credentials
@@ -174,6 +176,7 @@ async def test_config_entry_diagnostics_shape(hass: HomeAssistant) -> None:
         "device",
         "live",
         "cloud_info",
+        "mobile_cloud_info",
         "cloud_schema",
         "descriptor",
         "identity",
@@ -693,3 +696,32 @@ async def test_diagnostics_without_cloud_field_map(hass: HomeAssistant) -> None:
     entry = _add_entry(hass, data=_entry_data() | {CONF_CLOUD_INFO: {"pv": "1"}})
     payload = await async_get_config_entry_diagnostics(hass, entry)
     assert "fields" not in payload["cloud_info"]
+
+
+async def test_stored_mobile_snapshot_is_safe_without_a_loaded_device(
+    hass: HomeAssistant,
+) -> None:
+    """Unavailable devices still export sanitized, separate mobile cloud metadata."""
+    snapshot = capture_mobile_snapshot(
+        "tuya_smart",
+        {
+            "device": {
+                "productVer": "1.2",
+                "sec_key": "SECRET_SECURITY_KEY",
+                "localKey": "SECRET_LOCAL_KEY",
+            }
+        },
+        {"device": True},
+    )
+    # Stored entries are revalidated, not trusted just because capture was safe.
+    snapshot["records"]["device"]["owner_id"] = "PRIVATE_OWNER"
+    entry = _add_entry(hass, data=_entry_data() | {CONF_MOBILE_SNAPSHOT: snapshot})
+    payload = await async_get_config_entry_diagnostics(hass, entry)
+    mobile = payload["mobile_cloud_info"]
+    assert mobile["records"]["device"]["productVer"] == "1.2"
+    assert mobile["records"]["device"]["sec_key"]["redacted"] is True
+    assert mobile["key_presence"]["sec_key"] is True
+    assert payload["device"]["loaded"] is False
+    assert "cloud_info" in payload
+    for value in ("SECRET_SECURITY_KEY", "SECRET_LOCAL_KEY", "PRIVATE_OWNER"):
+        assert value not in repr(payload)
