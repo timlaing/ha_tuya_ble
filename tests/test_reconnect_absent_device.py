@@ -581,3 +581,54 @@ async def test_stopped_device_never_starts_a_queued_connection(
     await attempt
     assert not firmware.devices
     assert not firmware.clients
+
+
+@pytest.mark.parametrize("cleanup", ["none", "cleanup_blocked"])
+async def test_replacement_waits_for_a_stopped_handshake(
+    firmware: AbsentFirmware, cleanup: str
+) -> None:
+    """Stopping during the handshake closes that link before a replacement.
+
+    The stopped attempt already owns its client but has not discarded it yet,
+    so the stop itself must put it behind the cleanup gate.
+    """
+    firmware.advertising = True
+    firmware.cleanup_failures = [cleanup]
+    stopped = _paired_device()
+    configuring, release = asyncio.Event(), asyncio.Event()
+    configure = stopped._configure_client
+
+    async def pause() -> bool:
+        configuring.set()
+        await release.wait()
+        return await configure()
+
+    replacement = _paired_device()
+    try:
+        with patch.object(stopped, "_configure_client", side_effect=pause):
+            attempt = asyncio.create_task(stopped.update())
+            await configuring.wait()
+            late = firmware.clients[0]
+            async with asyncio.timeout(TIMEOUT):
+                await stopped.stop()
+            queued = asyncio.create_task(replacement.update())
+            await asyncio.sleep(0.02)
+            release.set()
+            await attempt
+        if cleanup == "cleanup_blocked":
+            with pytest.raises(BleakNotFoundError):
+                await queued
+            assert len(firmware.clients) == 1
+            assert late.physical_connected
+            late.release_disconnect.set()
+            await _until(replacement._is_ready)
+        else:
+            await queued
+        assert not late.physical_connected
+        assert firmware.overlaps == 0
+        assert replacement._client is cast(
+            BleakClientWithServiceCache, firmware.clients[1]
+        )
+        assert stopped._client is None
+    finally:
+        await replacement.stop()

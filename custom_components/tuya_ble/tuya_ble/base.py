@@ -550,9 +550,14 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
         self._expected_disconnect = True
         self._cancel_pending_responses()
         if self._connect_lock.locked():
-            # An attempt, maybe in a caller's task stop() cannot cancel, discards
-            # its own client on seeing _expected_disconnect; never wait behind it.
-            _LOGGER.debug("%s: In-flight connection will close itself", self.address)
+            # Never wait behind an attempt stop() may not cancel. Close a client it
+            # already owns behind the gate replacements check; once the attempt
+            # sees _expected_disconnect it joins this teardown.
+            _LOGGER.debug("%s: Closing the in-flight connection", self.address)
+            if self._client is not None:
+                self._connection_cleanup.schedule_discard(
+                    self._client, _DISCARDED_CLIENT_CLEANUP_TIMEOUT
+                )
         else:
             await self._disconnect_current_client()
         async with self._seq_num_lock:
