@@ -28,6 +28,10 @@ from custom_components.tuya_ble.const import CONF_BLE_UNLOCK_CHECK, DOMAIN
 from custom_components.tuya_ble.device_registry import DeviceEntities, DeviceRegistry
 from custom_components.tuya_ble.devices import TuyaBLEData, TuyaBLEProductInfo
 from custom_components.tuya_ble.diagnostics import async_get_config_entry_diagnostics
+from custom_components.tuya_ble.mobile_snapshot import (
+    capture_mobile_snapshot,
+    filter_mobile_snapshot,
+)
 from custom_components.tuya_ble.tuya_ble import (
     ConnectionProfile,
     TuyaBLEDataPoints,
@@ -274,6 +278,26 @@ async def test_diagnostics_without_check(hass: HomeAssistant) -> None:
     entry = _add_entry(hass)
     payload = await async_get_config_entry_diagnostics(hass, entry)
     assert payload["identity"]["ble_unlock_check_stored"] is False
+
+
+def test_mobile_snapshot_never_keeps_the_check() -> None:
+    """App-login metadata (#209) withholds the check and DP 71 payloads."""
+    command = build_timestamped_unlock_command(CHECK, 1).hex()
+    records = {
+        "device": {
+            "devId": "device123",
+            "dps": {"71": command},
+            "status": [{"code": CONF_BLE_UNLOCK_CHECK, "value": CHECK}],
+            "dataPointInfo": {"dps": {"71": command}},
+        },
+        "status": {"result": [{"code": CONF_BLE_UNLOCK_CHECK, "value": CHECK}]},
+    }
+    snapshot = capture_mobile_snapshot("smart_life", records, {"device": True})
+    exported = filter_mobile_snapshot(snapshot)
+    for payload in (snapshot, exported):
+        assert CHECK not in repr(payload)
+        assert command not in repr(payload)
+        assert SECRET not in repr(payload)
 
 
 # --- logging ----------------------------------------------------------------
