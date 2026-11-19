@@ -20,14 +20,14 @@ def in_eco_mode(entity: TuyaBLENumber, product: TuyaBLEProductInfo) -> bool:
         if dp_id is None or eco_value is None:
             continue
         datapoint = entity.device.datapoints[dp_id]
-        return datapoint is not None and datapoint.value == eco_value
+        return datapoint is not None and datapoint.reported_value == eco_value
     return False
 
 
 def child_lock_state(entity: TuyaBLESensor) -> None:
     """Translate a reported Boolean lock state to diagnostic enum text."""
     datapoint = entity.device.datapoints[entity.dp_id]
-    if datapoint is None or not isinstance(datapoint.value, bool):
+    if datapoint is None or not isinstance(datapoint.reported_value, bool):
         entity.set_native_value(None)
         return
-    entity.set_native_value("enabled" if datapoint.value else "disabled")
+    entity.set_native_value("enabled" if datapoint.reported_value else "disabled")

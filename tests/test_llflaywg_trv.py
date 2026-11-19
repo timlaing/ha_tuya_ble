@@ -608,3 +608,64 @@ async def test_calibration_adopts_only_the_same_semantic_legacy_id(
     descriptor = device_registry.get_registry().get("wkf", "llflaywg")
     assert descriptor is not None
     assert not any(item.legacy_keys for item in descriptor.get("sensor"))
+
+
+@pytest.mark.parametrize("initial", [None, 0, 1])
+async def test_preset_write_keeps_reported_eco_availability(
+    hass: HomeAssistant, initial: int | None
+) -> None:
+    """A local preset write never masquerades as a device-confirmed eco report."""
+    device, coordinator, product = _context(hass)
+    climate_entity = _climate(hass, device, coordinator, product)
+    deviation = number.TuyaBLENumber(
+        hass, coordinator, device, product, number.get_mapping_by_device(device)[1]
+    )
+    if initial is not None:
+        add_dp(device, 114, DPType.DT_ENUM, initial)
+    with patch.object(device, "send_datapoints", new_callable=AsyncMock):
+        await connect(coordinator)
+        desired = 0 if initial == 1 else 1
+        await climate_entity.async_set_preset_mode("comfort" if desired == 0 else "eco")
+        datapoint = device.datapoints[114]
+        assert datapoint is not None
+        assert datapoint.value == desired
+        assert datapoint.reported_value == initial
+        assert datapoint.report_revision == (0 if initial is None else 1)
+        assert deviation.available == (initial == 1)
+        add_dp(device, 114, DPType.DT_ENUM, desired)
+        assert deviation.available == (desired == 1)
+        assert datapoint.reported_value == desired
+        await coordinator.async_shutdown()
+
+
+@pytest.mark.parametrize("initial", [None, False, True])
+async def test_child_lock_diagnostic_uses_confirmed_state(
+    hass: HomeAssistant, initial: bool | None
+) -> None:
+    """The diagnostic keeps the last reported lock state while a write is pending."""
+    device, coordinator, product = _context(hass)
+    mapping = next(
+        item
+        for item in sensor.get_mapping_by_device(device)
+        if item.description.key == "child_lock_state"
+    )
+    entity = sensor.TuyaBLESensor(hass, coordinator, device, product, mapping)
+    if initial is not None:
+        add_dp(device, 12, DPType.DT_BOOL, initial)
+    desired = not initial
+    with (
+        patch.object(sensor.TuyaBLESensor, "async_write_ha_state"),
+        patch.object(device, "send_datapoints", new_callable=AsyncMock),
+    ):
+        await entity.async_added_to_hass()
+        datapoint = device.datapoints.get_or_create(12, DPType.DT_BOOL, desired)
+        await datapoint.set_value(desired)
+        coordinator.async_set_updated_data({})
+        expected = None
+        if initial is not None:
+            expected = "enabled" if initial else "disabled"
+        assert entity.native_value == expected
+        assert datapoint.reported_value is initial
+        add_dp(device, 12, DPType.DT_BOOL, desired)
+        coordinator.async_set_updated_data({})
+        assert entity.native_value == ("enabled" if desired else "disabled")
