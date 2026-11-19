@@ -10,6 +10,13 @@ The baseline is shared-handler PR #195, parent
 in `ha-tuya-ble/ha_tuya_ble`, with source snapshot
 `99d8b1bdd377e1f4bc447cb2a75e6692ff2d135e`.
 
+Current stacked parent: `1db65b733133d313ccc377210ae7acb211909860` (#195,
+including #187 reported-value semantics and #209 mobile metadata privacy).
+Only this issue's commits were replayed. Lock handlers use the last
+device-reported values, not optimistic local writes: sending Lock, Unlock or
+Open cannot confirm the physical state. Mobile credential/snapshot code is
+inherited unchanged; no unlock-check content enters mobile metadata.
+
 ## Disposition by product
 
 | Category/product   | Source PRs / issues                                | Disposition and missing evidence                                                                                                                                                                                                                                                                      |

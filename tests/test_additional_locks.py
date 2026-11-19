@@ -157,9 +157,13 @@ async def test_pulido_commands_and_reported_state(
     await entity.async_lock()
     assert send.call_args.args == ([46],)
     assert _datapoint(device, 46).value is True
+    assert _datapoint(device, 46).reported_value is None
+    assert entity.is_locked is None
     await entity.async_unlock()
     assert send.call_args.args == ([33],)
     assert _datapoint(device, 33).value is True
+    assert _datapoint(device, 33).reported_value is None
+    assert entity.is_locked is None
     for passage, bolt, expected in [
         (True, False, False),
         (False, False, True),
@@ -169,6 +173,43 @@ async def test_pulido_commands_and_reported_state(
         add_dp(device, 47, TuyaBLEDataPointType.DT_BOOL, bolt)
         assert entity.is_locked is expected
     assert {m.dp_id for m in switch.get_mapping_by_device(device)} == {33}
+
+
+async def test_pulido_pending_writes_preserve_last_reported_state(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Successful sends are not bolt reports or confirmation of passage mode."""
+    device = _device("ms", "0qxp5u7s")
+    _record_writes(device, monkeypatch)
+    entity = lock.TuyaBLELock(
+        hass,
+        TuyaBLECoordinator(hass, device),
+        device,
+        get_device_product_info(device),
+        lock.get_mapping_by_device(device)[0],
+    )
+    add_dp(device, 33, TuyaBLEDataPointType.DT_BOOL, False)
+    add_dp(device, 47, TuyaBLEDataPointType.DT_BOOL, False)
+    assert entity.is_locked is True
+    await entity.async_unlock()
+    assert _datapoint(device, 33).value is True
+    assert _datapoint(device, 33).reported_value is False
+    assert entity.is_locked is True
+
+    add_dp(device, 33, TuyaBLEDataPointType.DT_BOOL, True)
+    assert entity.is_locked is False
+    await entity.async_lock()
+    assert entity.is_locked is False
+    add_dp(device, 33, TuyaBLEDataPointType.DT_BOOL, False)
+    assert entity.is_locked is True
+
+    await entity.async_open()
+    assert entity.is_locked is True
+    assert _datapoint(device, 6).reported_value is None
+    add_dp(device, 47, TuyaBLEDataPointType.DT_BOOL, True)
+    assert entity.is_locked is False
+    add_dp(device, 47, TuyaBLEDataPointType.DT_BOOL, False)
+    assert entity.is_locked is True
 
 
 async def test_h13_lock_only_button(
