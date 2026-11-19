@@ -1,0 +1,92 @@
+# Experimental gateway-schema subset; direct BLE transport/types remain untested.
+# Source: make-all/tuya-local ble_yl01_watertester.yaml; upstream issue 220.
+category: sh
+product_id: v1jqz5cy
+manufacturer: Yieryi
+model_name: BLE-YL01
+device_name: Water quality monitor
+entities:
+  sensor:
+    - dp_id: 1
+      name: TDS
+      unit: ppm
+      state_class: measurement
+      dp_type: 2
+      report_type: 2
+      force_add: false
+      handlers:
+        read: reported.numeric
+    - dp_id: 2
+      name: Temperature
+      device_class: temperature
+      unit: °C
+      state_class: measurement
+      coefficient: 10
+      dp_type: 2
+      report_type: 2
+      force_add: false
+      handlers:
+        read: reported.numeric
+    - dp_id: 7
+      name: Battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+      dp_type: 2
+      report_type: 2
+      force_add: false
+      handlers:
+        read: reported.numeric
+    - dp_id: 10
+      name: pH
+      device_class: ph
+      state_class: measurement
+      coefficient: 10
+      dp_type: 2
+      report_type: 2
+      force_add: false
+      handlers:
+        read: reported.numeric
+    - dp_id: 11
+      name: EC
+      unit: µS/cm
+      state_class: measurement
+      dp_type: 2
+      report_type: 2
+      force_add: false
+      handlers:
+        read: reported.numeric
+    - dp_id: 101
+      name: ORP
+      unit: mV
+      state_class: measurement
+      dp_type: 2
+      report_type: 2
+      force_add: false
+      handlers:
+        read: reported.numeric
+    - dp_id: 102
+      name: Chlorine
+      unit: mg/L
+      state_class: measurement
+      coefficient: 10
+      dp_type: 2
+      report_type: 2
+      force_add: false
+      handlers:
+        read: reported.numeric
+    - dp_id: 117
+      name: Salinity
+      unit: ppm
+      state_class: measurement
+      dp_type: 2
+      report_type: 2
+      force_add: false
+      handlers:
+        read: reported.numeric
+  button: []
+  light: []
+  number: []
+  select: []
+  switch: []

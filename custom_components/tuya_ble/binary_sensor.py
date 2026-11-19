@@ -132,6 +132,15 @@ class TuyaBLEBinarySensor(TuyaBLEEntity, BinarySensorEntity):
         )
         self._mapping = binary_sensor_mapping
 
+    def set_is_on(self, value: bool | None) -> None:
+        """Set the state from a descriptor read handler."""
+        self._attr_is_on = value
+
+    @property
+    def dp_id(self) -> int:
+        """Return the data point ID for descriptor read handlers."""
+        return self._mapping.dp_id
+
     @callback
     def _handle_coordinator_update(self) -> None:
         """Read the mapped datapoint and update the binary state."""

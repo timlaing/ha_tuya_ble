@@ -222,6 +222,7 @@ The integration supports a broad range of Tuya BLE devices across the following 
 | Fingerbots (`szjqr`, `kg`)               | Fingerbot, Fingerbot Plus, CubeTouch, Nedis Finger Robot, Switch Robot    |
 | Temperature & humidity sensors (`wsdcg`) | Soil moisture sensors, BLE temp/humidity sensors, soil thermo-hygrometers |
 | CO2 sensors (`co2bj`)                    | CO2 detectors                                                             |
+| Water quality (`sh`)                     | Yieryi BLE-YL01 (experimental read-only gateway-schema subset)            |
 | Smart locks (`ms`, `jtmspro`)            | Smart locks, cylinder locks, Raycube K7 Pro+, CentralAcesso               |
 | Climate (`wk`)                           | Thermostatic radiator valves (TRV)                                        |
 | Heaters (`qn`)                           | MaXpeedingRods diesel parking heater (experimental)                       |
