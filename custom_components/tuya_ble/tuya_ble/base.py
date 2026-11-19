@@ -474,8 +474,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
     async def stop(self) -> None:
         """Stop the TuyaBLE and cancel any in-flight background tasks."""
         _LOGGER.debug("%s: Stop", self.address)
-        # Set before touching any lock: an in-flight connect checks it before
-        # adopting its client, so stop() need not wait behind its retry loop.
+        # Set first: in-flight connects check it, so stop() never waits on one.
         self._expected_disconnect = True
         self._connection_cleanup.orphan()
         for task in self._background_tasks():
@@ -754,6 +753,8 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
         """Try to establish a BLE connection. Returns client or None."""
         try:
             async with global_connect_lock:
+                if self._expected_disconnect or self._connection_cleanup.blocked():
+                    return None
                 _LOGGER.debug("%s: Connecting; RSSI: %s", self.address, self.rssi)
                 client = await establish_connection(
                     BleakClientWithServiceCache,

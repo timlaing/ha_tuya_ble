@@ -91,6 +91,20 @@ class _ConnectionCleanup:
             _orphaned_cleanups.pop(self.address.upper(), None)
         return tuple(peer for peer in peers if peer is not self)
 
+    def blocked(self) -> bool:
+        """Report, under the global connect lock, links a stopped owner still holds.
+
+        The cleanup gate runs before that lock is taken, so a stopped device's
+        attempt can retain its late client while a replacement waits for it.
+        """
+        if peers := self._peers():
+            _LOGGER.debug(
+                "%s: Waiting for %s stopped connection(s) to close",
+                self.address,
+                sum(len(peer.pending) for peer in peers),
+            )
+        return bool(peers)
+
     def capture_source(self, client: BleakClientWithServiceCache) -> None:
         """Capture a returned source before failure can discard its session state."""
         if client in self._proxy_sources or client in self._native_sources:

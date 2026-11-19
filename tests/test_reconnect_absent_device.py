@@ -37,6 +37,7 @@ from custom_components.tuya_ble.const import (
 )
 from custom_components.tuya_ble.devices import TuyaBLEData
 from custom_components.tuya_ble.tuya_ble import TuyaBLEDevice
+from custom_components.tuya_ble.tuya_ble import base as base_module
 from custom_components.tuya_ble.tuya_ble.const import TuyaBLECode
 from custom_components.tuya_ble.tuya_ble.manager import AbstractTuyaBLEDeviceManager
 from tests.conftest import make_credentials, make_device
@@ -165,6 +166,8 @@ def fast_timing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(f"{BASE}.BLEAK_BACKOFF_TIME", 0.01)
     monkeypatch.setattr(f"{BASE}._RECONNECT_INITIAL_DELAY", 0.02)
     monkeypatch.setattr(f"{BASE}._RECONNECT_MAX_DELAY", 0.05)
+    # Contended asyncio locks bind to one loop; keep this module's contention local.
+    monkeypatch.setattr(f"{BASE}.global_connect_lock", asyncio.Lock())
 
 
 @pytest.fixture(name="firmware")
@@ -518,3 +521,63 @@ async def test_replacement_waits_for_a_stopped_devices_late_link(
         assert datapoint.value == 42
     finally:
         await replacement.stop()
+
+
+@pytest.mark.parametrize("firmware", ["gated"], indirect=True)
+async def test_replacement_queued_behind_a_stopped_attempt_does_not_overlap(
+    firmware: AbsentFirmware,
+) -> None:
+    """A replacement already waiting to connect rechecks for the late link.
+
+    It passes the cleanup gate while the stopped device is still inside
+    ``establish_connection``, so it must check again once it holds the global
+    connect lock, and keep backing off while that late link cannot be closed.
+    """
+    firmware.advertising = True
+    firmware.cleanup_failures = ["cleanup_blocked"]
+    stopped = _paired_device()
+    attempt = asyncio.create_task(stopped.update())
+    await _until(lambda: firmware.in_flight == 1)
+    gate = firmware.gate
+    assert gate is not None
+    await stopped.stop()
+
+    replacement = _paired_device()
+    try:
+        queued = asyncio.create_task(replacement.update())
+        await asyncio.sleep(0.02)
+        assert firmware.in_flight == 1
+        firmware.gate = None
+        gate.set()
+        await attempt
+        with pytest.raises(BleakNotFoundError):
+            await queued
+        late = firmware.clients[0]
+        assert len(firmware.clients) == 1
+        assert late.physical_connected
+        assert stopped._pending_client_cleanup == {
+            cast(BleakClientWithServiceCache, late)
+        }
+
+        late.release_disconnect.set()
+        await _until(replacement._is_ready)
+        assert not late.physical_connected
+        assert firmware.overlaps == 0
+        assert replacement._client is firmware.clients[1]
+    finally:
+        await replacement.stop()
+
+
+async def test_stopped_device_never_starts_a_queued_connection(
+    firmware: AbsentFirmware,
+) -> None:
+    """An attempt still waiting for the global connect lock gives up on stop."""
+    firmware.advertising = True
+    stopped = _paired_device()
+    async with base_module.global_connect_lock:
+        attempt = asyncio.create_task(stopped.update())
+        await asyncio.sleep(0.02)
+        await stopped.stop()
+    await attempt
+    assert not firmware.devices
+    assert not firmware.clients
