@@ -1,0 +1,25 @@
+# Experimental: ha-tuya-ble/ha_tuya_ble PR 228 by @CloCkWeRX,
+# make-all/tuya-local PR 1828. Verified gateway DP1 strings and DP10 percent.
+# No direct BLE enum-order capture: integer enum reports remain unmapped.
+category: wxkg
+product_id: kpzc6pm8
+device_name: Arlec Smart Button
+manufacturer: Arlec
+model_name: SG022HA
+entities:
+  event:
+    - dp_id: 1
+      translation_key: event
+      device_class: button
+      dp_type: 3
+      event_values:
+        single_click: single_click
+        double_click: double_click
+        long_press: long_press
+  sensor:
+    - dp_id: 10
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic

@@ -144,6 +144,30 @@
     }
   },
   "entity": {
+    "event": {
+      "event": {
+        "name": "Button",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "single_click": "Single click",
+              "double_click": "Double click",
+              "long_press": "Long press"
+            }
+          }
+        }
+      },
+      "doorbell": {
+        "name": "Doorbell",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "ring": "Ring"
+            }
+          }
+        }
+      }
+    },
     "binary_sensor": {
       "battery": {
         "name": "Battery"
