@@ -314,8 +314,10 @@ followed by the usual `Received DP` line for each datapoint.
   dropped.
 - Security V2 provisioning flags 11 and 12, and the flag-16 anomaly unbind.
   They need the device's factory `auth_key`, which the cloud does not provide.
-- Any other security mode. A profile does not invent missing credentials, and
-  the classic login is never tried on firmware announcing Security V2 as on.
+- Any other security mode. A profile does not invent missing credentials.
+  When a valid `sec_key` is available, the classic login is never tried on
+  firmware announcing Security V2 as on; without one, the classic login is the
+  only one tried, and a silent device is reported as missing its key.
 
 ## Control writes
 
