@@ -164,6 +164,64 @@ async def test_cached_reports_and_local_writes(hass: HomeAssistant) -> None:
     assert entity.state == first
 
 
+async def test_locally_created_datapoint_does_not_prime_events(
+    hass: HomeAssistant,
+) -> None:
+    """Local creation and writes cannot consume the first device-report baseline."""
+    device, coordinator, product = build_context(hass)
+    dp = device.datapoints.get_or_create(1, DPType.DT_STRING, "single_click")
+    entity = event.TuyaBLEEvent(hass, coordinator, device, product, _mapping())
+    entity.hass = hass
+    entity.entity_id = "event.test_local_creation"
+    _mock_state_write(entity)
+    await entity.async_added_to_hass()
+    dp.set_value_no_notify("double_click")
+    device._fire_callbacks([dp])  # pylint: disable=protected-access
+    assert dp.report_revision == 0
+    assert dp.reported_value is None
+    assert entity.state is None
+    _report(entity)
+    assert entity.state is None
+    _report(entity)
+    first = entity.state
+    assert first is not None
+    _report(entity)
+    assert entity.state != first
+    assert entity.state_attributes == {"event_type": "single_click"}
+
+
+async def test_report_value_survives_an_earlier_listener_write(
+    hass: HomeAssistant,
+) -> None:
+    """An optimistic write during dispatch cannot replace the reported click."""
+    device, coordinator, product = build_context(hass)
+
+    def overwrite_local_value() -> None:
+        for dp in coordinator.last_updates:
+            dp.set_value_no_notify("long_press")
+
+    unsubscribe = coordinator.async_add_listener(overwrite_local_value)
+    entity = event.TuyaBLEEvent(hass, coordinator, device, product, _mapping())
+    entity.hass = hass
+    entity.entity_id = "event.test_report_snapshot"
+    _mock_state_write(entity)
+    await entity.async_added_to_hass()
+    _report(entity)
+    assert entity.state is None
+    _report(entity)
+    first = entity.state
+    assert first is not None
+    _report(entity)
+    assert entity.state != first
+    assert entity.state_attributes == {"event_type": "single_click"}
+    dp = device.datapoints[1]
+    assert dp is not None
+    assert dp.value == "long_press"
+    assert dp.reported_value == "single_click"
+    assert dp.report_revision == 3
+    unsubscribe()
+
+
 async def test_boolean_doorbell(hass: HomeAssistant) -> None:
     """Generic DP24 support uses true/ring; no unverified lock is registered."""
     entity = await _entity(hass)

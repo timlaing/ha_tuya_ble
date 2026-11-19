@@ -139,10 +139,13 @@ class TuyaBLEEvent(TuyaBLEEntity, EventEntity):
                 continue
             if dp.dp_type != self._mapping.dp_type:
                 continue
+            # Another listener may apply an optimistic write during dispatch.
+            # Events describe the received report, never that local value.
+            value = dp.reported_value
             # Only decoded scalar wire values can be dictionary keys.
-            if not isinstance(dp.value, bool | int | str):
+            if not isinstance(value, bool | int | str):
                 continue
-            event_type = self._mapping.event_values.get(dp.value)
+            event_type = self._mapping.event_values.get(value)
             if event_type is not None:
                 self._trigger_event(event_type)
         self.async_write_ha_state()
