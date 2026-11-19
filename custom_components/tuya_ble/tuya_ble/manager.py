@@ -7,7 +7,12 @@ from dataclasses import dataclass, field
 import logging
 from typing import Any
 
-from .const import MAX_DEVICE_ID_LENGTH, MAX_UUID_LENGTH, ConnectionProfile
+from .const import (
+    MAX_DEVICE_ID_LENGTH,
+    MAX_UUID_LENGTH,
+    ConnectionProfile,
+    SecurityMode,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,6 +35,20 @@ class TuyaBLEDeviceCredentials:
     cloud_info: dict[str, Any] | None = None
     connection_profile: ConnectionProfile | None = None
     sec_key: str | None = field(default=None, repr=False)
+    # The verified login channel. None keeps the original rule: a stored
+    # sec_key selects Security V2.
+    security_mode: SecurityMode | None = None
+
+    @property
+    def login_sec_key(self) -> str | None:
+        """Return the sec_key the login uses.
+
+        A verified classic login leaves the stored key unused, so a later
+        Reconfigure can still verify Security V2.
+        """
+        if self.security_mode is SecurityMode.CLASSIC:
+            return None
+        return self.sec_key
 
     def __str__(self) -> str:
         return (

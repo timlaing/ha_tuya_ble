@@ -45,6 +45,7 @@ from .const import (
     CONF_PRODUCT_MODEL,
     CONF_PRODUCT_NAME,
     CONF_SEC_KEY,
+    CONF_SECURITY_MODE,
     CONF_STATUS_RANGE,
     CONF_TERMINAL_ID,
     CONF_TOKEN_INFO,
@@ -327,6 +328,7 @@ async def _async_diagnostics(
                 if entry.data.get(CONF_CREDENTIAL_SOURCE) == "mobile_app"
                 else "stored"
             ),
+            CONF_SECURITY_MODE: entry.data.get(CONF_SECURITY_MODE),
         },
         "home_assistant": _home_assistant_section(hass, entry, device),
     }

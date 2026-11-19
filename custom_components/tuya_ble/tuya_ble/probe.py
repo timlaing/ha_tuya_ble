@@ -25,10 +25,16 @@ from bleak_retry_connector import (
 from .advertisement import decode_classic_record, decode_tuya_ble_advertisement
 from .base import TuyaBLEDevice, global_connect_lock
 from .connection_cleanup import set_probe_cleanup_waiter
-from .const import SUPPORTED_PROTOCOL_VERSIONS, ConnectionProfile, TuyaBLECode
+from .const import (
+    SUPPORTED_PROTOCOL_VERSIONS,
+    ConnectionProfile,
+    SecurityMode,
+    TuyaBLECode,
+)
 from .datapoints import TuyaBLEDataPoint
 from .exceptions import TuyaBLEDataFormatError, TuyaBLEDeviceError
 from .manager import TuyaBLEDeviceCredentials
+from .security import security_modes
 
 _LOGGER = logging.getLogger(__name__)
 PROBE_TIMEOUT = 12
@@ -799,17 +805,22 @@ def _release_probe_future(received: asyncio.Future[None]) -> None:
         received.cancel()
 
 
-async def async_detect_v4_profile(
+async def async_detect_v4_credentials(
     ble_device: BLEDevice,
     advertisement: AdvertisementData,
     credentials: TuyaBLEDeviceCredentials,
     expected_dp_ids: frozenset[int],
     stages: list[ProbeStage] | None = None,
-) -> ConnectionProfile | None:
-    """Try bounded read-only profiles, releasing each link before the next.
+) -> TuyaBLEDeviceCredentials | None:
+    """Verify a handshake profile and login channel, releasing each link.
 
-    A cloud match alone is not verification. Never provision an unbound device,
-    write datapoints or accept a profile without authenticated status data.
+    Returns a detached copy of the credentials carrying the verified profile
+    and security mode. Each login channel the advertisement allows is tried
+    with every profile, most likely first. The next channel is tried only
+    when the device never answered a device-info request on the previous
+    one: an answer proves the device accepted that key. A cloud match alone
+    is not verification. Never provision an unbound device, write datapoints
+    or accept a profile without authenticated status data.
     """
     info = decode_tuya_ble_advertisement(advertisement)
     # The bound state comes from the encrypted DEVICE_INFO reply, not the
@@ -818,39 +829,87 @@ async def async_detect_v4_profile(
         if stages is not None:
             stages.append(ProbeStage.INELIGIBLE)
         return None
+    for mode in security_modes(
+        info.security_v2, info.security_v2_enabled, credentials.sec_key
+    ):
+        verified, answered = await _async_detect_with_login(
+            ble_device, advertisement, credentials, expected_dp_ids, mode, stages
+        )
+        if verified is not None or answered:
+            return verified
+    return None
+
+
+async def _async_detect_with_login(
+    ble_device: BLEDevice,
+    advertisement: AdvertisementData,
+    credentials: TuyaBLEDeviceCredentials,
+    expected_dp_ids: frozenset[int],
+    mode: SecurityMode,
+    stages: list[ProbeStage] | None,
+) -> tuple[TuyaBLEDeviceCredentials | None, bool]:
+    """Try every profile with one login; report whether the device answered it.
+
+    An explicit pair refusal also ends detection: the device decrypted the
+    device-info request, so another login cannot help.
+    """
+    answered = False
     for profile in ConnectionProfile:
         _LOGGER.debug(
-            "%s: Verifying connection profile %s", ble_device.address, profile
+            "%s: Verifying connection profile %s with the %s login",
+            ble_device.address,
+            profile,
+            mode,
         )
-        candidate = TuyaBLEDeviceCredentials(
-            uuid=credentials.uuid,
-            local_key=credentials.local_key,
-            device_id=credentials.device_id,
-            category=credentials.category,
-            product_id=credentials.product_id,
-            device_name=credentials.device_name,
-            product_model=credentials.product_model,
-            product_name=credentials.product_name,
-            functions=credentials.functions,
-            status_range=credentials.status_range,
-            local_schema=credentials.local_schema,
-            cloud_info=credentials.cloud_info,
-            connection_profile=profile,
-            sec_key=credentials.sec_key,
-        )
+        candidate = replace(credentials, connection_profile=profile, security_mode=mode)
+        attempt_stages: list[ProbeStage] = []
         outcome = await async_probe_authenticated_status(
             ble_device,
             advertisement,
             candidate,
             credentials.uuid,
             expected_dp_ids,
-            stages,
+            attempt_stages,
         )
+        if stages is not None:
+            stages.extend(attempt_stages)
         if outcome == ProbeOutcome.MATCHED:
-            return profile
+            return candidate, True
         if outcome == ProbeOutcome.REJECTED:
-            break
-    return None
+            return None, True
+        answered = answered or any(map(_device_answered, attempt_stages))
+    return None, answered
+
+
+# Stages reached only after an encrypted device-info reply, which proves the
+# device accepted the login key.
+_ANSWERED_STAGES = frozenset({
+    ProbeStage.UNBOUND,
+    ProbeStage.UNSUPPORTED,
+    ProbeStage.PAIR,
+    ProbeStage.PAIR_REJECTED,
+    ProbeStage.STATUS,
+    ProbeStage.DATAPOINTS,
+})
+
+
+def _device_answered(stage: ProbeStage) -> bool:
+    """Return whether a device-info reply proved the login key was accepted."""
+    return stage in _ANSWERED_STAGES
+
+
+async def async_detect_v4_profile(
+    ble_device: BLEDevice,
+    advertisement: AdvertisementData,
+    credentials: TuyaBLEDeviceCredentials,
+    expected_dp_ids: frozenset[int],
+    stages: list[ProbeStage] | None = None,
+) -> ConnectionProfile | None:
+    """Return only the verified profile of ``async_detect_v4_credentials``."""
+    verified = await async_detect_v4_credentials(
+        ble_device, advertisement, credentials, expected_dp_ids, stages
+    )
+    return None if verified is None else verified.connection_profile
 
 
 async def _runtime_probe_cleanup(address: str) -> bool:

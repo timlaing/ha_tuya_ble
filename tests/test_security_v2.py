@@ -58,7 +58,7 @@ from custom_components.tuya_ble.tuya_ble.const import (
 from custom_components.tuya_ble.tuya_ble.exceptions import TuyaBLEDeviceError
 from custom_components.tuya_ble.tuya_ble.manager import TuyaBLEDeviceCredentials
 from tests import test_advertisement
-from tests.conftest import FakeBLEManager, make_credentials, make_device
+from tests.conftest import FakeBLEManager, make_credentials, make_device, verified_by
 from tests.protocol_harness import encrypt_payload, fragment, v4_advertisement
 from tests.test_cloud import make_device as make_cloud_device
 from tests.test_config_flow import FakeManager, build_flow
@@ -76,13 +76,15 @@ from tests.test_protocol_v4 import (
 
 LOCAL_KEY = "0123456789abcdef"
 SEC_KEY = "fedcba9876543210"
-# FD50 identity record advertising Security V2 with the bound bit clear, as the
-# captured Battery BLE Roller does.
-V2_SERVICE = b"\x41\x04\x00\x08abcdefgh"
+# FD50 identity record with Security V2 supported and switched on (byte 1
+# 0x0c, as the Parkside KC8B105), the bound bit clear.
+V2_SERVICE = b"\x41\x0c\x00\x08abcdefgh"
+# Security V2 supported but not switched on, as the captured Battery BLE Roller.
+V2_SUPPORTED_SERVICE = b"\x41\x04\x00\x08abcdefgh"
 CLASSIC_SERVICE = b"\x49\x00\x00\x08abcdefgh"
 PROBE_CONNECT = "custom_components.tuya_ble.tuya_ble.probe.establish_connection"
 RUNTIME_CONNECT = "custom_components.tuya_ble.tuya_ble.base.establish_connection"
-DETECT = "custom_components.tuya_ble.config_flow.async_detect_v4_profile"
+DETECT = "custom_components.tuya_ble.config_flow.async_detect_v4_credentials"
 SHADE_DATA = report(
     klv(1, TuyaBLEDataPointType.DT_ENUM, b"\x01")
     + klv(3, TuyaBLEDataPointType.DT_VALUE, pack(">i", 60))
@@ -153,7 +155,7 @@ def _probe_establish(
     ("service", "security_v2"),
     [
         (V2_SERVICE, True),
-        (b"\x41\x0c\x00\x08abcdefgh", True),
+        (V2_SUPPORTED_SERVICE, True),
         (b"\x41\x00\x00\x08abcdefgh", False),
         (CLASSIC_SERVICE, False),
     ],
@@ -545,7 +547,7 @@ async def test_entry_stores_sec_key_only_for_security_v2(
     flow._manager = cast(Any, FakeManager(v2_credentials()))
     with (
         patch.object(flow, "_async_scan_device", return_value=info),
-        patch(DETECT, new=AsyncMock(return_value=ConnectionProfile.V4_20)),
+        patch(DETECT, new=AsyncMock(side_effect=verified_by(ConnectionProfile.V4_20))),
     ):
         result = await flow.async_step_discovered_device({})
         assert result["type"] == FlowResultType.SHOW_PROGRESS

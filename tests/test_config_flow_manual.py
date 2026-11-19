@@ -42,9 +42,10 @@ from custom_components.tuya_ble.tuya_ble import (
     SERVICE_UUID,
     ConnectionProfile,
     ProbeOutcome,
+    SecurityMode,
 )
 from tests import test_advertisement
-from tests.conftest import FakeAdvertisementData
+from tests.conftest import FakeAdvertisementData, verified_by
 from tests.test_config_flow import FakeDiscovery, build_flow
 from tests.test_config_flow_v4 import discovery as v4_discovery
 
@@ -434,7 +435,9 @@ async def test_protocol_v4_uses_the_profile_verification(
     flow, info = discovered_flow(hass, v4_discovery())
     with (
         verification(flow, info) as probe,
-        patch(f"{FLOW}.async_detect_v4_profile", return_value=profile) as detect,
+        patch(
+            f"{FLOW}.async_detect_v4_credentials", side_effect=verified_by(profile)
+        ) as detect,
     ):
         result = await submit(flow, manual_input())
     probe.assert_not_awaited()
@@ -461,10 +464,15 @@ async def test_security_v2_device_keeps_the_entered_security_key(
     flow, _ = discovered_flow(hass, info)
     with (
         verification(flow, info),
-        patch(f"{FLOW}.async_detect_v4_profile", return_value=ConnectionProfile.V2_APP),
+        patch(
+            f"{FLOW}.async_detect_v4_credentials",
+            side_effect=verified_by(ConnectionProfile.V2_APP, SecurityMode.V2),
+        ),
     ):
         result = await submit(flow, manual_input(**{CONF_SEC_KEY: SEC_KEY}))
-    assert cast(dict[str, Any], result["data"])[CONF_SEC_KEY] == SEC_KEY
+    data = cast(dict[str, Any], result["data"])
+    assert data[CONF_SEC_KEY] == SEC_KEY
+    assert data["security_mode"] == "v2"
 
 
 async def test_bluetooth_discovery_reaches_manual_entry(hass: HomeAssistant) -> None:

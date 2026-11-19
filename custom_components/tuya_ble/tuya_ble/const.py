@@ -89,6 +89,15 @@ class ConnectionProfile(StrEnum):
         return self in (self.V4_MTU, self.V2_MTU)
 
 
+class SecurityMode(StrEnum):
+    """Login channel a device verified with, independent of its handshake profile."""
+
+    # Flags 4/5, keyed with the first six bytes of the local key.
+    CLASSIC = "classic"
+    # Flags 14/15, keyed with the full local key and the cloud sec_key.
+    V2 = "v2"
+
+
 class DPType(StrEnum):
     """Data point types (cloud spec)."""
 

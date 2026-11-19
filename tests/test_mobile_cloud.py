@@ -24,6 +24,7 @@ from custom_components.tuya_ble.mobile_cloud import (
     async_fetch_mobile_device,
     region_from_endpoint,
 )
+from custom_components.tuya_ble.tuya_ble import ConnectionProfile, SecurityMode
 from tests.conftest import make_credentials
 
 LOGIN = MobileLogin("tuya_smart", "private@example.org", "PRIVATE_PASSWORD", "44")
@@ -105,7 +106,12 @@ async def fetch(
 
 async def test_atomic_mobile_key_pair_and_snapshot(hass: HomeAssistant) -> None:
     """The pair comes entirely from mobile, while QR metadata stays intact."""
-    original = replace(make_credentials(), cloud_info={"product_name": "QR product"})
+    original = replace(
+        make_credentials(),
+        cloud_info={"product_name": "QR product"},
+        connection_profile=ConnectionProfile.V4_20,
+        security_mode=SecurityMode.CLASSIC,
+    )
     result, fake, factory = await fetch(hass, original)
     assert result.credentials is not None
     assert result.credentials.local_key == LOCAL
@@ -113,6 +119,8 @@ async def test_atomic_mobile_key_pair_and_snapshot(hass: HomeAssistant) -> None:
     assert original.local_key != LOCAL
     assert original.sec_key is None
     assert result.credentials.cloud_info == original.cloud_info
+    assert result.credentials.connection_profile is None
+    assert result.credentials.security_mode is None
     assert not result.error
     assert result.snapshot["records"]["device"]["communication"]["ble"] is True
     assert result.snapshot["operations"] == {

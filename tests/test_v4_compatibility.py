@@ -16,6 +16,7 @@ import pytest
 from custom_components.tuya_ble.tuya_ble import (
     ConnectionProfile,
     ProbeOutcome,
+    SecurityMode,
     TuyaBLEDevice,
     async_detect_v4_profile,
     async_probe_authenticated_status,
@@ -486,7 +487,11 @@ async def test_profile_candidate_preserves_credentials_and_schema() -> None:
         )
     candidate = probe.call_args.args[2]
     assert result == ConnectionProfile.V4_20
-    assert vars(candidate) == {**vars(credentials), "connection_profile": result}
+    assert vars(candidate) == {
+        **vars(credentials),
+        "connection_profile": result,
+        "security_mode": SecurityMode.CLASSIC,
+    }
     assert candidate is not credentials
     assert credentials.connection_profile is None
 

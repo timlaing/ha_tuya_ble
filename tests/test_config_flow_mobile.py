@@ -35,19 +35,24 @@ from custom_components.tuya_ble.const import (
     CONF_LOCAL_KEY,
     CONF_MOBILE_SNAPSHOT,
     CONF_SEC_KEY,
+    CONF_SECURITY_MODE,
     CONF_USER_CODE,
     CONF_UUID,
     DOMAIN,
 )
 from custom_components.tuya_ble.mobile_cloud import MobileResult
 from custom_components.tuya_ble.mobile_snapshot import capture_mobile_snapshot
-from custom_components.tuya_ble.tuya_ble import ConnectionProfile, ProbeStage
-from tests.conftest import make_credentials
+from custom_components.tuya_ble.tuya_ble import (
+    ConnectionProfile,
+    ProbeStage,
+    SecurityMode,
+)
+from tests.conftest import make_credentials, verified_by
 from tests.test_advertisement import v4_advertisement
 from tests.test_config_flow import FakeManager, build_flow
 from tests.test_config_flow_v4 import discovery
 
-DETECT = "custom_components.tuya_ble.config_flow.async_detect_v4_profile"
+DETECT = "custom_components.tuya_ble.config_flow.async_detect_v4_credentials"
 FETCH = "custom_components.tuya_ble.config_flow_mobile.async_fetch_mobile_device"
 FORM = {
     CONF_APP: "tuya_smart",
@@ -255,7 +260,9 @@ async def test_successful_fallback_persists_keys_not_login(hass: HomeAssistant) 
     candidate = replace(make_credentials(), local_key=LOCAL, sec_key=SEC)
     with (
         patch(FETCH, return_value=MobileResult(candidate, snapshot())) as fetch,
-        patch(DETECT, return_value=ConnectionProfile.V4_20),
+        patch(
+            DETECT, side_effect=verified_by(ConnectionProfile.V4_20, SecurityMode.V2)
+        ),
     ):
         result = await flow.async_step_mobile_login(FORM)
         assert result["type"] in (
@@ -294,7 +301,7 @@ async def test_cloud_success_bluetooth_failure_still_allows_diagnostics(
     candidate = replace(make_credentials(), local_key=LOCAL, sec_key=SEC)
     with (
         patch(FETCH, return_value=MobileResult(candidate, snapshot())),
-        patch(DETECT, return_value=None),
+        patch(DETECT, side_effect=verified_by(None)),
     ):
         await flow.async_step_mobile_login(FORM)
         await flow._mobile_task
@@ -503,7 +510,9 @@ async def test_reconfigure_success_updates_pair_and_profile_atomically(
     candidate = replace(make_credentials(), local_key=LOCAL, sec_key=SEC)
     with (
         patch(FETCH, return_value=MobileResult(candidate, snapshot())),
-        patch(DETECT, return_value=ConnectionProfile.V4_20),
+        patch(
+            DETECT, side_effect=verified_by(ConnectionProfile.V4_20, SecurityMode.V2)
+        ),
         patch.object(hass.config_entries, "async_unload", return_value=True),
         patch.object(
             flow,
@@ -520,6 +529,7 @@ async def test_reconfigure_success_updates_pair_and_profile_atomically(
     assert updates[CONF_LOCAL_KEY] == LOCAL
     assert updates[CONF_SEC_KEY] == SEC
     assert updates[CONF_CONNECTION_PROFILE] == "v4_20"
+    assert updates[CONF_SECURITY_MODE] == "v2"
     assert updates[CONF_CREDENTIAL_SOURCE] == "mobile_app"
     assert entry.data[CONF_LOCAL_KEY] == "original-key"  # update itself is stubbed
 
@@ -645,7 +655,7 @@ async def test_reconfigure_ble_failure_keeps_existing_pair(hass: HomeAssistant) 
     candidate = replace(make_credentials(), local_key=LOCAL, sec_key=SEC)
     with (
         patch(FETCH, return_value=MobileResult(candidate, snapshot())),
-        patch(DETECT, return_value=None),
+        patch(DETECT, side_effect=verified_by(None)),
         patch.object(hass.config_entries, "async_unload", return_value=True),
         patch.object(
             hass.config_entries, "async_reload", return_value=True
@@ -672,11 +682,18 @@ async def test_explicit_recovery_retry_uses_staged_pair_without_login(
     entry = reconfigure(flow, hass)
     flow._probe_source_step = "reconfigure"
     candidate = replace(make_credentials(), local_key=LOCAL, sec_key=SEC)
-    profiles = (
-        [None, ConnectionProfile.V4_20]
-        if failure == "ble"
-        else [ConnectionProfile.V4_20]
-    )
+    detectors = [
+        verified_by(profile, SecurityMode.V2)
+        for profile in (
+            [None, ConnectionProfile.V4_20]
+            if failure == "ble"
+            else [ConnectionProfile.V4_20]
+        )
+    ]
+
+    async def profiles(*args: Any, **kwargs: Any) -> Any:
+        return await detectors.pop(0)(*args, **kwargs)
+
     unloads = [True, True] if failure == "ble" else [False, True]
     with (
         patch(FETCH, return_value=MobileResult(candidate, snapshot())) as fetch,

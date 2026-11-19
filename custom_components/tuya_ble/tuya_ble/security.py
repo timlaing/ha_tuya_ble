@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 
-from .const import SECURITY_V2_KEY_LENGTH
+from .const import SECURITY_V2_KEY_LENGTH, SecurityMode
 from .exceptions import TuyaBLEDeviceError
 
 CLASSIC_LOCAL_KEY_LENGTH = 6
@@ -13,6 +13,26 @@ CLASSIC_LOCAL_KEY_LENGTH = 6
 def is_valid_sec_key(sec_key: str) -> bool:
     """Return whether a cloud sec_key can derive Security V2 keys."""
     return len(sec_key.encode()) == SECURITY_V2_KEY_LENGTH
+
+
+def security_modes(
+    supported: bool, enabled: bool, sec_key: str | None
+) -> list[SecurityMode]:
+    """Return the login channels to verify, most likely first.
+
+    The FD50 advertisement announces whether Security V2 is supported and
+    whether it is switched on. Switched-on firmware rejects every classic
+    frame, so only Security V2 is tried. Firmware that merely supports it
+    keeps the classic login until the app provisions Security V2, so the
+    classic login is tried first and Security V2 second. Without a cloud
+    ``sec_key``, or without the "supported" bit, only the classic login is
+    possible: setup stores the key only for devices announcing support.
+    """
+    if sec_key is None or not supported:
+        return [SecurityMode.CLASSIC]
+    if enabled:
+        return [SecurityMode.V2]
+    return [SecurityMode.CLASSIC, SecurityMode.V2]
 
 
 def derive_login_keys(

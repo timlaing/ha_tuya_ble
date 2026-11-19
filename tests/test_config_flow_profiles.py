@@ -27,11 +27,11 @@ from custom_components.tuya_ble.tuya_ble import (
     ProbeOutcome,
     decode_tuya_ble_advertisement,
 )
-from tests.conftest import make_credentials, make_device
+from tests.conftest import make_credentials, make_device, verified_by
 from tests.test_config_flow import FakeDiscovery, FakeManager, build_flow
 from tests.test_config_flow_v4 import discovery
 
-DETECT = "custom_components.tuya_ble.config_flow.async_detect_v4_profile"
+DETECT = "custom_components.tuya_ble.config_flow.async_detect_v4_credentials"
 
 
 @dataclass
@@ -91,11 +91,11 @@ class ReconfigureSubmissionGate:
         await self.resume_scan.wait()
         return discovery()
 
-    async def detect(self, *_args: Any, **_kwargs: Any) -> ConnectionProfile:
+    async def detect(self, *args: Any, **kwargs: Any) -> Any:
         """Keep the sole verification task pending until cancelled."""
         self.probe_started.set()
         await self.hold_probe.wait()
-        return ConnectionProfile.V2_MTU
+        return await verified_by(ConnectionProfile.V2_MTU)(*args, **kwargs)
 
     async def submit_again(self) -> Any:
         """Signal that the overlapping submission has entered the flow."""
@@ -114,7 +114,7 @@ async def setup_flow(
     flow._manager = cast(Any, FakeManager(make_credentials()))
     with (
         patch.object(flow, "_async_scan_device", return_value=info),
-        patch(DETECT, new=AsyncMock(return_value=profile)) as detect,
+        patch(DETECT, new=AsyncMock(side_effect=verified_by(profile))) as detect,
     ):
         result = await flow.async_step_discovered_device({})
         assert result["type"] in (
@@ -202,7 +202,7 @@ async def test_reconfigure_updates_existing_entry_and_reloads(
     info.device = make_device()._ble_device
     with (
         patch.object(flow, "_async_scan_device", return_value=info),
-        patch(DETECT, new=AsyncMock(return_value=ConnectionProfile.V2_MTU)),
+        patch(DETECT, new=AsyncMock(side_effect=verified_by(ConnectionProfile.V2_MTU))),
         patch.object(hass.config_entries, "async_unload", return_value=True) as unload,
         patch.object(
             hass.config_entries, "async_reload", return_value=True
@@ -415,7 +415,7 @@ async def test_expired_v4_claim_does_not_create_entry(hass: HomeAssistant) -> No
     flow._manager = cast(Any, FakeManager(make_credentials()))
     with (
         patch.object(flow, "_async_scan_device", return_value=info),
-        patch(DETECT, new=AsyncMock(return_value=ConnectionProfile.V2_20)),
+        patch(DETECT, new=AsyncMock(side_effect=verified_by(ConnectionProfile.V2_20))),
     ):
         await flow.async_step_discovered_device({})
         assert flow._probe_task is not None
@@ -436,7 +436,7 @@ async def test_v4_fallback_verifies_uuid_and_keeps_selected_profile(
     advertisement = decode_tuya_ble_advertisement(cast(Any, info.advertisement))
     assert advertisement is not None
     credentials = make_credentials(uuid="fedcba0987654321")
-    with patch(DETECT, return_value=profile) as detector:
+    with patch(DETECT, side_effect=verified_by(profile)) as detector:
         result = await flow._async_probe_cloud_candidate(
             cast(Any, info), advertisement, credentials
         )

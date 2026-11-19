@@ -101,6 +101,7 @@ If a file falls below the threshold, add tests until it passes before committing
 | `tests/test_mobile_snapshot.py`                                            | bounded recursive mobile metadata sanitization, export revalidation and privacy                       |
 | `tests/test_config_flow_mobile.py`                                         | conditional app-key recovery, numeric country validation, cancellation and reconfiguration            |
 | `tests/test_reconnect_absent_device.py`                                    | absent at startup: advertising, duplicate connects, failed handshakes, unload, drops                  |
+| `tests/test_security_key_selection.py`                                     | classic vs Security V2 login order from the FD50 bits, fallback, saved `security_mode`                |
 
 ### prek
 

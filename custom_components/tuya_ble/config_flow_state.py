@@ -10,8 +10,13 @@ from typing import Any
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN
-from .tuya_ble import MANUFACTURER_DATA_ID, SERVICE_UUIDS, TuyaBLEDeviceCredentials
+from .const import CONF_CONNECTION_PROFILE, CONF_SEC_KEY, CONF_SECURITY_MODE, DOMAIN
+from .tuya_ble import (
+    MANUFACTURER_DATA_ID,
+    SERVICE_UUIDS,
+    TuyaBLEDeviceCredentials,
+    is_valid_sec_key,
+)
 
 PROBE_CLAIM_TTL = 120
 _PROBE_STATE = "probe_state"
@@ -20,6 +25,32 @@ ProbeResult = tuple[TuyaBLEDeviceCredentials | None, str | None, str]
 
 # Verification messages stay on the documented config-flow logger.
 _LOGGER = logging.getLogger(f"{__package__}.config_flow")
+
+
+def verified_login_data(credentials: TuyaBLEDeviceCredentials) -> dict[str, str]:
+    """Return the verified handshake profile and login to save in the entry."""
+    data: dict[str, str] = {}
+    if credentials.connection_profile is not None:
+        data[CONF_CONNECTION_PROFILE] = credentials.connection_profile.value
+    if credentials.security_mode is not None:
+        data[CONF_SECURITY_MODE] = credentials.security_mode.value
+    return data
+
+
+def sec_key_data(
+    credentials: TuyaBLEDeviceCredentials, security_v2: bool
+) -> dict[str, str]:
+    """Return the sec_key to store: only for a device advertising Security V2.
+
+    A malformed key is never stored, because runtime could not load the entry.
+    """
+    if (
+        credentials.sec_key is not None
+        and security_v2
+        and is_valid_sec_key(credentials.sec_key)
+    ):
+        return {CONF_SEC_KEY: credentials.sec_key}
+    return {}
 
 
 def _consume_probe_result(task: asyncio.Task[Any]) -> None:

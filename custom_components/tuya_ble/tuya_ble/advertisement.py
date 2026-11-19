@@ -18,6 +18,9 @@ from .const import MANUFACTURER_DATA_ID, SERVICE_UUID, SERVICE_UUID_V4
 # FD50 frame control is big-endian; bit 2 of its low byte (service byte 1)
 # announces the "Security V2" channel, keyed with the cloud sec_key.
 FD50_SECURITY_V2 = 0x04
+# Bit 3 of the same byte: Security V2 is switched on, and the firmware then
+# accepts no flag below 14 (TuyaOS ``tuya_ble_main.c``).
+FD50_SECURITY_V2_ENABLED = 0x08
 
 
 @dataclass(frozen=True)
@@ -29,6 +32,7 @@ class TuyaBLEAdvertisementInfo:
     is_bound: bool
     protocol_version: int
     security_v2: bool = False
+    security_v2_enabled: bool = False
 
 
 @dataclass(frozen=True)
@@ -38,6 +42,7 @@ class TuyaBLEIdentityRecord:
     is_bound: bool
     protocol_version: int
     security_v2: bool = False
+    security_v2_enabled: bool = False
 
 
 def _decode_uuid(key_material: bytes, encrypted_uuid: bytes) -> str | None:
@@ -119,6 +124,7 @@ def _decode_v4(service: bytes, manufacturer: bytes) -> TuyaBLEAdvertisementInfo 
         is_bound=bound,
         protocol_version=4,
         security_v2=bool(service[1] & FD50_SECURITY_V2),
+        security_v2_enabled=bool(service[1] & FD50_SECURITY_V2_ENABLED),
     )
 
 
@@ -161,6 +167,7 @@ def decode_fd50_identity_record(
         is_bound=bool(service[0] & 0x08),
         protocol_version=4,
         security_v2=bool(service[1] & FD50_SECURITY_V2),
+        security_v2_enabled=bool(service[1] & FD50_SECURITY_V2_ENABLED),
     )
 
 
@@ -173,6 +180,7 @@ class TuyaBLEClassicRecord:
     protocol_version: int
     # Security V2 is only announced by FD50 records.
     security_v2: bool = False
+    security_v2_enabled: bool = False
 
 
 def decode_classic_record(
