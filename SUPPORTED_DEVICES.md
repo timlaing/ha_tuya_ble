@@ -54,7 +54,7 @@ Supports lock/unlock, alarm events, fingerprint/card/password unlock tracking, a
 
 - Thermostatic Radiator Valve (product_ids `drlajpqc`, `nhj2j7su`, `zmachryv`). Supports temperature set, modes, and calibration. Additional switches: window check, antifreeze, child lock, water scale proof, programming mode.
 
-The `wkf` / `llflaywg` radiator valve is not supported yet. Its published datapoints differ from the `wk` valves (for example, DP 101 is temperature correction, not the heating switch), so the `wk` layout cannot be reused.
+The `wkf` / `llflaywg` radiator valve is not supported yet. Its published datapoints differ from the `wk` valves (for example, DP 101 is temperature correction, not the heating switch), so the `wk` layout cannot be reused. Tracked in #198.
 
 ## Heaters (category_id `qn`)
 

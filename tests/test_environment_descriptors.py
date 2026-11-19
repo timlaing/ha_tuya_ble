@@ -9,6 +9,7 @@ temperature unit. BLE I/O is stubbed; datapoints arrive through the public
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 from homeassistant.components.number.const import (
@@ -472,3 +473,77 @@ async def test_th05_calibration_rejects_out_of_range(
     assert datapoint is not None
     assert datapoint.value == -5
     send.assert_awaited_once_with([23])
+
+
+# --- Unit change while the write is pending ---------------------------------
+
+
+@pytest.mark.parametrize(
+    ("category", "product_id", "temp_dp", "other_dp"),
+    [("zwjcy", "gpkyrocn", 5, 3), ("wsdcg", "vyfoip9h", 1, 2)],
+)
+async def test_pending_unit_write_keeps_the_reading_in_its_unit(
+    hass: HomeAssistant,
+    category: str,
+    product_id: str,
+    temp_dp: int,
+    other_dp: int,
+) -> None:
+    """A unit write never relabels the reading taken in the previous unit.
+
+    The select applies DP 9 optimistically before the send completes. A report
+    for another DP during that wait must not show the old reading in °F; once
+    the device reports a measurement in the new unit, the sensor follows it.
+    """
+    device, coordinator, entities = _sensors(hass, category, product_id)
+    temperature = next(e for e in entities if e.dp_id == temp_dp)
+    product = get_device_product_info(device)
+    unit_select = select.TuyaBLESelect(
+        hass, coordinator, device, product, select.get_mapping_by_device(device)[0]
+    )
+    unit_select.hass = hass
+    await _push(
+        coordinator,
+        entities,
+        device,
+        [
+            (temp_dp, TuyaBLEDataPointType.DT_VALUE, 200),
+            (9, TuyaBLEDataPointType.DT_ENUM, 0),
+        ],
+    )
+    assert (temperature.native_value, temperature.native_unit_of_measurement) == (
+        20.0,
+        UnitOfTemperature.CELSIUS,
+    )
+
+    release = asyncio.Event()
+
+    async def _held_send(_dp_ids: list[int]) -> None:
+        await release.wait()
+
+    with (
+        patch.object(device, "send_datapoints", side_effect=_held_send),
+        patch.object(sensor.TuyaBLESensor, "async_write_ha_state"),
+    ):
+        unit_select.select_option("°F")
+        await asyncio.sleep(0)
+        unit = device.datapoints[9]
+        assert unit is not None
+        assert unit.value == 1  # applied optimistically, send still pending
+
+        add_dp(device, other_dp, TuyaBLEDataPointType.DT_VALUE, 40)
+        coordinator.async_set_updated_data({})
+        assert temperature.native_value == 20.0
+        assert temperature.native_unit_of_measurement == UnitOfTemperature.CELSIUS
+
+        release.set()
+        await hass.async_block_till_done()
+
+        add_dp(device, 9, TuyaBLEDataPointType.DT_ENUM, 1)
+        coordinator.async_set_updated_data({})
+        assert temperature.native_unit_of_measurement == UnitOfTemperature.CELSIUS
+
+        add_dp(device, temp_dp, TuyaBLEDataPointType.DT_VALUE, 680)
+        coordinator.async_set_updated_data({})
+    assert temperature.native_value == 68.0
+    assert temperature.native_unit_of_measurement == UnitOfTemperature.FAHRENHEIT
