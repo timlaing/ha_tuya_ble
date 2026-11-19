@@ -7,6 +7,7 @@ model_name: RSH-MC27
 entities:
   cover:
     - translation_key: ble_blind_controller
+      legacy_keys: [ble_cover]
       name: Blind
       state_dp_id: 1
       position_set_dp_id: 9

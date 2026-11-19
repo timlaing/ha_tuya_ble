@@ -9,6 +9,7 @@ model_name: AM25 Plus L
 entities:
   cover:
     - translation_key: ble_blind_controller
+      legacy_keys: [ble_cover]
       name: Blind
       state_dp_id: 1
       dp_type: 4

@@ -6,8 +6,10 @@ from unittest.mock import AsyncMock, patch
 
 from homeassistant.components.cover import ATTR_POSITION, CoverEntityFeature
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry
 import pytest
 
+from custom_components.tuya_ble.const import DOMAIN
 from custom_components.tuya_ble.cover import (
     TuyaBLECategoryCoverMapping,
     TuyaBLECover,
@@ -161,6 +163,30 @@ def test_cover_descriptor_scope(
     cover = descriptors.get("cover")[0]
     assert cover.extra.get("inverted", False) is (product_id == "cq7xquhj")
     assert cover.dp_type == (4 if product_id == "y0dtvgqf" else None)
+    assert cover.legacy_keys == ["ble_cover"]
+
+
+@pytest.mark.parametrize("product_id", PRODUCTS[:4])
+async def test_cover_descriptor_preserves_existing_registry_id(
+    hass: HomeAssistant, product_id: str
+) -> None:
+    """Retain the generic category cover's ID when adding a product descriptor."""
+    device, coordinator, _ = build_context(hass)
+    device.initialize_with_credentials(
+        make_credentials(category="cl", product_id=product_id)
+    )
+    registry = entity_registry.async_get(hass)
+    existing = registry.async_get_or_create(
+        "cover", DOMAIN, f"{device.device_id}-ble_cover"
+    )
+    entity = TuyaBLECover(
+        hass,
+        coordinator,
+        device,
+        get_device_product_info(device),
+        get_mapping_by_device(device)[0],
+    )
+    assert entity.unique_id == existing.unique_id
 
 
 @pytest.mark.parametrize("product_id", ["cq7xquhj", "ousymtkt", "v3fzfd2y"])
