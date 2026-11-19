@@ -14,7 +14,9 @@ import base64
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
+from bleak.exc import BleakError
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.components.lock.const import LockEntityFeature
 from homeassistant.core import HomeAssistant
@@ -400,6 +402,18 @@ async def test_raw_unlock_button(hass: HomeAssistant) -> None:
     await entity.async_press()
     assert device.sent == [[71], [71]]
     assert _value(device, 71) == b""
+
+
+@pytest.mark.usefixtures("registry")
+async def test_handler_press_failure_is_reported(hass: HomeAssistant) -> None:
+    """A BLE failure inside a write handler fails the press, value rolled back."""
+    entity, device = _button(hass, "testraw")
+    with (
+        patch.object(device, "send_datapoints", side_effect=BleakError("x")),
+        pytest.raises(HomeAssistantError) as err,
+    ):
+        await entity.async_press()
+    assert err.value.translation_key == "button_press_failed"
 
 
 # --- registry ---------------------------------------------------------------
