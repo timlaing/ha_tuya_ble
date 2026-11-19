@@ -66,6 +66,16 @@ def test_report_revision_counts_repeated_reports_not_local_writes(
     assert dp.report_revision == initial + 2
 
 
+def test_locally_created_datapoint_has_no_report(
+    datapoints: TuyaBLEDataPoints,
+) -> None:
+    """A data point created for a write is not mistaken for a device report."""
+    dp = datapoints.get_or_create(9, TuyaBLEDataPointType.DT_ENUM, 1)
+    assert dp.report_revision == 0
+    datapoints.update_from_device(9, 1.0, 0, TuyaBLEDataPointType.DT_ENUM, 1)
+    assert dp.report_revision == 1
+
+
 @pytest.mark.parametrize("failure", [BleakError(), asyncio.CancelledError()])
 async def test_report_revision_is_unchanged_by_failed_local_write(
     datapoints: TuyaBLEDataPoints,

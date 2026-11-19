@@ -38,6 +38,8 @@ class TuyaBLEDataPoint:
         dp_type: TuyaBLEDataPointType,
         value: bytes | bool | int | str,
         raw_value: bytes | None = None,
+        *,
+        reported: bool = True,
     ) -> None:
         self._owner = owner
         self._id = dp_id
@@ -47,6 +49,9 @@ class TuyaBLEDataPoint:
         self._revision = 0
         self._report_revision = 0
         self.update_from_device(timestamp, flags, dp_type, value, raw_value)
+        if not reported:
+            # Created locally, e.g. to send a write: no report has arrived yet.
+            self._report_revision = 0
 
     def update_from_device(
         self,
@@ -177,7 +182,8 @@ class TuyaBLEDataPoint:
     def report_revision(self) -> int:
         """Return the device-update counter, including equal-valued reports.
 
-        Local writes and rollback do not advance this counter. Consumers can
+        Local writes and rollback do not advance this counter, and a data
+        point created locally by ``get_or_create`` starts at zero. Consumers can
         distinguish a fresh report from a locally assigned value without
         relying on value inequality or wall-clock timestamps.
         """
@@ -312,7 +318,13 @@ class TuyaBLEDataPoints:
             return datapoint
         _LOGGER.debug("Creating new data point %s (%s)", dp_id, dp_type)
         datapoint = TuyaBLEDataPoint(
-            self, dp_id, time.time(), 0, dp_type, b"" if value is None else value
+            self,
+            dp_id,
+            time.time(),
+            0,
+            dp_type,
+            b"" if value is None else value,
+            reported=False,
         )
         self._datapoints[dp_id] = datapoint
         return datapoint

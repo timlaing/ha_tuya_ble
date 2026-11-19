@@ -576,3 +576,42 @@ async def test_unit_report_after_the_reading_relabels_it(
     assert temperature.native_unit_of_measurement == UnitOfTemperature.FAHRENHEIT
     await _push(coordinator, entities, device, [(9, TuyaBLEDataPointType.DT_ENUM, 0)])
     assert temperature.native_unit_of_measurement == UnitOfTemperature.CELSIUS
+
+
+async def test_unit_write_before_the_first_unit_report(hass: HomeAssistant) -> None:
+    """Choosing °F before the device reports DP 9 never relabels the reading.
+
+    The write creates DP 9 locally; that is not a device report, so the
+    reading stays °C until the device reports the unit.
+    """
+    device, coordinator, entities = _sensors(hass, "zwjcy", "gpkyrocn")
+    temperature = entities[0]
+    unit_select = select.TuyaBLESelect(
+        hass,
+        coordinator,
+        device,
+        get_device_product_info(device),
+        select.get_mapping_by_device(device)[0],
+    )
+    unit_select.hass = hass
+    await _push(
+        coordinator, entities, device, [(5, TuyaBLEDataPointType.DT_VALUE, 215)]
+    )
+    assert device.datapoints[9] is None
+    with (
+        patch.object(device, "send_datapoints", new_callable=AsyncMock),
+        patch.object(sensor.TuyaBLESensor, "async_write_ha_state"),
+    ):
+        unit_select.select_option("°F")
+        await hass.async_block_till_done()
+        unit = device.datapoints[9]
+        assert unit is not None
+        assert unit.value == 1
+        add_dp(device, 3, TuyaBLEDataPointType.DT_VALUE, 40)
+        coordinator.async_set_updated_data({})
+        assert temperature.native_value == 21.5
+        assert temperature.native_unit_of_measurement == UnitOfTemperature.CELSIUS
+
+        add_dp(device, 9, TuyaBLEDataPointType.DT_ENUM, 1)
+        coordinator.async_set_updated_data({})
+    assert temperature.native_unit_of_measurement == UnitOfTemperature.FAHRENHEIT

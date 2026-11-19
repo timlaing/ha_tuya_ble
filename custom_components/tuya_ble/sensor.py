@@ -265,7 +265,10 @@ class TuyaBLESensor(TuyaBLERestoreEntity, SensorEntity):
         if datapoint is None or not isinstance(datapoint.value, int):
             return
         revision = datapoint.report_revision
-        if self._device_unit is not None and self._device_unit[0] == revision:
+        if revision == 0 or (
+            self._device_unit is not None and self._device_unit[0] == revision
+        ):
+            # Zero: created locally by a write, the device has not reported it.
             return
         unit = (
             UnitOfTemperature.CELSIUS
