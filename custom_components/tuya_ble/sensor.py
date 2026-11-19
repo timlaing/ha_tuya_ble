@@ -213,8 +213,8 @@ class TuyaBLESensor(TuyaBLERestoreEntity, SensorEntity):
         self._attr_restore = sensor_mapping.restore
         # Per-entity scratch state owned by the read handler.
         self.handler_state: dict[str, Any] = {}
-        # (report revision of the measurement, unit it was reported in)
-        self._reported_unit: tuple[int, str | None] | None = None
+        # (report revision of the unit datapoint, unit the device reported)
+        self._device_unit: tuple[int, str] | None = None
 
     @property
     def dp_id(self) -> int:
@@ -238,29 +238,41 @@ class TuyaBLESensor(TuyaBLERestoreEntity, SensorEntity):
 
     @property
     def native_unit_of_measurement(self) -> str | None:
-        """Return the unit the current measurement was reported in.
+        """Return the unit the device last reported it is measuring in.
 
         Devices that expose a °C/°F select send their temperature in whichever
         unit the user chose there, so the declared unit only holds while the
         device is set to °C. Reporting the selected unit is enough: the value
-        itself needs no conversion. Once a measurement has been reported, the
-        unit stays paired with it, so a unit change that is still being sent
-        never relabels the previous reading.
+        itself needs no conversion. Only device reports of the unit datapoint
+        count: a unit change that is still being sent is applied to the
+        datapoint optimistically, and must not relabel the current reading.
+        Until the device reports a unit, the declared unit is used.
         """
         if self._mapping.unit_dp_id is None:
             return super().native_unit_of_measurement
-        if self._reported_unit is not None:
-            return self._reported_unit[1]
-        return self._selected_unit(self._mapping.unit_dp_id)
+        self._refresh_device_unit(self._mapping.unit_dp_id)
+        if self._device_unit is not None:
+            return self._device_unit[1]
+        return super().native_unit_of_measurement
 
-    def _selected_unit(self, unit_dp_id: int) -> str | None:
-        """Return the unit the unit datapoint currently selects."""
+    def _refresh_device_unit(self, unit_dp_id: int) -> None:
+        """Record the unit datapoint's value when the device has reported it.
+
+        Only device reports advance ``report_revision``, so the recorded unit
+        is a reported value and never an optimistic local write.
+        """
         datapoint = self.device.datapoints[unit_dp_id]
         if datapoint is None or not isinstance(datapoint.value, int):
-            return super().native_unit_of_measurement
-        if datapoint.value == 0:
-            return UnitOfTemperature.CELSIUS
-        return UnitOfTemperature.FAHRENHEIT
+            return
+        revision = datapoint.report_revision
+        if self._device_unit is not None and self._device_unit[0] == revision:
+            return
+        unit = (
+            UnitOfTemperature.CELSIUS
+            if datapoint.value == 0
+            else UnitOfTemperature.FAHRENHEIT
+        )
+        self._device_unit = (revision, unit)
 
     @property
     def extra_restore_state_data(self) -> ExtraStoredData | None:
@@ -299,24 +311,9 @@ class TuyaBLESensor(TuyaBLERestoreEntity, SensorEntity):
             datapoint = self.device.datapoints[self._mapping.dp_id]
             if datapoint:
                 self._update_from_datapoint(datapoint)
-                self._pair_unit_with_report(datapoint)
+        if self._mapping.unit_dp_id is not None:
+            self._refresh_device_unit(self._mapping.unit_dp_id)
         self.async_write_ha_state()
-
-    @callback
-    def _pair_unit_with_report(self, datapoint: TuyaBLEDataPoint) -> None:
-        """Record the selected unit when a new measurement is reported.
-
-        Only device reports advance ``report_revision``, so an optimistic
-        write to the unit datapoint keeps the earlier pairing until the device
-        sends a measurement taken in the new unit.
-        """
-        unit_dp_id = self._mapping.unit_dp_id
-        if unit_dp_id is None:
-            return
-        revision = datapoint.report_revision
-        if self._reported_unit is not None and self._reported_unit[0] == revision:
-            return
-        self._reported_unit = (revision, self._selected_unit(unit_dp_id))
 
     @callback
     def _update_from_datapoint(self, datapoint: TuyaBLEDataPoint) -> None:

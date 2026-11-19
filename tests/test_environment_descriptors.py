@@ -489,11 +489,11 @@ async def test_pending_unit_write_keeps_the_reading_in_its_unit(
     temp_dp: int,
     other_dp: int,
 ) -> None:
-    """A unit write never relabels the reading taken in the previous unit.
+    """A pending unit write never relabels the current reading.
 
     The select applies DP 9 optimistically before the send completes. A report
     for another DP during that wait must not show the old reading in °F; once
-    the device reports a measurement in the new unit, the sensor follows it.
+    the device reports DP 9 itself, the sensor follows it.
     """
     device, coordinator, entities = _sensors(hass, category, product_id)
     temperature = next(e for e in entities if e.dp_id == temp_dp)
@@ -539,11 +539,40 @@ async def test_pending_unit_write_keeps_the_reading_in_its_unit(
         release.set()
         await hass.async_block_till_done()
 
-        add_dp(device, 9, TuyaBLEDataPointType.DT_ENUM, 1)
+        # Still only the local write: the device has not confirmed the unit.
         coordinator.async_set_updated_data({})
         assert temperature.native_unit_of_measurement == UnitOfTemperature.CELSIUS
+
+        add_dp(device, 9, TuyaBLEDataPointType.DT_ENUM, 1)
+        coordinator.async_set_updated_data({})
+        assert temperature.native_unit_of_measurement == UnitOfTemperature.FAHRENHEIT
 
         add_dp(device, temp_dp, TuyaBLEDataPointType.DT_VALUE, 680)
         coordinator.async_set_updated_data({})
     assert temperature.native_value == 68.0
     assert temperature.native_unit_of_measurement == UnitOfTemperature.FAHRENHEIT
+
+
+@pytest.mark.parametrize(
+    ("category", "product_id", "temp_dp"),
+    [("zwjcy", "gpkyrocn", 5), ("wsdcg", "vyfoip9h", 1)],
+)
+async def test_unit_report_after_the_reading_relabels_it(
+    hass: HomeAssistant, category: str, product_id: str, temp_dp: int
+) -> None:
+    """The declared °C is only a fallback until DP 9 is reported.
+
+    A reading that arrives before the device's first unit report is shown in
+    the unit the device then reports, without waiting for another reading.
+    """
+    device, coordinator, entities = _sensors(hass, category, product_id)
+    temperature = next(e for e in entities if e.dp_id == temp_dp)
+    await _push(
+        coordinator, entities, device, [(temp_dp, TuyaBLEDataPointType.DT_VALUE, 725)]
+    )
+    assert temperature.native_unit_of_measurement == UnitOfTemperature.CELSIUS
+    await _push(coordinator, entities, device, [(9, TuyaBLEDataPointType.DT_ENUM, 1)])
+    assert temperature.native_value == 72.5
+    assert temperature.native_unit_of_measurement == UnitOfTemperature.FAHRENHEIT
+    await _push(coordinator, entities, device, [(9, TuyaBLEDataPointType.DT_ENUM, 0)])
+    assert temperature.native_unit_of_measurement == UnitOfTemperature.CELSIUS
