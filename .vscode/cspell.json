@@ -19,7 +19,12 @@
     "dockercompose",
     "jinja"
   ],
-  "ignorePaths": ["node_modules", "__pycache__", ".mypy_cache", ".opencode"],
+  "ignorePaths": [
+    "node_modules",
+    "__pycache__",
+    ".mypy_cache",
+    ".opencode"
+  ],
   "ignoreWords": [
     "Athenas",
     "BSTUOKEY",
