@@ -7,7 +7,7 @@ entities:
     # The device reports and accepts touch duration in milliseconds.
     - dp_id: 103
       translation_key: touch_duration_1
-      name: 1-04 Touch duration
+      name: Touch duration 1
       mode: box
       min_value: 0.1
       max_value: 10
@@ -18,7 +18,7 @@ entities:
       entity_category: config
     - dp_id: 104
       translation_key: touch_duration_2
-      name: 2-04 Touch duration
+      name: Touch duration 2
       mode: box
       min_value: 0.1
       max_value: 10
@@ -29,7 +29,7 @@ entities:
       entity_category: config
     - dp_id: 117
       translation_key: touch_off_duration_1
-      name: 1-05 OFF touch duration
+      name: Off touch duration 1
       mode: box
       min_value: 0.1
       max_value: 10
@@ -42,7 +42,7 @@ entities:
         when: fingerbot.touch.channel_1_in_switch_mode
     - dp_id: 118
       translation_key: touch_off_duration_2
-      name: 2-05 OFF touch duration
+      name: Off touch duration 2
       mode: box
       min_value: 0.1
       max_value: 10
@@ -55,7 +55,7 @@ entities:
         when: fingerbot.touch.channel_2_in_switch_mode
     - dp_id: 119
       translation_key: double_tap_interval_1
-      name: 1-02 Double-tap interval
+      name: Double-tap interval 1
       mode: box
       min_value: 0
       max_value: 100
@@ -65,7 +65,7 @@ entities:
       entity_category: config
     - dp_id: 120
       translation_key: double_tap_interval_2
-      name: 2-02 Double-tap interval
+      name: Double-tap interval 2
       mode: box
       min_value: 0
       max_value: 100
@@ -76,7 +76,7 @@ entities:
   select:
     - dp_id: 101
       translation_key: fingerbot_mode_1
-      name: 1-01 Mode
+      name: Mode 1
       entity_category: config
       options:
         - Push
@@ -84,7 +84,7 @@ entities:
         - Program
     - dp_id: 102
       translation_key: fingerbot_mode_2
-      name: 2-01 Mode
+      name: Mode 2
       entity_category: config
       options:
         - Push
@@ -115,21 +115,21 @@ entities:
         pulse: fingerbot.touch.push_duration
     - dp_id: 105
       translation_key: touch_switch_1
-      name: 1-06 Touch input
+      name: Touch input 1
       icon: mdi:gesture-tap
       entity_category: config
     - dp_id: 106
       translation_key: touch_switch_2
-      name: 2-06 Touch input
+      name: Touch input 2
       icon: mdi:gesture-tap
       entity_category: config
     - dp_id: 107
       translation_key: switch_invert_1
-      name: 1-03 Invert switch
+      name: Invert switch 1
       icon: mdi:swap-horizontal
       entity_category: config
     - dp_id: 108
       translation_key: switch_invert_2
-      name: 2-03 Invert switch
+      name: Invert switch 2
       icon: mdi:swap-horizontal
       entity_category: config

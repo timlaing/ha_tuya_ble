@@ -249,7 +249,7 @@
         }
       },
       "beep_volume": {
-        "name": "Lock Volume"
+        "name": "Lock volume"
       },
       "heater_level": {
         "name": "Heater level",
@@ -357,13 +357,13 @@
         "name": "Alarm"
       },
       "wrong_finger": {
-        "name": "Wrong Fingerprint"
+        "name": "Wrong fingerprint"
       },
       "wrong_password": {
-        "name": "Wrong Password"
+        "name": "Wrong password"
       },
       "low_battery": {
-        "name": "Low Battery"
+        "name": "Low battery"
       },
       "time_left": {
         "name": "Remaining irrigation time"
@@ -500,19 +500,19 @@
         "name": "Eco mode"
       },
       "programming_mode": {
-        "name": "Programming Mode"
+        "name": "Programming mode"
       },
       "programming_switch": {
-        "name": "Programming Switch"
+        "name": "Programming switch"
       },
       "antifreeze": {
         "name": "Antifreeze"
       },
       "child_lock": {
-        "name": "Child Lock"
+        "name": "Child lock"
       },
       "window_check": {
-        "name": "Window Check"
+        "name": "Window check"
       },
       "water_scale_proof": {
         "name": "Anti-scale"
@@ -542,7 +542,7 @@
         "name": "[%key:component::switch::entity_component::_::name%]"
       },
       "lock_motor_state": {
-        "name": "Motor State"
+        "name": "Motor state"
       },
       "water_valve": {
         "name": "Irrigation valve"
