@@ -28,12 +28,13 @@ from custom_components.tuya_ble import (
     sensor,
     switch,
 )
-from custom_components.tuya_ble.const import DOMAIN
+from custom_components.tuya_ble.const import CONF_MOBILE_SNAPSHOT, DOMAIN
 from custom_components.tuya_ble.coordinator import TuyaBLECoordinator
 from custom_components.tuya_ble.device_registry import DeviceRegistry, get_mapped_dp_ids
 from custom_components.tuya_ble.devices import TuyaBLEData
 from custom_components.tuya_ble.diagnostics import async_get_config_entry_diagnostics
 from custom_components.tuya_ble.entity import get_product_info_by_ids
+from custom_components.tuya_ble.mobile_snapshot import capture_mobile_snapshot
 from custom_components.tuya_ble.tuya_ble import (
     TuyaBLEDataPoint,
     TuyaBLEDataPointType,
@@ -134,6 +135,8 @@ async def test_c014s_lock_commands_and_reports(hass: HomeAssistant) -> None:
     assert entity.unique_id == "dev-lock"
     assert entity.supported_features == 0
     assert entity.is_locked is None
+    device.datapoints.get_or_create(47, TuyaBLEDataPointType.DT_BOOL, False)
+    assert entity.is_locked is None
     await entity.async_lock()
     assert device.sent == [[46]]
     assert datapoint(device, 46).value is True
@@ -146,6 +149,10 @@ async def test_c014s_lock_commands_and_reports(hass: HomeAssistant) -> None:
     add_dp(device, 47, TuyaBLEDataPointType.DT_BOOL, True)
     assert entity.is_locked is False
     add_dp(device, 47, TuyaBLEDataPointType.DT_BOOL, False)
+    assert entity.is_locked is True
+    datapoint(device, 47).set_value_no_notify(True)
+    assert datapoint(device, 47).value is True
+    assert datapoint(device, 47).reported_value is False
     assert entity.is_locked is True
     assert not button.get_mapping_by_device(device)
 
@@ -168,14 +175,26 @@ async def test_8052f66_passage_and_open(
     assert entity.is_locked is None
     assert entity.supported_features == LockEntityFeature.OPEN
     await entity.async_lock()
+    assert entity.is_locked is None
+    assert datapoint(device, 33).reported_value is None
+    add_dp(device, 33, TuyaBLEDataPointType.DT_BOOL, True)
     assert entity.is_locked is True
     await entity.async_open()
     assert datapoint(device, 71).value == COMMAND
     assert entity.is_locked is True
     await entity.async_unlock()
     assert datapoint(device, 33).value is False
+    assert datapoint(device, 33).reported_value is True
+    assert entity.is_locked is True
+    add_dp(device, 33, TuyaBLEDataPointType.DT_BOOL, False)
     assert entity.is_locked is False
     assert device.sent == [[33], [71], [33]]
+    await entity.async_lock()
+    assert datapoint(device, 33).value is True
+    assert datapoint(device, 33).reported_value is False
+    assert entity.is_locked is False
+    add_dp(device, 33, TuyaBLEDataPointType.DT_BOOL, True)
+    assert entity.is_locked is True
 
 
 @pytest.mark.parametrize("product_id", ("2hmqh0ty", "tkbdvrzr"))
@@ -327,6 +346,19 @@ async def test_shipping_sensitive_diagnostics_and_logs(
     assert "secret-report" not in caplog.text
     assert COMMAND.hex() not in caplog.text
     assert "<redacted>" in caplog.text
+    snapshot = capture_mobile_snapshot(
+        "smart_life",
+        {
+            "device": {
+                "productId": product_id,
+                "dps": {"71": COMMAND.hex()},
+                "status": [{"code": "ble_unlock_check", "value": CHECK}],
+            }
+        },
+        {"device": True},
+    )
+    assert CHECK not in repr(snapshot)
+    assert COMMAND.hex() not in repr(snapshot)
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -335,6 +367,7 @@ async def test_shipping_sensitive_diagnostics_and_logs(
             "device_id": "dev",
             "uuid": "u",
             "ble_unlock_check": CHECK,
+            CONF_MOBILE_SNAPSHOT: snapshot,
         },
     )
     entry.add_to_hass(hass)
@@ -349,7 +382,9 @@ async def test_shipping_sensitive_diagnostics_and_logs(
     assert payload["live"]["71"]["value"] == "**REDACTED**"
     assert payload["live"]["71"]["raw"] == "**REDACTED**"
     assert CHECK not in repr(payload)
+    assert COMMAND.hex() not in repr(payload)
     assert "secret-report" not in repr(payload)
+    assert payload["mobile_cloud_info"]["records"]["device"]["productId"] == product_id
 
 
 @pytest.mark.parametrize("product_id", PRODUCTS)

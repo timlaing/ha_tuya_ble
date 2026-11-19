@@ -12,6 +12,7 @@ entities:
       manual_lock_dp_id: 46
       unlock_dp_id: 71
       handlers:
+        read: lock.state.reported_bolt
         write: lock.command.manual_lock_or_raw_unlock
   binary_sensor:
     - dp_id: 47

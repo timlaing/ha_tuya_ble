@@ -60,7 +60,14 @@ an older entry may need removal and re-addition. Do not post it in diagnostics.
 Source keys (`lock`, `bluetooth_unlock`, `battery`, `automatic_lock`,
 `auto_lock_time`, `beep_volume`, `unlock_switch` and unlock-method sensor keys)
 are unchanged, so no legacy aliases are needed. Existing registry entries keep
-their IDs. No existing product descriptor or handler is changed.
+their IDs. Existing products and handler behavior are unchanged.
+
+8052F66 and C-014S lock state uses only the last **device-reported** value.
+An acknowledged local write is not itself a report: state stays unknown until
+the first report, or keeps the last confirmed state while a command is pending.
+C-014S uses the reusable `lock.state.reported_bolt` reader for its verified DP47.
+Incoming DP71 data and the cloud unlock check remain withheld from diagnostics,
+including #209's mobile snapshot storage/export paths inherited from #195.
 
 - EL605A gets its verified battery and empty-trigger unlock button only. PR315
   refers to `manual_lock` (DP46) but does not establish a numeric state DP:
