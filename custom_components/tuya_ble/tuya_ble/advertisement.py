@@ -37,6 +37,7 @@ class TuyaBLEIdentityRecord:
 
     is_bound: bool
     protocol_version: int
+    security_v2: bool = False
 
 
 def _decode_uuid(key_material: bytes, encrypted_uuid: bytes) -> str | None:
@@ -156,7 +157,11 @@ def decode_fd50_identity_record(
     service = (advertisement_data.service_data or {}).get(SERVICE_UUID_V4)
     if service is None or not _is_v4_identity_record(service):
         return None
-    return TuyaBLEIdentityRecord(is_bound=bool(service[0] & 0x08), protocol_version=4)
+    return TuyaBLEIdentityRecord(
+        is_bound=bool(service[0] & 0x08),
+        protocol_version=4,
+        security_v2=bool(service[1] & FD50_SECURITY_V2),
+    )
 
 
 @dataclass(frozen=True)

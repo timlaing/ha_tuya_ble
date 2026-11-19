@@ -8,6 +8,7 @@ from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.core import HomeAssistant
 
+from .config_flow_state import advertisement_hex
 from .tuya_ble import (
     MANUFACTURER_DATA_ID,
     SERVICE_UUID,
@@ -112,4 +113,36 @@ def bound_classic_advertisement(
         uuid="",
         is_bound=True,
         protocol_version=record.protocol_version,
+    )
+
+
+def scanned_identity(
+    discovery_info: BluetoothServiceInfoBleak,
+) -> TuyaBLEAdvertisementInfo | None:
+    """Decode a scanned identity, tracing the raw payload when it cannot be read."""
+    advertisement = decode_tuya_ble_advertisement(
+        discovery_info.advertisement
+    ) or bound_classic_advertisement(discovery_info)
+    if advertisement is None:
+        _LOGGER.debug(
+            "%s: identity_not_decoded, %s",
+            discovery_info.address,
+            advertisement_hex(discovery_info),
+        )
+    return advertisement
+
+
+def awaits_fd50_scan_response(discovery_info: BluetoothServiceInfoBleak) -> bool:
+    """Return whether an undecoded FD50 v4 record may still be completed by a scan.
+
+    A complete but undecodable record is not an incomplete scan response.
+    """
+    service = (discovery_info.service_data or {}).get(SERVICE_UUID_V4, b"")
+    if not service or service[0] >> 4 != 4:
+        return False
+    manufacturer = (discovery_info.manufacturer_data or {}).get(
+        MANUFACTURER_DATA_ID, b""
+    )
+    return not (
+        len(service) >= 4 and len(service) == 4 + service[3] and len(manufacturer) == 20
     )

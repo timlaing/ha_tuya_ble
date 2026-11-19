@@ -92,6 +92,8 @@ If a file falls below the threshold, add tests until it passes before committing
 | `tests/test_config_flow_unverified.py`                                     | opt-in setup of protocol-4 devices whose verification failed                                       |
 | `tests/test_cbf02v2_fingerbot.py`                                          | CBF02V2 Finger Robot descriptor: two modes, inverted switch, fixed-value DP102 button, scaling     |
 | `tests/test_swtz_thermometers.py`                                          | `swtz` cooking thermometers: battery and signed 0.1 °C probe readings, incl. wire decoding         |
+| `tests/test_config_flow_manual.py`                                         | manual credential entry: validation, Bluetooth verification, errors and claims                     |
+| `tests/test_config_flow_options_credentials.py`                            | options-flow key-pair replacement, security-key clearing and refusal                               |
 
 ### prek
 
@@ -144,8 +146,9 @@ All public BLE symbols — `TuyaBLEDevice`, `TuyaBLEDataPoint`, `TuyaBLEDataPoin
 
 | File                                     | Purpose                                                                                                                                    |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `config_flow.py`                         | QR code login flow (user code → scan → device selection)                                                                                   |
-| `config_flow_options.py`                 | Options flow (QR-code re-authentication)                                                                                                   |
+| `config_flow.py`                         | QR code login flow (menu → user code → scan → device selection)                                                                            |
+| `config_flow_manual.py`                  | Manual credential fallback: form validation and Bluetooth verification before entry creation                                               |
+| `config_flow_options.py`                 | Options flow (QR-code re-authentication, transactional local/security key-pair replacement)                                                |
 | `cloud.py`                               | `tuya_sharing.Manager` wrapper, MAC-based device credential lookup                                                                         |
 | `const.py`                               | Constants — imports shared names from `homeassistant.components.tuya.const`; re-exports `DPType` from `tuya_ble.const`                     |
 | `device_registry.py`                     | `EntityDescriptor`, YAML descriptor loading/validation, `get_registry`, `get_mapped_dp_ids` — the product registry                         |

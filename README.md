@@ -47,6 +47,19 @@ The integration works locally, but connecting to a Tuya BLE device requires a de
 2. Scan the displayed QR code in your Smart Life / Tuya Smart app
 3. Select your BLE device from the discovered list
 
+**Manual credentials (fallback):** if the app login cannot find your device but you
+already have its credentials, choose **Enter the device credentials manually** instead of
+logging in. Enter the UUID, local key, device ID, category and product ID, plus the
+security key only for devices that use the newer Security V2 login. Home Assistant checks
+them over Bluetooth before adding the device, so the product must already be supported.
+If the check fails for a protocol v4 device, setup offers to add it anyway, as with the app
+login. The keys are stored only in Home Assistant and are never shown again.
+
+To change the keys of an existing device, for example after pairing it again in the app,
+open the integration's **Configure** menu and choose **Replace the device keys**. Both keys
+are replaced together; leave the security key empty to remove it. The device ID, UUID and
+entities are kept. The new keys are not checked over Bluetooth before they are saved.
+
 For Tuya BLE protocol v4 devices, setup checks that Home Assistant can connect
 over Bluetooth and remembers how, so the device reconnects after restarts
 without the cloud. Keep the device nearby and close the Smart Life app after
@@ -78,7 +91,7 @@ Restart Home Assistant (or reload the config entry), reproduce the problem, then
 
 | Logger                                       | Covers                                                                                          |
 | -------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `custom_components.tuya_ble.config_flow`     | Discovery, QR login, active scanning, cloud credential lookup, entry setup                      |
+| `custom_components.tuya_ble.config_flow`     | Discovery, QR login, active scanning, cloud or manual credential checks, entry setup            |
 | `custom_components.tuya_ble.cloud`           | Token refresh, credential lookup by UUID, device cache refresh                                  |
 | `custom_components.tuya_ble.coordinator`     | Connect/disconnect transitions, idle timeout, received data point batches, unmapped data points |
 | `custom_components.tuya_ble.entity`          | Unique-id resolution, DP-code matching, commands sent to the device                             |

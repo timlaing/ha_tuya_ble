@@ -9,11 +9,14 @@ from .advertisement import (
     TuyaBLEAdvertisementInfo,
     TuyaBLEClassicRecord,
     decode_classic_record,
+    decode_fd50_identity_record,
     decode_tuya_ble_advertisement,
 )
 from .base import TuyaBLEDevice, TuyaBLEDeviceFunction
 from .const import (
     MANUFACTURER_DATA_ID,
+    MAX_DEVICE_ID_LENGTH,
+    MAX_UUID_LENGTH,
     SERVICE_UUID,
     SERVICE_UUID_V4,
     SERVICE_UUIDS,
@@ -44,6 +47,8 @@ __all__ = [
     "ProbeOutcome",
     "ProbeStage",
     "MANUFACTURER_DATA_ID",
+    "MAX_DEVICE_ID_LENGTH",
+    "MAX_UUID_LENGTH",
     "SERVICE_UUID",
     "SERVICE_UUID_V4",
     "SERVICE_UUIDS",
@@ -56,6 +61,7 @@ __all__ = [
     "TuyaBLEDeviceCredentials",
     "TuyaBLEDeviceFunction",
     "decode_classic_record",
+    "decode_fd50_identity_record",
     "decode_tuya_ble_advertisement",
     "is_valid_sec_key",
     "async_probe_authenticated_status",

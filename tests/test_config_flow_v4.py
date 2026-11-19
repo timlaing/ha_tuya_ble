@@ -121,7 +121,7 @@ async def test_fd50_bluetooth_discovery(hass: HomeAssistant, version: int) -> No
     info = discovery(version)
     result = await flow.async_step_bluetooth(cast(Any, info))
     if version == 4:
-        assert result["type"] == FlowResultType.FORM
+        assert result["type"] == FlowResultType.MENU
         assert result["step_id"] == "user"
     else:
         assert result["type"] == FlowResultType.ABORT
@@ -143,7 +143,7 @@ async def test_fd50_partial_bluetooth_discovery(
         flow, "_async_scan_device", return_value=discovery() if complete else None
     ):
         result = await flow.async_step_bluetooth(cast(Any, info))
-    assert result["type"] == (FlowResultType.FORM if complete else FlowResultType.ABORT)
+    assert result["type"] == (FlowResultType.MENU if complete else FlowResultType.ABORT)
     if not complete:
         assert result["reason"] == "unsupported_device"
 
@@ -190,7 +190,7 @@ async def test_classic_bluetooth_discovery_without_cached_service(
     flow = build_flow(hass)
     info = FakeDiscovery(with_service=False)
     result = await flow.async_step_bluetooth(cast(Any, info))
-    assert result["type"] == FlowResultType.FORM
+    assert result["type"] == FlowResultType.MENU
     assert result["step_id"] == "user"
 
 

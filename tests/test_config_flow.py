@@ -199,35 +199,44 @@ def build_options_flow(
     return flow, entry
 
 
-async def test_async_step_user_no_input(hass: HomeAssistant) -> None:
-    """Test the user step with no user input."""
+async def test_async_step_user_offers_qr_login_first(hass: HomeAssistant) -> None:
+    """The user step is a menu: QR-code login first, manual credentials second."""
     flow = build_flow(hass)
     result = await flow.async_step_user(user_input=None)
-    assert result["type"] == FlowResultType.FORM
+    assert result["type"] == FlowResultType.MENU
     assert result["step_id"] == "user"
+    assert result["menu_options"] == ["login", "manual"]
 
 
-async def test_async_step_user_success(hass: HomeAssistant) -> None:
-    """Test the user step with a valid user input."""
+async def test_async_step_login_no_input(hass: HomeAssistant) -> None:
+    """Test the login step with no user input."""
     flow = build_flow(hass)
-    result = await flow.async_step_user(user_input={CONF_USER_CODE: "code1"})
+    result = await flow.async_step_login(user_input=None)
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "login"
+
+
+async def test_async_step_login_success(hass: HomeAssistant) -> None:
+    """Test the login step with a valid user input."""
+    flow = build_flow(hass)
+    result = await flow.async_step_login(user_input={CONF_USER_CODE: "code1"})
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "qr"
     assert flow._data[CONF_USER_CODE] == "code1"
 
 
-async def test_async_step_user_login_error(hass: HomeAssistant) -> None:
-    """Test the user step handling a login error."""
+async def test_async_step_login_error(hass: HomeAssistant) -> None:
+    """Test the login step handling a login error."""
     flow = build_flow(hass, qr_success=False)
-    result = await flow.async_step_user(user_input={CONF_USER_CODE: "code1"})
+    result = await flow.async_step_login(user_input={CONF_USER_CODE: "code1"})
     assert result["type"] == FlowResultType.FORM
     assert result["errors"]["base"] == "login_error"  # type: ignore[index]
 
 
-async def test_async_step_user_login_error_placeholders(hass: HomeAssistant) -> None:
+async def test_async_step_login_error_placeholders(hass: HomeAssistant) -> None:
     """Test that login error placeholders are populated."""
     flow = build_flow(hass, qr_success=False)
-    result = await flow.async_step_user(user_input={CONF_USER_CODE: "code1"})
+    result = await flow.async_step_login(user_input={CONF_USER_CODE: "code1"})
     assert result["errors"]["base"] == "login_error"  # type: ignore[index]
     assert (
         result["description_placeholders"]["msg"] == "bad"  # type: ignore[index]
@@ -769,7 +778,7 @@ async def test_async_step_bluetooth_discovered(hass: HomeAssistant) -> None:
         result = await flow.async_step_bluetooth(
             FakeDiscovery()  # type: ignore[arg-type]
         )
-    assert result["type"] == FlowResultType.FORM
+    assert result["type"] == FlowResultType.MENU
     assert result["step_id"] == "user"
 
 
@@ -789,8 +798,9 @@ async def test_options_init(hass: HomeAssistant) -> None:
     """Test the options flow init step."""
     flow, _ = build_options_flow(hass)
     result = await flow.async_step_init(user_input=None)
-    assert result["type"] == FlowResultType.FORM
-    assert result["step_id"] == "user"
+    assert result["type"] == FlowResultType.MENU
+    assert result["step_id"] == "init"
+    assert result["menu_options"] == ["user", "credentials"]
 
 
 async def test_options_user_no_input(hass: HomeAssistant) -> None:

@@ -26,7 +26,15 @@
       "bluetooth_scan_failed": "The complete Bluetooth advertisement was not received. Move the device closer and try again.",
       "identity_not_decoded": "The identity in the Bluetooth advertisement could not be decoded.",
       "invalid_auth": "Invalid authentication",
-      "login_error": "Login error ({code}): {msg}"
+      "login_error": "Login error ({code}): {msg}",
+      "invalid_uuid": "Enter the UUID as printable characters without spaces, at most 16 characters.",
+      "invalid_local_key": "Enter the local key as printable characters without spaces, at least 6 characters.",
+      "invalid_sec_key": "The security key must be exactly 16 characters without spaces.",
+      "invalid_device_id": "Enter the device ID as printable characters without spaces, at most 20 characters.",
+      "invalid_category": "Enter the category code without spaces, for example szjqr.",
+      "invalid_product_id": "Enter the product ID without spaces, for example neq16kgd.",
+      "unknown_product": "This category and product ID are not supported yet, so the credentials cannot be checked.",
+      "manual_credentials_rejected": "The device did not accept these credentials. Check the local key, security key, UUID and device ID."
     },
     "flow_title": "{name}",
     "progress": {
@@ -37,10 +45,35 @@
         "description": "Check the Bluetooth connection to this Tuya BLE protocol v4 device again. The device disconnects briefly during the check. Keep it close to Home Assistant and close the Smart Life app first. Your entities and settings are kept."
       },
       "user": {
+        "description": "Choose how to get this device's credentials. Logging in with the Smart Life app is recommended.",
+        "menu_options": {
+          "login": "Log in with the Smart Life or Tuya Smart app (recommended)",
+          "manual": "Enter the device credentials manually"
+        }
+      },
+      "login": {
         "data": {
           "user_code": "User Code"
         },
         "description": "Enter your Tuya User Code (found in Smart Life app: Me > Settings > Account and Security > User Code)."
+      },
+      "manual": {
+        "title": "Enter device credentials",
+        "description": "Use this only if logging in with the app cannot find your device. Home Assistant checks the credentials over Bluetooth before adding the device, so keep it nearby and close the Smart Life app first. The keys are stored only in Home Assistant and are never shown again.",
+        "data": {
+          "address": "Tuya BLE device",
+          "uuid": "UUID",
+          "local_key": "Local key",
+          "sec_key": "Security key (optional)",
+          "device_id": "Device ID",
+          "category": "Category",
+          "product_id": "Product ID",
+          "device_name": "Device name (optional)"
+        },
+        "data_description": {
+          "sec_key": "Only for devices that use the newer Security V2 Bluetooth login.",
+          "category": "The Tuya category code, for example szjqr for a Fingerbot."
+        }
       },
       "qr": {
         "description": "Scan this QR code in your Tuya Smart or Smart Life app."
@@ -410,9 +443,19 @@
     "error": {
       "device_not_registered": "Device is not registered in Tuya cloud",
       "invalid_auth": "Invalid authentication",
-      "login_error": "Login error ({code}): {msg}"
+      "login_error": "Login error ({code}): {msg}",
+      "invalid_local_key": "Enter the local key as printable characters without spaces, at least 6 characters.",
+      "invalid_sec_key": "The security key must be exactly 16 characters without spaces.",
+      "sec_key_not_used": "This device does not use a security key. Leave the field empty."
     },
     "step": {
+      "init": {
+        "description": "Choose what to change.",
+        "menu_options": {
+          "user": "Log in again with the QR code",
+          "credentials": "Replace the device keys"
+        }
+      },
       "user": {
         "data": {
           "user_code": "User Code"
@@ -424,6 +467,14 @@
       },
       "scan": {
         "description": "Waiting for QR code scan..."
+      },
+      "credentials": {
+        "title": "Replace the device keys",
+        "description": "Enter the device's new local key and, only if it uses one, its security key. Both keys are replaced together and the device reconnects with them; leave the security key empty to remove the stored one. The device ID, UUID, entities and settings are kept. The stored keys are never shown, and the new ones are not checked over Bluetooth before they are saved.",
+        "data": {
+          "local_key": "Local key",
+          "sec_key": "Security key (optional)"
+        }
       }
     }
   }
