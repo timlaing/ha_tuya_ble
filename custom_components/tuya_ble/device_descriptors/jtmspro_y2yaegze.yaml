@@ -1,0 +1,31 @@
+# Issue 154 schema confirms these IDs; settings/control did not work.
+category: jtmspro
+product_id: y2yaegze
+device_name: Drawer Lock CTL20H
+model_name: CTL20H
+entities:
+  lock: []
+  sensor:
+    - dp_id: 8
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+    - dp_id: 15
+      translation_key: unlock_card
+      icon: mdi:nfc-variant
+      entity_category: diagnostic
+    - dp_id: 19
+      translation_key: unlock_ble
+      icon: mdi:bluetooth
+      entity_category: diagnostic
+    - dp_id: 62
+      translation_key: unlock_phone_remote
+      icon: mdi:cellphone-lock
+      entity_category: diagnostic
+  binary_sensor:
+    - dp_id: 33
+      translation_key: automatic_lock
+      name: Automatic lock
+      entity_category: diagnostic
