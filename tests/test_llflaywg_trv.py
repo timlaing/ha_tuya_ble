@@ -339,11 +339,9 @@ async def test_aux_numbers(
     )
     entity = number.TuyaBLENumber(hass, coordinator, device, product, mapping)
     entity.hass = hass
-    assert (
-        entity.native_min_value,
-        entity.native_max_value,
-        entity.native_step,
-    ) == limits
+    assert entity.native_min_value == limits[0]
+    assert entity.native_max_value == limits[1]
+    assert entity.native_step == limits[2]
     with patch.object(device, "send_datapoints", new_callable=AsyncMock):
         for value in values:
             entity.set_native_value(value)
