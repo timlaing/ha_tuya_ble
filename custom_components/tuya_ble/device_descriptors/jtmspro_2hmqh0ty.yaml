@@ -1,0 +1,21 @@
+category: jtmspro
+product_id: 2hmqh0ty
+device_name: EL605A Knob Lock
+model_name: EL605A
+sensitive_dp_ids: [71]
+# Source PR315 proves battery and empty RAW unlock. No numeric state DP/schema.
+entities:
+  button:
+    - dp_id: 71
+      translation_key: bluetooth_unlock
+      icon: mdi:lock-open-variant-outline
+      dp_type: 0
+      handlers:
+        write: lock.command.press_raw_unlock
+  sensor:
+    - dp_id: 8
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
