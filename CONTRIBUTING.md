@@ -146,7 +146,7 @@ Available handler modules:
 - `parkside_mower.*` — Parkside robot mower error/work logs and the shared rain delay payload
 - `fingerbot.mode.*` — Fingerbot mode/availability helpers
 - `fingerbot.program.*` — Fingerbot program read/write helpers
-- `lock.state.*` — lock `read` handlers: `passage_or_bolt` (unlocked while passage mode or the bolt report is on) and `automatic_lock` (locked while automatic locking is on)
+- `lock.state.*` — lock `read` handlers, which only use values the lock reported (never an unconfirmed write): `passage_or_bolt` (unlocked while passage mode or the bolt report is on) and `automatic_lock` (locked while automatic locking is on)
 - `lock.command.*` — lock `write` handlers (`manual_lock_or_passage`, `manual_lock_or_raw_unlock`, `automatic_lock`), lock `open` handlers (`momentary_open`, `timestamped_open`) and lock button `write` handlers (`press_raw_unlock`, `press_timestamped_unlock`; a plain boolean unlock trigger uses `press_value: true` instead). The timestamped commands use the lock's `ble_unlock_check` from the Tuya cloud; mark the DP they write in `sensitive_dp_ids`
 
 Invalid handler paths or unknown roles are **rejected at load time** — typos fail fast.

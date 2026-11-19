@@ -1,7 +1,9 @@
 """Lock ``read`` handlers: derive ``is_locked`` from what the lock reports.
 
-Each returns ``None`` (unknown) until the lock has reported the data points it
-relies on, so a restart or reconnect never defaults the entity to locked.
+Each reads only what the lock itself reported (``reported_value``), never an
+optimistic local write, and returns ``None`` (unknown) until the lock has
+reported the data points it relies on, so a restart, reconnect or unconfirmed
+command never defaults the entity to locked.
 """
 
 from __future__ import annotations
@@ -15,6 +17,14 @@ if TYPE_CHECKING:
     from ....lock import TuyaBLELock
 
 
+def _reported(lock: TuyaBLELock, dp_id: int) -> bool | None:
+    """Return the lock's last reported boolean for *dp_id*, or None if unreported."""
+    datapoint = lock.device.datapoints[dp_id]
+    if datapoint is None or datapoint.reported_value is None:
+        return None
+    return bool(datapoint.reported_value)
+
+
 def automatic_lock(lock: TuyaBLELock, _product: TuyaBLEProductInfo) -> bool | None:
     """Report locked while automatic locking (the entity's DP) is on.
 
@@ -22,10 +32,7 @@ def automatic_lock(lock: TuyaBLELock, _product: TuyaBLEProductInfo) -> bool | No
     report stays locked while a fingerprint or momentary open briefly releases
     it (ha-tuya-ble/ha_tuya_ble#353).
     """
-    datapoint = lock.device.datapoints[lock.dp_id]
-    if datapoint is None:
-        return None
-    return bool(datapoint.value)
+    return _reported(lock, lock.dp_id)
 
 
 @requires_dp_ids("passage_dp_id")
@@ -36,10 +43,8 @@ def passage_or_bolt(lock: TuyaBLELock, _product: TuyaBLEProductInfo) -> bool | N
     re-reported on every connection, so either alone is enough to know the
     lock is open (ha-tuya-ble/ha_tuya_ble#327).
     """
-    passage = lock.device.datapoints[lock.descriptor_dp_id("passage_dp_id")]
-    bolt = lock.device.datapoints[lock.dp_id]
+    passage = _reported(lock, lock.descriptor_dp_id("passage_dp_id"))
+    bolt = _reported(lock, lock.dp_id)
     if passage is None and bolt is None:
         return None
-    if passage is not None and passage.value:
-        return False
-    return not (bolt is not None and bolt.value)
+    return not (passage or bolt)

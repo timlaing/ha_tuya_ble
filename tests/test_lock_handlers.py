@@ -230,6 +230,25 @@ async def test_passage_lock_bolt_report_alone(hass: HomeAssistant) -> None:
 
 
 @pytest.mark.usefixtures("registry")
+async def test_lock_state_ignores_unconfirmed_writes(hass: HomeAssistant) -> None:
+    """A command the lock has not reported back does not change the state."""
+    passage, passage_device = _lock(hass, "testpass")
+    await passage.async_unlock()
+    assert _value(passage_device, 33) is True
+    assert passage.is_locked is None
+    add_dp(passage_device, 47, TuyaBLEDataPointType.DT_BOOL, False)
+    assert passage.is_locked is True
+
+    automatic, automatic_device = _lock(hass, "testauto")
+    await automatic.async_lock()
+    assert _value(automatic_device, 33) is True
+    assert automatic.is_locked is None
+    add_dp(automatic_device, 33, TuyaBLEDataPointType.DT_BOOL, True)
+    await automatic.async_unlock()
+    assert automatic.is_locked is True
+
+
+@pytest.mark.usefixtures("registry")
 async def test_passage_lock_commands(hass: HomeAssistant) -> None:
     """Lock writes manual_lock, unlock holds passage mode, open is momentary."""
     entity, device = _lock(hass, "testpass")
