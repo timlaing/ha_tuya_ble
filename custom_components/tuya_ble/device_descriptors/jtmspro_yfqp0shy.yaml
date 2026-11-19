@@ -1,0 +1,8 @@
+# PR230's generic lock path is not proof that manual_lock false unlocks.
+category: jtmspro
+product_id: yfqp0shy
+device_name: Gainsborough Liberty BLE Lock
+model_name: GGC01HA
+manufacturer: Gainsborough
+entities:
+  lock: []
