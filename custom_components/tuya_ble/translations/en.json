@@ -185,6 +185,12 @@
       }
     },
     "number": {
+      "temp_correction": {
+        "name": "Temperature correction"
+      },
+      "eco_temp_deviation": {
+        "name": "Temperature deviation (eco)"
+      },
       "brightness": {
         "name": "Brightness"
       },
@@ -229,6 +235,30 @@
       }
     },
     "select": {
+      "valve_mode": {
+        "name": "Valve operating mode",
+        "state": {
+          "auto": "Auto",
+          "manual": "Manual",
+          "off": "Off",
+          "full_open": "Full open (100%)"
+        }
+      },
+      "led_brightness": {
+        "name": "LED brightness",
+        "state": {
+          "high": "High",
+          "mid": "Medium",
+          "low": "Low"
+        }
+      },
+      "screen_orientation": {
+        "name": "Screen orientation",
+        "state": {
+          "up": "Up",
+          "down": "Down"
+        }
+      },
       "beep_volume": {
         "name": "Lock Volume"
       },
@@ -287,6 +317,43 @@
       }
     },
     "sensor": {
+      "window_state": {
+        "name": "Window state",
+        "state": {
+          "closed": "Closed",
+          "opened": "Opened"
+        }
+      },
+      "child_lock_state": {
+        "name": "Child lock state",
+        "state": {
+          "disabled": "Disabled",
+          "enabled": "Enabled"
+        }
+      },
+      "valve_open_degree": {
+        "name": "Valve opening"
+      },
+      "motor_thrust_state": {
+        "name": "Motor thrust",
+        "state": {
+          "strong": "Strong",
+          "middle": "Medium",
+          "weak": "Weak"
+        }
+      },
+      "mfg_model": {
+        "name": "Manufacturer model"
+      },
+      "fw_version_int": {
+        "name": "Firmware version"
+      },
+      "lower_temperature_limit": {
+        "name": "Lower temperature limit"
+      },
+      "upper_temperature_limit": {
+        "name": "Upper temperature limit"
+      },
       "generator_voltage": {
         "name": "Voltage"
       },
@@ -395,6 +462,8 @@
       "work_state": {
         "name": "Operation",
         "state": {
+          "closed": "Closed",
+          "opened": "Opened",
           "auto": "Auto",
           "manual": "Manual",
           "idle": "Idle"

@@ -302,6 +302,71 @@ def _validate_vacuum(raw: dict[str, Any]) -> None:
         )
 
 
+def _validate_wire_values(raw: dict[str, Any]) -> None:
+    """Validate explicit enum indices for climate modes and select options."""
+    for value_field, options_field in (
+        ("hvac_mode_values", "hvac_modes"),
+        ("enum_values", "options"),
+    ):
+        if value_field not in raw:
+            continue
+        values = raw[value_field]
+        if (
+            not isinstance(values, list)
+            or len(values) != len(raw.get(options_field, []))
+            or not values
+            or not all(_is_enum_index(value) for value in values)
+            or len(set(values)) != len(values)
+        ):
+            raise DeviceRegistryError(
+                f"{value_field} must contain unique byte indices "
+                f"matching {options_field}"
+            )
+    if raw.get("hvac_mode_dp_type", 2) not in (2, 4):
+        raise DeviceRegistryError("hvac_mode_dp_type must be VALUE (2) or ENUM (4)")
+    if "enum_values" in raw and (
+        raw.get("values") is not None or raw.get("dp_type", 4) != 4
+    ):
+        raise DeviceRegistryError(
+            "enum_values requires ENUM type without string values"
+        )
+    _validate_preset_enum(raw)
+
+
+def _validate_preset_enum(raw: dict[str, Any]) -> None:
+    """Reject incomplete enum presets or mixing enum and bool presets."""
+    presets = raw.get("preset_enum_values")
+    if presets is None:
+        if "preset_enum_dp_id" in raw:
+            raise DeviceRegistryError("preset_enum_dp_id needs preset_enum_values")
+        return
+    if not isinstance(presets, dict) or not presets:
+        raise DeviceRegistryError("preset_enum_values must be a non-empty mapping")
+    if (
+        not all(
+            isinstance(key, str) and _is_enum_index(value)
+            for key, value in presets.items()
+        )
+        or len(set(presets.values())) != len(presets)
+        or not _is_positive_dp_id(raw.get("preset_enum_dp_id"))
+        or raw.get("preset_mode_dp_ids")
+    ):
+        raise DeviceRegistryError(
+            "preset_enum_values needs unique byte indices and preset_enum_dp_id, "
+            "without bool presets"
+        )
+
+
+def _is_enum_index(value: Any) -> bool:
+    """Return whether a value is a byte-sized enum index, excluding bool."""
+    return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 255
+
+
+def _is_positive_dp_id(value: Any) -> bool:
+    """Return whether a data point reference is a positive integer."""
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
 def _validate_climate_action(raw: dict[str, Any]) -> None:
     """Validate that a switch-driven hvac action names a usable switch."""
     name = raw.get("translation_key", raw.get("dp_id", "?"))
@@ -374,8 +439,12 @@ def _validate_sensor_report_options(raw: dict[str, Any]) -> None:
 
 
 _PLATFORM_VALIDATORS: dict[str, tuple[Callable[[dict[str, Any]], None], ...]] = {
-    "climate": (_validate_climate_modes, _validate_climate_action),
-    "select": (_validate_settable_options,),
+    "climate": (
+        _validate_climate_modes,
+        _validate_climate_action,
+        _validate_wire_values,
+    ),
+    "select": (_validate_settable_options, _validate_wire_values),
     "sensor": (_validate_sensor_report_options,),
     "vacuum": (_validate_vacuum,),
 }

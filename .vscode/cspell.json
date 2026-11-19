@@ -21,6 +21,7 @@
   ],
   "ignorePaths": ["node_modules", "__pycache__", ".mypy_cache", ".opencode"],
   "ignoreWords": [
+    "llflaywg",
     "aabbccddeeff",
     "acesso",
     "ajrhf",
