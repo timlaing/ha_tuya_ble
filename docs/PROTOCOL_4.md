@@ -247,7 +247,7 @@ is saved only after the same authenticated status read as a profile, together
 with the profile (`security_mode`: `classic` or `v2`). A saved classic login
 leaves the stored `sec_key` unused; **Reconfigure** tests both again. Entries
 saved without a `security_mode` keep using Security V2 exactly when a `sec_key`
-is stored. Unverified entries keep that rule too. Replacing the keys in the
+is stored, until **Reconfigure** saves a verified login. Unverified entries keep that rule too. Replacing the keys in the
 integration options keeps the saved login unless the latest advertisement
 rules it out: a classic login on firmware that has switched Security V2 on
 becomes `v2`, and without a security key the saved login is removed.
