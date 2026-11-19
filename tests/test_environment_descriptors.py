@@ -615,3 +615,25 @@ async def test_unit_write_before_the_first_unit_report(hass: HomeAssistant) -> N
         add_dp(device, 9, TuyaBLEDataPointType.DT_ENUM, 1)
         coordinator.async_set_updated_data({})
     assert temperature.native_unit_of_measurement == UnitOfTemperature.FAHRENHEIT
+
+
+async def test_new_sensor_ignores_a_write_after_the_unit_report(
+    hass: HomeAssistant,
+) -> None:
+    """A sensor created after a local write still shows the reported unit.
+
+    DP 9 is reported as °C, then a write sets it to °F before this sensor has
+    read it. The sensor shows the device-reported °C, not the pending write.
+    """
+    device, coordinator, product = _context(hass, "zwjcy", "gpkyrocn")
+    add_dp(device, 9, TuyaBLEDataPointType.DT_ENUM, 0)
+    add_dp(device, 5, TuyaBLEDataPointType.DT_VALUE, 215)
+    unit = device.datapoints[9]
+    assert unit is not None
+    unit.set_value_no_notify(1)
+    temperature = sensor.TuyaBLESensor(
+        hass, coordinator, device, product, sensor.get_mapping_by_device(device)[0]
+    )
+    await _push(coordinator, [temperature], device, [])
+    assert temperature.native_value == 21.5
+    assert temperature.native_unit_of_measurement == UnitOfTemperature.CELSIUS

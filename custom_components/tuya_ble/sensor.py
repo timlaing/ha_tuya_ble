@@ -213,8 +213,6 @@ class TuyaBLESensor(TuyaBLERestoreEntity, SensorEntity):
         self._attr_restore = sensor_mapping.restore
         # Per-entity scratch state owned by the read handler.
         self.handler_state: dict[str, Any] = {}
-        # (report revision of the unit datapoint, unit the device reported)
-        self._device_unit: tuple[int, str] | None = None
 
     @property
     def dp_id(self) -> int:
@@ -250,32 +248,13 @@ class TuyaBLESensor(TuyaBLERestoreEntity, SensorEntity):
         """
         if self._mapping.unit_dp_id is None:
             return super().native_unit_of_measurement
-        self._refresh_device_unit(self._mapping.unit_dp_id)
-        if self._device_unit is not None:
-            return self._device_unit[1]
-        return super().native_unit_of_measurement
-
-    def _refresh_device_unit(self, unit_dp_id: int) -> None:
-        """Record the unit datapoint's value when the device has reported it.
-
-        Only device reports advance ``report_revision``, so the recorded unit
-        is a reported value and never an optimistic local write.
-        """
-        datapoint = self.device.datapoints[unit_dp_id]
-        if datapoint is None or not isinstance(datapoint.value, int):
-            return
-        revision = datapoint.report_revision
-        if revision == 0 or (
-            self._device_unit is not None and self._device_unit[0] == revision
-        ):
-            # Zero: created locally by a write, the device has not reported it.
-            return
-        unit = (
-            UnitOfTemperature.CELSIUS
-            if datapoint.value == 0
-            else UnitOfTemperature.FAHRENHEIT
-        )
-        self._device_unit = (revision, unit)
+        datapoint = self.device.datapoints[self._mapping.unit_dp_id]
+        reported = datapoint.reported_value if datapoint is not None else None
+        if not isinstance(reported, int):
+            return super().native_unit_of_measurement
+        if reported == 0:
+            return UnitOfTemperature.CELSIUS
+        return UnitOfTemperature.FAHRENHEIT
 
     @property
     def extra_restore_state_data(self) -> ExtraStoredData | None:
@@ -314,8 +293,6 @@ class TuyaBLESensor(TuyaBLERestoreEntity, SensorEntity):
             datapoint = self.device.datapoints[self._mapping.dp_id]
             if datapoint:
                 self._update_from_datapoint(datapoint)
-        if self._mapping.unit_dp_id is not None:
-            self._refresh_device_unit(self._mapping.unit_dp_id)
         self.async_write_ha_state()
 
     @callback

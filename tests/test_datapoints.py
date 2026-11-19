@@ -72,8 +72,21 @@ def test_locally_created_datapoint_has_no_report(
     """A data point created for a write is not mistaken for a device report."""
     dp = datapoints.get_or_create(9, TuyaBLEDataPointType.DT_ENUM, 1)
     assert dp.report_revision == 0
+    assert dp.reported_value is None
     datapoints.update_from_device(9, 1.0, 0, TuyaBLEDataPointType.DT_ENUM, 1)
     assert dp.report_revision == 1
+    assert dp.reported_value == 1
+
+
+def test_reported_value_ignores_local_writes(datapoints: TuyaBLEDataPoints) -> None:
+    """A local write changes ``value`` but not the last reported value."""
+    dp = make_dp(datapoints, dp_type=TuyaBLEDataPointType.DT_ENUM, value=0)
+    assert dp.reported_value == 0
+    dp.set_value_no_notify(1)
+    assert dp.value == 1
+    assert dp.reported_value == 0
+    dp.update_from_device(2.0, 0, TuyaBLEDataPointType.DT_ENUM, 1)
+    assert dp.reported_value == 1
 
 
 @pytest.mark.parametrize("failure", [BleakError(), asyncio.CancelledError()])
