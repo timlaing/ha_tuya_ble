@@ -135,7 +135,8 @@ def test_form_order_and_secure_password() -> None:
 def test_email_region_default(region: str, code: str) -> None:
     """Country is derived from the QR region only when omitted for email login."""
     login, errors = parse_mobile_login(FORM, region)
-    assert not errors and login is not None
+    assert not errors
+    assert login is not None
     assert login.country_code == code
     assert login.username == FORM[CONF_USERNAME]
     assert "PRIVATE_PASSWORD" not in repr(login)
@@ -149,7 +150,8 @@ def test_supplied_numeric_country_overrides_default(username: str) -> None:
     login, errors = parse_mobile_login(
         {**FORM, CONF_USERNAME: username, CONF_COUNTRY: 49.0}, "eu"
     )
-    assert not errors and login is not None
+    assert not errors
+    assert login is not None
     assert login.country_code == "49"
 
 
@@ -159,13 +161,15 @@ def test_supplied_numeric_country_overrides_default(username: str) -> None:
 def test_invalid_country_prevents_password_submission(code: Any) -> None:
     """Do not silently replace an invalid supplied code with a region default."""
     login, errors = parse_mobile_login({**FORM, CONF_COUNTRY: code}, "eu")
-    assert login is None and errors[CONF_COUNTRY] == "mobile_invalid_country"
+    assert login is None
+    assert errors[CONF_COUNTRY] == "mobile_invalid_country"
 
 
 def test_phone_requires_country() -> None:
     """Representative codes must never be applied to a phone account."""
     login, errors = parse_mobile_login({**FORM, CONF_USERNAME: "07123456789"}, "eu")
-    assert login is None and errors == {CONF_COUNTRY: "mobile_country_required"}
+    assert login is None
+    assert errors == {CONF_COUNTRY: "mobile_country_required"}
 
 
 @pytest.mark.parametrize(
@@ -181,13 +185,15 @@ def test_phone_requires_country() -> None:
 def test_invalid_form_fields(fields: dict[str, Any], field: str) -> None:
     """Invalid submissions show field-specific errors."""
     login, errors = parse_mobile_login({**FORM, **fields}, "eu")
-    assert login is None and field in errors
+    assert login is None
+    assert field in errors
 
 
 def test_unknown_region_is_not_guessed() -> None:
     """Neither a country override nor a valid password chooses an unknown host."""
     login, errors = parse_mobile_login({**FORM, CONF_COUNTRY: 44}, None)
-    assert login is None and errors["base"] == "mobile_unknown_region"
+    assert login is None
+    assert errors["base"] == "mobile_unknown_region"
 
 
 @pytest.mark.parametrize(
@@ -236,16 +242,17 @@ async def test_successful_fallback_persists_keys_not_login(hass: HomeAssistant) 
         await flow._probe_task
         result = await flow.async_step_probe_finish()
     data = result["data"]
-    assert data[CONF_LOCAL_KEY] == LOCAL and data[CONF_SEC_KEY] == SEC
+    assert data[CONF_LOCAL_KEY] == LOCAL
+    assert data[CONF_SEC_KEY] == SEC
     assert data[CONF_CREDENTIAL_SOURCE] == "mobile_app"
     assert data[CONF_CLOUD_REGION] == "eu"
     assert data[CONF_MOBILE_SNAPSHOT]["records"]["device"]["productVer"] == "1.2"
     assert fetch.call_args.args[1].country_code == "44"
     serialized = json.dumps(data)
-    assert (
-        "PRIVATE_PASSWORD" not in serialized and "private@example.org" not in serialized
-    )
-    assert "sid" not in data and "ecode" not in data
+    assert "PRIVATE_PASSWORD" not in serialized
+    assert "private@example.org" not in serialized
+    assert "sid" not in data
+    assert "ecode" not in data
 
 
 async def test_cloud_success_bluetooth_failure_still_allows_diagnostics(
@@ -363,7 +370,8 @@ async def test_steps_without_pending_state_abort(hass: HomeAssistant) -> None:
 def test_email_validation_is_bounded(username: str) -> None:
     """Validate malformed emails without a super-linear backtracking pattern."""
     login, errors = parse_mobile_login({**FORM, CONF_USERNAME: username}, "eu")
-    assert login is None and errors[CONF_USERNAME] == "mobile_invalid_username"
+    assert login is None
+    assert errors[CONF_USERNAME] == "mobile_invalid_username"
 
 
 @pytest.mark.parametrize(
@@ -420,9 +428,8 @@ async def test_reconfigure_failure_preserves_keys_and_saves_metadata(
         await flow._mobile_task
         result = await flow.async_step_mobile_finish()
     assert result["errors"] == {"base": "mobile_missing_key"}
-    assert (
-        entry.data[CONF_LOCAL_KEY] == "original-key" and CONF_SEC_KEY not in entry.data
-    )
+    assert entry.data[CONF_LOCAL_KEY] == "original-key"
+    assert CONF_SEC_KEY not in entry.data
     assert entry.data[CONF_MOBILE_SNAPSHOT]["records"]["device"]["productVer"] == "1.2"
     result = await flow.async_step_mobile_result({"next_action": "continue"})
     assert result["step_id"] == "reconfigure"
@@ -452,7 +459,8 @@ async def test_reconfigure_success_updates_pair_and_profile_atomically(
         await flow._probe_task
         await flow.async_step_probe_finish()
     updates = update.call_args.kwargs["data_updates"]
-    assert updates[CONF_LOCAL_KEY] == LOCAL and updates[CONF_SEC_KEY] == SEC
+    assert updates[CONF_LOCAL_KEY] == LOCAL
+    assert updates[CONF_SEC_KEY] == SEC
     assert updates[CONF_CONNECTION_PROFILE] == "v4_20"
     assert updates[CONF_CREDENTIAL_SOURCE] == "mobile_app"
     assert entry.data[CONF_LOCAL_KEY] == "original-key"  # update itself is stubbed
@@ -472,7 +480,8 @@ async def test_reconfigure_without_region_requests_qr_login(
     )
     flow._data = {}
     result = await flow.async_step_mobile_login()
-    assert result["step_id"] == "login" and flow._mobile_region_login
+    assert result["step_id"] == "login"
+    assert flow._mobile_region_login
     flow._data = {CONF_ENDPOINT: "https://apigw.tuyaeu.com"}
     result = await flow._async_mobile_region_ready()
     assert result["step_id"] == "mobile_login"
@@ -584,8 +593,7 @@ async def test_reconfigure_ble_failure_keeps_existing_pair(hass: HomeAssistant) 
         await flow._probe_task
         result = await flow.async_step_probe_finish()
     assert result["step_id"] == "reconfigure"
-    assert (
-        entry.data[CONF_LOCAL_KEY] == "original-key" and CONF_SEC_KEY not in entry.data
-    )
+    assert entry.data[CONF_LOCAL_KEY] == "original-key"
+    assert CONF_SEC_KEY not in entry.data
     assert CONF_MOBILE_SNAPSHOT in entry.data
     reload_entry.assert_awaited_once()

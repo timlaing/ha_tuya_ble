@@ -110,7 +110,8 @@ async def test_atomic_mobile_key_pair_and_snapshot(hass: HomeAssistant) -> None:
     assert result.credentials is not None
     assert result.credentials.local_key == LOCAL
     assert result.credentials.sec_key == SEC
-    assert original.local_key != LOCAL and original.sec_key is None
+    assert original.local_key != LOCAL
+    assert original.sec_key is None
     assert result.credentials.cloud_info == original.cloud_info
     assert not result.error
     assert result.snapshot["records"]["device"]["communication"]["ble"] is True
@@ -119,9 +120,8 @@ async def test_atomic_mobile_key_pair_and_snapshot(hass: HomeAssistant) -> None:
         "product": True,
         "status": True,
     }
-    assert LOCAL not in json.dumps(result.snapshot) and SEC not in json.dumps(
-        result.snapshot
-    )
+    assert LOCAL not in json.dumps(result.snapshot)
+    assert SEC not in json.dumps(result.snapshot)
     assert "PRIVATE_PASSWORD" not in repr(LOGIN)
     factory.assert_called_once()
     assert factory.call_args.kwargs["endpoint"] == "https://a1.tuyaeu.com/api.json"
@@ -149,7 +149,8 @@ async def test_mismatched_identity_never_imports_keys(
     original = make_credentials()
     result, fake, _ = await fetch(hass, original, record(original, **changes))
     assert result.error == "mobile_identity_mismatch"
-    assert result.credentials is None and result.snapshot is None
+    assert result.credentials is None
+    assert result.snapshot is None
     assert fake._call.await_count == 1
 
 
@@ -179,7 +180,8 @@ async def test_missing_or_invalid_keys_preserve_diagnostics(
     """Successfully fetched metadata survives even when the key pair is unusable."""
     original = make_credentials()
     result, _, _ = await fetch(hass, original, record(original, **changes))
-    assert result.error == error and result.credentials is None
+    assert result.error == error
+    assert result.credentials is None
     assert result.snapshot is not None
 
 
@@ -230,7 +232,8 @@ async def test_device_business_failure(
 ) -> None:
     """The public error is safe and no optional calls follow a failed detail read."""
     result, fake, _ = await fetch(hass, responses=[response])
-    assert result.error == "mobile_device_not_found" and result.snapshot is None
+    assert result.error == "mobile_device_not_found"
+    assert result.snapshot is None
     assert fake._call.await_count == 1
 
 
