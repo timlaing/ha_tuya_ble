@@ -1,0 +1,8 @@
+# PR234 treats string battery levels as BLE strings without wire proof.
+category: ms
+product_id: kpn4zaf7
+device_name: BSTUOKEY Invisible Lock
+model_name: kpn4zaf7
+manufacturer: BSTUOKEY
+entities:
+  lock: []

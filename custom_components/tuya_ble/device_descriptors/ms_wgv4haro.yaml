@@ -1,0 +1,8 @@
+# Issue251 confirms momentary opening but calls DP6 RAW; PR272 sends BOOL.
+category: ms
+product_id: wgv4haro
+device_name: Guard Dog Security Smart Lock
+model_name: BS_PLD01
+manufacturer: Guard Dog Security
+entities:
+  lock: []
