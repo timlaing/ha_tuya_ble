@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Iterable
+from collections.abc import AsyncIterator, Iterable, Iterator
 from contextlib import asynccontextmanager
 import logging
 from struct import error as struct_error
@@ -227,6 +227,22 @@ class TuyaBLEDataPoint:
         another one and snapshot its unconfirmed value.
         """
         async with self._owner.apply_with_rollback([(self, value)]):
+            await self._owner.update_from_user(self._id)
+
+    async def toggle(self) -> None:
+        """Invert the boolean value and send it, rolling back on failure.
+
+        The current value is read only once the owner's write lock is held:
+        `apply_with_rollback` consumes its updates inside that lock, so the
+        generator below runs after any earlier write has been applied or
+        rolled back. Overlapping toggles therefore each invert the latest
+        value instead of all inverting the same stale one.
+        """
+
+        def updates() -> Iterator[tuple[TuyaBLEDataPoint, TuyaBLEDataPointValue]]:
+            yield self, not bool(self._value)
+
+        async with self._owner.apply_with_rollback(updates()):
             await self._owner.update_from_user(self._id)
 
     def _set_enum_value(self, value: TuyaBLEDataPointValue) -> None:

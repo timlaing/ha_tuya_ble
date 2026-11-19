@@ -441,7 +441,7 @@
   },
   "exceptions": {
     "button_press_failed": {
-      "message": "The device did not accept the button press. Check that it is in Bluetooth range and try again."
+      "message": "The device did not confirm the button press. Check the device before pressing again, as the press may already have been carried out."
     }
   },
   "options": {

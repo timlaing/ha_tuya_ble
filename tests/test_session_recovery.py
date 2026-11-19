@@ -32,6 +32,7 @@ from tests.protocol_harness import (
     device_info_data,
     encrypt_payload,
     fragment,
+    frame_packet0,
 )
 
 ESTABLISH = "custom_components.tuya_ble.tuya_ble.base.establish_connection"
@@ -133,80 +134,109 @@ async def test_failed_command_is_not_replayed_after_reconnect(failure: str) -> N
     assert establish.await_count == 2
 
 
-async def test_cancelled_command_releases_its_response_slot() -> None:
-    """Cancelling a command while it awaits its response leaves no waiter behind."""
-    harness = ProtocolHarness()
-    dev, client = harness.device, harness.client
-    waiters: list[asyncio.Future[int]] = []
+def _harness() -> ProtocolHarness:
+    """Return a paired protocol 3 harness whose writes go to a fake client."""
+    return ProtocolHarness(protocol_version=3)
 
-    async def send(_packets: list[bytes]) -> None:
-        waiters.extend(dev._input_expected_responses.values())
 
-    with patch.object(dev, "_int_send_packet_while_connected", side_effect=send):
-        command = asyncio.create_task(
-            dev._send_packet(TuyaBLECode.FUN_SENDER_DPS, b"\x01")
-        )
-        for _ in range(10):
-            await asyncio.sleep(0)
-        assert waiters
-        command.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await command
+async def test_cancelled_write_releases_its_response_slot() -> None:
+    """Cancelling a datapoint write that awaits its response leaves no waiter."""
+    h = _harness()
+    dp = h.device.get_or_create_datapoint(1, TuyaBLEDataPointType.DT_BOOL, False)
+    write = asyncio.create_task(dp.set_value(True))
+    for _ in range(20):
+        await asyncio.sleep(0)
+        if h.writes():
+            break
+    assert h.writes()
+    waiters = list(h.device._input_expected_responses.values())
+    assert len(waiters) == 1
+    write.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await write
     assert waiters[0].cancelled()
-    assert not dev._input_expected_responses
-    # The session itself stays usable: cancelling is not a device failure.
-    assert cast(object, dev._client) is client
-    assert dev._is_ready()
+    assert not h.device._input_expected_responses
+    assert dp.value is False
+    # Cancelling is not a device failure: the session stays usable.
+    assert cast(object, h.device._client) is h.client
+    assert h.device._is_ready()
 
 
-async def test_write_failure_before_send_releases_pending_waiter() -> None:
-    """A write that fails before reaching the device leaves no pending waiter."""
-    dev = ProtocolHarness().device
-    waiters: list[asyncio.Future[int]] = []
+@pytest.mark.parametrize("link", ["live", "dropped", "replaced"])
+async def test_failed_write_releases_only_the_failed_client(link: str) -> None:
+    """A failed write releases its own session, never a replacement link."""
+    h = _harness()
+    replacement = FakeBleakClient()
+    dp = h.device.get_or_create_datapoint(1, TuyaBLEDataPointType.DT_BOOL, False)
 
-    async def send(_packets: list[bytes]) -> None:
-        waiters.extend(dev._input_expected_responses.values())
-        raise BleakError("link lost")
+    async def fail(*_args: object) -> None:
+        if link == "dropped":
+            await h.client.disconnect()
+        elif link == "replaced":
+            h.device._client = replacement  # type: ignore[assignment]
+        raise OSError("write failed")
 
     with (
-        patch.object(dev, "_int_send_packet_while_connected", side_effect=send),
+        patch.object(h.client, "write_gatt_char", side_effect=fail),
+        patch.object(h.device, "_schedule_reconnect") as reconnect,
         pytest.raises(BleakError),
     ):
-        await dev._send_packet_while_connected(TuyaBLECode.FUN_SENDER_DPS, b"", 0, True)
-    assert waiters[0].cancelled()
-    assert not dev._input_expected_responses
+        await dp.set_value(True)
+
+    assert dp.value is False
+    assert not h.device._input_expected_responses
+    assert not h.client.is_connected or link == "replaced"
+    if link == "replaced":
+        assert cast(object, h.device._client) is replacement
+        assert replacement.is_connected
+        assert not replacement.writes
+        reconnect.assert_not_called()
+    else:
+        assert h.device._client is None
+        reconnect.assert_called_once_with()
 
 
 async def test_late_response_to_finished_waiter_is_ignored() -> None:
     """A response arriving after its waiter was cancelled must not raise."""
-    dev = _device()
+    h = _harness()
+    await h.register_notify()
+    key = h.device._session_key
+    assert key is not None
     future: asyncio.Future[int] = asyncio.get_running_loop().create_future()
     future.cancel()
-    dev._input_expected_responses[7] = future
-    dev._resolve_expected_response(7, 0)
-    assert not dev._input_expected_responses
+    # Setup: a waiter cancelled just before its response arrived.
+    h.device._input_expected_responses[7] = future
+    h.notify(
+        frame_packet0(
+            encrypt_payload(key, 5, 1, 7, TuyaBLECode.FUN_SENDER_DPS, b"\x00"), 3
+        )
+    )
+    await asyncio.sleep(0)
+    assert not h.device._input_expected_responses
+    assert h.device._input_buffer is None
 
 
-async def test_queued_fragments_never_reach_a_replacement_client() -> None:
-    """Fragments of one frame are written only to the link the first one used."""
-    dev = _device()
-    first = FakeBleakClient()
+async def test_fragments_never_reach_a_replacement_client() -> None:
+    """A fragmented write stops when its link is replaced mid-frame."""
+    h = _harness()
     replacement = FakeBleakClient()
-    dev._client = first  # type: ignore[assignment]
-    original_write = first.write_gatt_char
+    dp = h.device.get_or_create_datapoint(1, TuyaBLEDataPointType.DT_STRING, "x")
+    original_write = h.client.write_gatt_char
 
     async def swap(char: str, data: bytes, response: bool) -> None:
         await original_write(char, data, response)
-        dev._client = replacement  # type: ignore[assignment]
+        h.device._client = replacement  # type: ignore[assignment]
 
     with (
-        patch.object(first, "write_gatt_char", side_effect=swap),
+        patch.object(h.client, "write_gatt_char", side_effect=swap),
+        patch.object(h.device, "_schedule_reconnect"),
         pytest.raises(BleakError),
     ):
-        await dev._int_send_packets_locked([b"first", b"second"])
-    assert first.writes == [b"first"]
+        await dp.set_value("y" * 100)
+    assert len(h.client.writes) == 1
     assert not replacement.writes
-    assert cast(object, dev._client) is replacement
+    assert cast(object, h.device._client) is replacement
+    assert dp.value == "x"
 
 
 async def test_stop_notifies_listeners_once_and_ignores_the_late_callback() -> None:

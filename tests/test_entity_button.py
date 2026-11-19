@@ -167,8 +167,17 @@ async def test_press_cancellation_propagates(hass: HomeAssistant) -> None:
     assert dp.value is False
 
 
-async def test_rapid_presses_each_send_their_own_toggle(hass: HomeAssistant) -> None:
-    """A press made while another is in flight sends the next toggle."""
+@pytest.mark.parametrize(
+    ("first_fails", "expected_sent"),
+    [(False, [True, False, True]), (True, [True, True, False])],
+    ids=["all-succeed", "first-fails"],
+)
+async def test_rapid_presses_each_toggle_the_latest_value(
+    hass: HomeAssistant,
+    first_fails: bool,
+    expected_sent: list[bool],
+) -> None:
+    """Overlapping presses each invert the value left by the previous press."""
     device, coordinator, product = build_context(hass)
     entity = _make_entity(hass, device, coordinator, product)
     add_dp(device, 2, TuyaBLEDataPointType.DT_BOOL, False)
@@ -183,15 +192,25 @@ async def test_rapid_presses_each_send_their_own_toggle(hass: HomeAssistant) -> 
         if len(sent) == 1:
             first_started.set()
             await finish_first.wait()
+            if first_fails:
+                raise BleakError("write failed")
 
     with patch.object(device, "send_datapoints", side_effect=send):
         first = asyncio.create_task(entity.async_press())
         await first_started.wait()
-        second = asyncio.create_task(entity.async_press())
-        await asyncio.sleep(0)
+        # Both later presses start while the first write is still pending.
+        others = [asyncio.create_task(entity.async_press()) for _ in range(2)]
+        for _ in range(5):
+            await asyncio.sleep(0)
         finish_first.set()
-        await asyncio.gather(first, second)
-    assert sent == [True, False]
+        results = await asyncio.gather(first, *others, return_exceptions=True)
+    assert sent == expected_sent
+    assert isinstance(results[0], HomeAssistantError) is first_fails
+    assert results[1:] == [None, None]
+    dp = device.datapoints[2]
+    assert dp is not None
+    # The last successful press decides the final value.
+    assert dp.value is expected_sent[-1]
 
 
 async def test_available(hass: HomeAssistant) -> None:

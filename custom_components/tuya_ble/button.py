@@ -130,18 +130,19 @@ class TuyaBLEButton(TuyaBLEEntity, ButtonEntity):  # pylint: disable=abstract-me
 
         The write is awaited so a failed or unacknowledged command is reported
         to the caller instead of being lost in a background task. The toggle
-        is read when the press runs, so rapid presses each send their own.
+        is computed under the device write lock, so rapid presses each invert
+        the latest value.
         """
         datapoint = self.device.datapoints.get_or_create(
             self._mapping.dp_id,
             TuyaBLEDataPointType.DT_BOOL,
             False,
         )
-        value = self._mapping.press_value
-        if value is None:
-            value = not bool(datapoint.value)
         try:
-            await datapoint.set_value(value)
+            if self._mapping.press_value is None:
+                await datapoint.toggle()
+            else:
+                await datapoint.set_value(self._mapping.press_value)
         except BLE_CONNECTION_EXCEPTIONS as err:
             raise HomeAssistantError(
                 translation_domain=DOMAIN,

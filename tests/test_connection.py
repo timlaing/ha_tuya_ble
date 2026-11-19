@@ -1468,39 +1468,6 @@ def test_protocol_send_default_is_not_fingerbot_touch() -> None:
     assert protocol._is_fingerbot_touch is False
 
 
-@pytest.mark.parametrize(
-    ("state", "expect_recovery"),
-    [("missing", False), ("replaced", False), ("disconnected", True), ("live", True)],
-)
-async def test_recover_session_releases_only_the_failed_client(
-    state: str, expect_recovery: bool
-) -> None:
-    """Session recovery releases the failed client and never a replacement."""
-    credentials = make_credentials()
-    dev = make_device(manager=FakeBLEManager(credentials))
-    dev.initialize_with_credentials(credentials)
-    failed: Any = FakeBleakClient(is_connected=state != "disconnected")
-    current: Any = {
-        "missing": None,
-        "replaced": FakeBleakClient(),
-        "disconnected": failed,
-        "live": failed,
-    }[state]
-    dev._client = current
-    dev._is_paired = current is not None
-    with patch.object(dev, "_schedule_reconnect") as reconnect:
-        await dev._recover_session(failed)
-    if expect_recovery:
-        assert dev._client is None
-        assert not failed.is_connected
-        reconnect.assert_called_once_with()
-    else:
-        assert dev._client is current
-        reconnect.assert_not_called()
-    if current is not None and current is not failed:
-        assert current.is_connected
-
-
 async def test_close_fingerbot_touch_client_ignores_dead_link(
     fingerbot_touch: TuyaBLEDevice,
 ) -> None:
