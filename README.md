@@ -203,6 +203,7 @@ use. Review a file before attaching it to a public issue.
 | `climate`       | Thermostatic radiator valves (TRV)                                      |
 | `cover`         | Blind and curtain controllers (open/close/stop)                         |
 | `lawn_mower`    | Robot lawn mowers (start/pause/stop/dock)                               |
+| `event`         | Wireless button clicks and long presses — experimental                  |
 | `light`         | LED strip lights, lamps (on/off, brightness, color)                     |
 | `lock`          | Smart locks (lock/unlock, unlock tracking)                              |
 | `number`        | Countdown timers, temperature calibration, Fingerbot program parameters |
@@ -223,6 +224,7 @@ The integration supports a broad range of Tuya BLE devices across the following 
 | Temperature & humidity sensors (`wsdcg`) | Soil moisture sensors, BLE temp/humidity sensors, soil thermo-hygrometers |
 | CO2 sensors (`co2bj`)                    | CO2 detectors                                                             |
 | Smart locks (`ms`, `jtmspro`)            | Smart locks, cylinder locks, Raycube K7 Pro+, CentralAcesso               |
+| Wireless buttons (`wxkg`)                | Arlec SG022HA / ZG101Z (experimental; string reports only)                |
 | Climate (`wk`)                           | Thermostatic radiator valves (TRV)                                        |
 | Heaters (`qn`)                           | MaXpeedingRods diesel parking heater (experimental)                       |
 | Irrigation & water (`ggq`, `sfkzq`)      | Irrigation computers, water valves, dual water timers                     |

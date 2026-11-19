@@ -1,0 +1,25 @@
+# Experimental: ha-tuya-ble/ha_tuya_ble PR 228 by @CloCkWeRX,
+# make-all/tuya-local issue 3153 verifies gateway DP1 strings and DP10 percent.
+# Cloud enum names are not BLE enum-order evidence; no integer mapping yet.
+category: wxkg
+product_id: ja5osu5g
+device_name: Arlec Smart Button
+manufacturer: Arlec
+model_name: ZG101Z
+entities:
+  event:
+    - dp_id: 1
+      translation_key: event
+      device_class: button
+      dp_type: 3
+      event_values:
+        single_click: single_click
+        double_click: double_click
+        long_press: long_press
+  sensor:
+    - dp_id: 10
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
