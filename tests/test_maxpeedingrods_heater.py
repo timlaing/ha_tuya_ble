@@ -241,3 +241,31 @@ def test_translations_keep_every_exception_message(name: str) -> None:
     )
     assert {"invalid_fan_speed", "option_not_settable"} <= set(strings["exceptions"])
     assert "{settable}" in strings["exceptions"]["option_not_settable"]["message"]
+
+
+async def test_heater_held_reading_shown_on_other_dp_update(
+    hass: HomeAssistant,
+) -> None:
+    """A throttled DP 3 reading is shown by a later report of any data point."""
+    device, coordinator, product = _context(hass)
+    exchanger = sensor.TuyaBLESensor(
+        hass, coordinator, device, product, sensor.get_mapping_by_device(device)[0]
+    )
+    clock = {"now": 100.0}
+    with (
+        patch.object(exchanger, "async_write_ha_state"),
+        patch.object(measurement, "monotonic", lambda: clock["now"]),
+    ):
+        await exchanger.async_added_to_hass()
+        add_dp(device, 1, BOOL, True)
+        add_dp(device, 3, VALUE, 200)
+        coordinator.async_set_updated_data({})
+        clock["now"] += 1
+        add_dp(device, 3, VALUE, 202)  # held back: +2 C after 1 s
+        coordinator.async_set_updated_data({})
+        held = exchanger.native_value
+        clock["now"] += 60  # time alone changes nothing
+        idle = exchanger.native_value
+        add_dp(device, 11, ENUM, 0)  # an unrelated report re-checks DP 3
+        coordinator.async_set_updated_data({})
+    assert (held, idle, exchanger.native_value) == (200.0, 200.0, 202.0)
