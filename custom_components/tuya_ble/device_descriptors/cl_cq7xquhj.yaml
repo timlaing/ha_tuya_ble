@@ -1,0 +1,21 @@
+# Hardware-tested in ha-tuya-ble/ha_tuya_ble#359 by @albertgoca93.
+# Reverse commands, reported movement and percentages as one convention.
+category: cl
+product_id: cq7xquhj
+device_name: Curtain Robot
+model_name: cq7xquhj
+entities:
+  cover:
+    - translation_key: ble_curtain_controller
+      name: Curtain
+      state_dp_id: 1
+      position_set_dp_id: 2
+      position_dp_id: 3
+      inverted: true
+  sensor:
+    - dp_id: 13
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic

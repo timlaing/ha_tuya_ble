@@ -1,0 +1,17 @@
+# Cloud DP metadata and hardware test: ha-tuya-ble/ha_tuya_ble#320,
+# @ShanePadellaro. Control ENUM order: open, stop, close, continue.
+# No battery. Direction DP5, fault DP12 and limits DP105 remain unmapped.
+# Work state DP7 is omitted: no verified numeric BLE report/order.
+category: cl
+product_id: y0dtvgqf
+device_name: AM25 Plus L Tubular Motor
+model_name: AM25 Plus L
+entities:
+  cover:
+    - translation_key: ble_blind_controller
+      name: Blind
+      state_dp_id: 1
+      dp_type: 4
+      position_set_dp_id: 2
+      position_dp_id: 3
+  sensor: []
