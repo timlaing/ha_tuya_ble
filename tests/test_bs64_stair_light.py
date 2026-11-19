@@ -123,6 +123,12 @@ async def test_atomic_brightness(
     assert _dp(device, 3).value == expected
     assert entity.brightness == brightness
     assert device.datapoints[1] is None
+    assert _dp(device, 114).reported_value == mode
+    assert _dp(device, 114).report_revision == 1
+    assert _dp(device, 2).reported_value == 0
+    assert _dp(device, 2).report_revision == 1
+    assert _dp(device, 3).reported_value is None
+    assert _dp(device, 3).report_revision == 0
 
 
 async def test_on_off_noop_and_sync_paths(hass: HomeAssistant) -> None:
@@ -167,6 +173,8 @@ async def test_failure_rollback(hass: HomeAssistant, error: BaseException) -> No
     with pytest.raises(type(error)):
         await entity.async_turn_on(brightness=255)
     assert [_dp(device, i).value for i in (114, 2, 3)] == [0, 1, 400]
+    assert [_dp(device, i).reported_value for i in (114, 2, 3)] == [0, 1, 400]
+    assert [_dp(device, i).report_revision for i in (114, 2, 3)] == [1, 1, 1]
     _send(device).assert_awaited_once_with([114, 2, 3])
 
 
@@ -295,16 +303,22 @@ async def test_light_category_without_products(
     assert get_mapping_by_device(device) == []
 
 
-async def test_new_datapoint_failure_uses_safe_floor(hass: HomeAssistant) -> None:
+@pytest.mark.parametrize("error", [TimeoutError(), asyncio.CancelledError()])
+async def test_new_datapoint_failure_uses_safe_floor(
+    hass: HomeAssistant, error: BaseException
+) -> None:
     """No first-write failure leaves requested brightness or mode cached."""
     device, _coordinator, _product, entity = _context(hass)
-    _send(device).side_effect = TimeoutError()
-    with pytest.raises(TimeoutError):
+    _send(device).side_effect = error
+    with pytest.raises(type(error)):
         await entity.async_turn_on(brightness=255)
     assert entity.is_on is False
     assert entity.brightness == 0
     assert _dp(device, 114).value == 2
     assert _dp(device, 3).value == 10
+    for dp_id in (114, 2, 3):
+        assert _dp(device, dp_id).reported_value is None
+        assert _dp(device, dp_id).report_revision == 0
 
 
 async def test_new_report_survives_rollback(hass: HomeAssistant) -> None:
@@ -322,3 +336,87 @@ async def test_new_report_survives_rollback(hass: HomeAssistant) -> None:
         await entity.async_turn_on(brightness=255)
     assert _dp(device, 114).value == 0
     assert _dp(device, 3).value == 600
+    assert _dp(device, 114).reported_value == 0
+    assert _dp(device, 114).report_revision == 1
+    assert _dp(device, 3).reported_value == 600
+    assert _dp(device, 3).report_revision == 2
+    assert _dp(device, 2).reported_value is None
+    assert _dp(device, 2).report_revision == 0
+
+
+async def test_first_success_is_not_a_device_report(hass: HomeAssistant) -> None:
+    """A completed write and an optimistic On no-op never invent reports."""
+    device, _coordinator, _product, entity = _context(hass)
+    await entity.async_turn_on(brightness=255)
+    assert entity.is_on is True
+    assert entity.brightness == 255
+    for dp_id in (114, 2, 3):
+        assert _dp(device, dp_id).reported_value is None
+        assert _dp(device, dp_id).report_revision == 0
+    await entity.async_turn_on()
+    _send(device).assert_awaited_once_with([114, 2, 3])
+    for dp_id, value, dp_type in (
+        (114, 1, TuyaBLEDataPointType.DT_ENUM),
+        (2, 0, TuyaBLEDataPointType.DT_ENUM),
+        (3, 1000, TuyaBLEDataPointType.DT_VALUE),
+    ):
+        add_dp(device, dp_id, dp_type, value)
+        assert _dp(device, dp_id).reported_value == value
+        assert _dp(device, dp_id).report_revision == 1
+        add_dp(device, dp_id, dp_type, value)
+        assert _dp(device, dp_id).report_revision == 2
+
+
+async def test_pending_on_preserves_confirmed_values(hass: HomeAssistant) -> None:
+    """Pending and completed writes keep reported state separate from optimism."""
+    device, _coordinator, _product, entity = _context(hass)
+    for dp_id, value, dp_type in (
+        (114, 0, TuyaBLEDataPointType.DT_ENUM),
+        (2, 1, TuyaBLEDataPointType.DT_ENUM),
+        (3, 400, TuyaBLEDataPointType.DT_VALUE),
+    ):
+        add_dp(device, dp_id, dp_type, value)
+
+    async def inspect_pending(ids: list[int]) -> None:
+        assert ids == [114, 2, 3]
+        assert entity.is_on is True
+        assert entity.brightness == 255
+        assert [_dp(device, i).value for i in ids] == [1, 0, 1000]
+        assert [_dp(device, i).reported_value for i in ids] == [0, 1, 400]
+        assert [_dp(device, i).report_revision for i in ids] == [1, 1, 1]
+
+    _send(device).side_effect = inspect_pending
+    await entity.async_turn_on(brightness=255)
+    assert [_dp(device, i).reported_value for i in (114, 2, 3)] == [0, 1, 400]
+    assert [_dp(device, i).report_revision for i in (114, 2, 3)] == [1, 1, 1]
+
+
+@pytest.mark.parametrize("error", [None, TimeoutError(), asyncio.CancelledError()])
+async def test_off_preserves_confirmed_mode(
+    hass: HomeAssistant, error: BaseException | None
+) -> None:
+    """An Off write does not become a report, even after failure or cancellation."""
+    device, _coordinator, _product, entity = _context(hass)
+    add_dp(device, 114, TuyaBLEDataPointType.DT_ENUM, 1)
+
+    async def inspect_pending(ids: list[int]) -> None:
+        assert ids == [114]
+        assert entity.is_on is False
+        assert _dp(device, 114).reported_value == 1
+        assert _dp(device, 114).report_revision == 1
+        if error is not None:
+            raise error
+
+    _send(device).side_effect = inspect_pending
+    if error is None:
+        await entity.async_turn_off()
+        assert entity.is_on is False
+    else:
+        with pytest.raises(type(error)):
+            await entity.async_turn_off()
+        assert entity.is_on is True
+    assert _dp(device, 114).reported_value == 1
+    assert _dp(device, 114).report_revision == 1
+    assert device.datapoints[1] is None
+    assert device.datapoints[2] is None
+    assert device.datapoints[3] is None

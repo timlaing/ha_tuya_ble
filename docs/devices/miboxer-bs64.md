@@ -30,6 +30,10 @@ Reported values are restored unless a newer report arrived mid-write. When
 there was no report before a failed first write, newly created datapoints retain
 neutral Off/white/minimum-brightness values until the controller reports.
 Those fallback values do not prove the controller's physical state.
+The light keeps its existing optimistic state while a write is pending.
+Locally created datapoints have no `reported_value` and a zero
+`report_revision`; successful writes and rollback do not change those fields.
+Only an actual controller report establishes or updates confirmed values.
 
 ## Required evidence and physical verification
 
