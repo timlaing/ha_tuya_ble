@@ -1,7 +1,8 @@
-"""Options flow for Tuya BLE: re-authentication, key replacement, connection."""
+"""Options flow for Tuya BLE: re-authentication, key replacement, connection, lock checks."""
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import logging
 from typing import Any
 
@@ -16,9 +17,13 @@ from homeassistant.helpers import selector
 import probatio
 from tuya_sharing import LoginControl
 
+from .cloud import HASSTuyaBLEDeviceManager
 from .config_flow_manual import PASSWORD_SELECTOR, validate_key_pair
 from .config_flow_qr import UNKNOWN_ERROR, _QRCodeLoginMixin
 from .const import (
+    CONF_BLE_UNLOCK_CHECK,
+    CONF_CLOUD_UUID,
+    CONF_DEVICE_ID,
     CONF_ENDPOINT,
     CONF_IDLE_DISCONNECT_DELAY,
     CONF_KEEP_CONNECTION,
@@ -29,6 +34,7 @@ from .const import (
     CONF_TERMINAL_ID,
     CONF_TOKEN_INFO,
     CONF_USER_CODE,
+    CONF_UUID,
     DEFAULT_IDLE_DISCONNECT_DELAY,
     DEFAULT_KEEP_CONNECTION,
     DEFAULT_STATUS_POLL_INTERVAL,
@@ -47,6 +53,7 @@ from .tuya_ble import (
     decode_classic_record,
     decode_fd50_identity_record,
     decode_tuya_ble_advertisement,
+    is_valid_ble_unlock_check,
     security_modes,
 )
 
@@ -140,9 +147,10 @@ class TuyaBLEOptionsFlow(OptionsFlowWithConfigEntry, _QRCodeLoginMixin):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Offer re-authentication, key replacement or the connection policy."""
+        """Offer re-authentication, key replacement, connection policy, or lock check refresh."""
         return self.async_show_menu(
-            step_id="init", menu_options=["user", "credentials", "connection"]
+            step_id="init",
+            menu_options=["user", "credentials", "connection", "refresh_unlock_check"],
         )
 
     async def async_step_connection(
@@ -170,6 +178,61 @@ class TuyaBLEOptionsFlow(OptionsFlowWithConfigEntry, _QRCodeLoginMixin):
             data_schema=_connection_schema(values),
             errors=errors,
         )
+
+    async def async_step_refresh_unlock_check(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Refresh only the lock check, never the device identity or BLE keys.
+
+        QR login in the existing options flow also links manually added entries.
+        No Bluetooth connection is needed, so an unavailable lock can refresh.
+        """
+        entry = self.config_entry
+        if not entry.options.get(CONF_TOKEN_INFO):
+            return self.async_abort(reason="unlock_check_login_required")
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            check, error = await self._async_fetch_unlock_check()
+            if check is not None:
+                # Read the latest entry data after the cloud await.
+                self.hass.config_entries.async_update_entry(
+                    entry, data={**entry.data, CONF_BLE_UNLOCK_CHECK: check}
+                )
+                self.hass.config_entries.async_schedule_reload(entry.entry_id)
+                return self.async_create_entry(title="", data=dict(entry.options))
+            errors["base"] = error
+        return self.async_show_form(
+            step_id="refresh_unlock_check",
+            data_schema=probatio.Schema({}),
+            errors=errors,
+        )
+
+    async def _async_fetch_unlock_check(self) -> tuple[str | None, str]:
+        """Return a validated check or a credential-free, retryable error."""
+        entry = self.config_entry
+        try:
+            # The SDK may mutate token data; keep it isolated from the entry.
+            cloud_data = dict(entry.options)
+            cloud_data[CONF_TOKEN_INFO] = dict(cloud_data[CONF_TOKEN_INFO])
+            manager = HASSTuyaBLEDeviceManager(self.hass, cloud_data)
+            device = await manager.get_cloud_device_by_uuid(
+                entry.data.get(CONF_CLOUD_UUID) or entry.data[CONF_UUID],
+                force_update=True,
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            # SDK exceptions can contain credentials. Never echo or log them.
+            return None, "unlock_check_refresh_failed"
+        if device is None or device.id != entry.data[CONF_DEVICE_ID]:
+            return None, "unlock_check_device_not_found"
+        status = getattr(device, "status", None)
+        check = (
+            status.get(CONF_BLE_UNLOCK_CHECK) if isinstance(status, Mapping) else None
+        )
+        if check is None or check == "":
+            return None, "unlock_check_missing"
+        if not is_valid_ble_unlock_check(check):
+            return None, "unlock_check_invalid"
+        return check, ""
 
     async def async_step_credentials(
         self, user_input: dict[str, Any] | None = None

@@ -630,14 +630,21 @@
       "message": "{option} can only be reported by this device, not set. Choose one of: {settable}."
     },
     "ble_unlock_check_missing": {
-      "message": "This lock has no Bluetooth unlock check from the Tuya cloud. Open the lock once from the Tuya or Smart Life app, then remove and add the device again."
+      "message": "This lock has no Bluetooth unlock check from the Tuya cloud. Open the lock once from the Tuya or Smart Life app, then choose Refresh the lock unlock check in the integration options. Log in again with the QR code first if requested."
     },
     "ble_unlock_check_invalid": {
-      "message": "The stored Bluetooth unlock check for this lock is not valid. Remove and add the device again to fetch a new one from the Tuya cloud."
+      "message": "The stored Bluetooth unlock check for this lock is not valid. Choose Refresh the lock unlock check in the integration options. Log in again with the QR code first if requested."
     }
   },
   "options": {
+    "abort": {
+      "unlock_check_login_required": "No cloud login is stored for this entry. In the integration options, choose Log in again with the QR code to link your Smart Life or Tuya account, then choose Refresh the lock unlock check. The lock must be in that account with the same device ID and UUID. Manual entries cannot refresh without this cloud link."
+    },
     "error": {
+      "unlock_check_refresh_failed": "Could not refresh the lock unlock check from the Tuya cloud. The stored check is unchanged. Try again later or log in again with the QR code in the integration options.",
+      "unlock_check_device_not_found": "The existing device could not be matched in this Tuya account. The stored check is unchanged. Log in again with the QR code using the account that contains this device.",
+      "unlock_check_missing": "The cloud returned no unlock check. The stored check is unchanged. Open the lock once in the Tuya or Smart Life app, then retry.",
+      "unlock_check_invalid": "The cloud returned an invalid unlock check. The stored check is unchanged. Open the lock once in the Tuya or Smart Life app, then retry.",
       "device_not_registered": "Device is not registered in Tuya cloud",
       "invalid_auth": "Invalid authentication",
       "login_error": "Login error ({code}): {msg}",
@@ -654,7 +661,12 @@
           "user": "Log in again with the QR code",
           "credentials": "Replace the device keys",
           "connection": "Connection settings"
+          "refresh_unlock_check": "Refresh the lock unlock check"
         }
+      },
+      "refresh_unlock_check": {
+        "title": "Refresh the lock unlock check",
+        "description": "Fetch this lock's current Bluetooth unlock check from your linked Tuya account. Only a valid check is saved, then the integration reloads. The device keys, identity, entities and other settings are kept. The lock does not need to be connected over Bluetooth."
       },
       "user": {
         "data": {
