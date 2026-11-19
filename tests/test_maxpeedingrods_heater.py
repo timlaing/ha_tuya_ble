@@ -234,12 +234,14 @@ def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 @pytest.mark.parametrize("name", ["strings.json", "translations/en.json"])
 def test_translations_keep_every_exception_message(name: str) -> None:
-    """No duplicate key hides a message; both exception messages survive."""
+    """No duplicate key hides a message; every exception message survives."""
     path = Path(select.__file__).parent / name
     strings = json.loads(
         path.read_text(encoding="utf-8"), object_pairs_hook=_reject_duplicate_keys
     )
-    assert {"invalid_fan_speed", "option_not_settable"} <= set(strings["exceptions"])
+    assert {"invalid_fan_speed", "button_press_failed", "option_not_settable"} <= set(
+        strings["exceptions"]
+    )
     assert "{settable}" in strings["exceptions"]["option_not_settable"]["message"]
 
 
