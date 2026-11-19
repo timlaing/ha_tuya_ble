@@ -240,7 +240,8 @@ async def test_auto_lock_delay(hass: HomeAssistant, product_id: str) -> None:
     entity = number.TuyaBLENumber(hass, coordinator, device, product, mapping)
     entity.hass = hass
     bounds = (5, 20) if product_id == "dappsdq4" else (3, 600)
-    assert (entity.native_min_value, entity.native_max_value) == bounds
+    assert entity.native_min_value == bounds[0]
+    assert entity.native_max_value == bounds[1]
     assert entity.native_step == 1
     assert entity.native_unit_of_measurement == "s"
     for value in bounds:
