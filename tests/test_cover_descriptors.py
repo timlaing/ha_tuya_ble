@@ -64,6 +64,8 @@ async def test_cover_descriptor_positions(
     assert target is not None
     assert target.value == raw
     assert target.dp_type == TuyaBLEDataPointType.DT_VALUE
+    assert target.reported_value is None
+    assert target.report_revision == 0
 
 
 @pytest.mark.parametrize("product_id", PRODUCTS)
@@ -124,6 +126,8 @@ async def test_cover_descriptor_commands(
         assert control is not None
         assert control.dp_type == mapping.state_dp_type
         assert control.value == (2 if product_id == "cq7xquhj" else 0)
+        assert control.reported_value is None
+        assert control.report_revision == 0
         assert entity.is_opening is (position != 100)
         assert not entity.is_closing
         await entity.async_close_cover()
@@ -132,6 +136,8 @@ async def test_cover_descriptor_commands(
         assert entity.is_closing is (position not in (None, 0))
         await entity.async_stop_cover()
         assert control.value == 1
+        assert control.reported_value is None
+        assert control.report_revision == 0
         assert not entity.is_opening
         assert not entity.is_closing
     assert send.await_count == 3
@@ -241,10 +247,14 @@ async def test_inverted_cover_report_supersedes_pending_command(
         control = device.datapoints[1]
         assert control is not None
         assert control.value == 2
+        assert control.reported_value == 1
+        assert control.report_revision == 1
         add_dp(device, 13, TuyaBLEDataPointType.DT_VALUE, 73)
         coordinator.async_update_listeners()
         assert not entity.is_opening
         add_dp(device, 1, mapping.state_dp_type, 0)
+        assert control.reported_value == 0
+        assert control.report_revision == 2
         coordinator.async_update_listeners()
         assert entity.is_closing
         assert not entity.is_opening
