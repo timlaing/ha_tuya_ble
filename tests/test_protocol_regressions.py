@@ -300,6 +300,7 @@ async def test_set_value_reverts_on_response_timeout(h: ProtocolHarness) -> None
 
     with (
         patch("asyncio.wait_for", side_effect=TimeoutError),
+        patch.object(h.device, "_schedule_reconnect"),
         pytest.raises(TuyaBLEResponseTimeoutError),
     ):
         await dp.set_value(True)

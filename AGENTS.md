@@ -94,6 +94,7 @@ If a file falls below the threshold, add tests until it passes before committing
 | `tests/test_swtz_thermometers.py`                                          | `swtz` cooking thermometers: battery and signed 0.1 °C probe readings, incl. wire decoding         |
 | `tests/test_config_flow_manual.py`                                         | manual credential entry: validation, Bluetooth verification, errors and claims                     |
 | `tests/test_config_flow_options_credentials.py`                            | options-flow key-pair replacement, security-key clearing and refusal                               |
+| `tests/test_session_recovery.py`                                           | failed/unanswered command recovery: no replay after reconnect, stale clients, waiters              |
 
 ### prek
 

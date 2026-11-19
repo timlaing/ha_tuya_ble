@@ -83,7 +83,6 @@ class TuyaBLEProtocolSendMixin:
     _datapoints: TuyaBLEDataPoints
     _callbacks: list[Callable[[list[TuyaBLEDataPoint]], None]]
     _reconnect_task: asyncio.Task[None] | None
-    _resend_task: asyncio.Task[None] | None
     _send_response_tasks: set[asyncio.Task[None]]
 
     def _initialize_response_state(self) -> None:
@@ -116,8 +115,8 @@ class TuyaBLEProtocolSendMixin:
         """Return whether Fingerbot Touch reconnect handling is enabled."""
         return False
 
-    async def _handle_write_failure(self, client: Any) -> None:
-        """Handle a failed GATT write reported for `client`.
+    async def _recover_session(self, client: Any) -> None:
+        """Release the session of `client` after a failed or unanswered command.
 
         The default hook does nothing; devices that must release or reset the
         failed connection override it.
@@ -385,8 +384,12 @@ class TuyaBLEProtocolSendMixin:
         await self._ensure_connected()
         if self._expected_disconnect:  # noqa: S2583
             return
+        client = self._client
         sent = await self._send_packet_while_connected(code, data, 0, wait_for_response)
         if not sent:
+            # The session may be out of step with the device: release it
+            # instead of retrying a command whose outcome is unknown.
+            await self._recover_session(client)
             raise TuyaBLEResponseTimeoutError(code.name)
 
     async def _send_response(
@@ -448,15 +451,6 @@ class TuyaBLEProtocolSendMixin:
             return
         self._reconnect_task = self._spawn_background_task(
             self._reconnect(), "reconnect task"
-        )
-
-    def _schedule_resend(self, packets: list[bytes]) -> None:
-        """Ensure exactly one resend task is pending for these packets."""
-        pending = self._resend_task
-        if pending is not None and not pending.done():
-            return
-        self._resend_task = self._spawn_background_task(
-            self._resend_packets(packets), "resend task"
         )
 
     def _track_send_response_task(self, task: asyncio.Task[None]) -> None:
@@ -538,7 +532,9 @@ class TuyaBLEProtocolSendMixin:
             self._input_expected_responses.pop(seq_num)
         self._input_expected_codes.pop(seq_num, None)
         self._v4_write_headers.pop(seq_num, None)
-        if future.done() and not future.cancelled():
+        if not future.done():
+            future.cancel()
+        elif not future.cancelled():
             future.exception()
 
     async def _send_datapoints_v4(self, datapoint_ids: list[int]) -> None:
@@ -572,7 +568,9 @@ class TuyaBLEProtocolSendMixin:
                 self.address,
             )
         async with self._operation_lock:
-            if self._is_fingerbot_touch and self._client is not client:
+            # The packets are encrypted for the session they were built in:
+            # never write them to a link that replaced it while they waited.
+            if self._client is not client:
                 raise BleakError("Connection changed before writing the packet")
             try:
                 await self._send_packets_locked(packets)
@@ -592,17 +590,13 @@ class TuyaBLEProtocolSendMixin:
                 )
                 raise
 
-    async def _resend_packets(self, packets: list[bytes]) -> None:
-        """Re-send packets after a transient disconnection."""
-        if self._expected_disconnect:
-            return
-        await self._ensure_connected()
-        if self._expected_disconnect:  # noqa: S2583
-            return
-        await self._int_send_packet_while_connected(packets)
-
     async def _send_packets_locked(self, packets: list[bytes]) -> None:
-        """Send command to device and read response."""
+        """Send command to device and read response.
+
+        A failed write is never re-sent. A paired session is released by
+        `_recover_session`, whose disconnect handling schedules the reconnect.
+        """
+        was_paired = self._is_paired
         try:
             await self._int_send_packets_locked(packets)
         except BleakDBusError as ex:
@@ -617,9 +611,7 @@ class TuyaBLEProtocolSendMixin:
                 BLEAK_BACKOFF_TIME,
                 ex,
             )
-            if self._is_paired:
-                self._schedule_resend(packets)
-            else:
+            if not was_paired:
                 self._schedule_reconnect()
             raise BleakError from ex
         except BleakError as ex:
@@ -632,19 +624,16 @@ class TuyaBLEProtocolSendMixin:
                 self.rssi,
                 ex,
             )
-            if self._is_paired:
-                self._schedule_resend(packets)
-            else:
+            if not was_paired:
                 self._schedule_reconnect()
             raise
 
     async def _int_send_packets_locked(self, packets: list[bytes]) -> None:
         """Write each packet to the GATT characteristic; raise on failure."""
-        fingerbot_touch = self._is_fingerbot_touch
+        # Every fragment goes to the link the first one used, never to a
+        # replacement: the remaining fragments belong to the old session.
         client = self._client
         for packet in packets:
-            if not fingerbot_touch:
-                client = self._client
             if client and client is self._client:
                 try:
                     await client.write_gatt_char(
@@ -658,7 +647,7 @@ class TuyaBLEProtocolSendMixin:
                         self.address,
                         exc_info=True,
                     )
-                    await self._handle_write_failure(client)
+                    await self._recover_session(client)
                     raise BleakError() from None
             else:
                 _LOGGER.error(

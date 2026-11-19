@@ -470,7 +470,9 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
         if response_to == 0:
             return
         future = self._input_expected_responses.pop(response_to, None)
-        if future is None:
+        # A waiter that timed out or was cancelled may still be awaiting its
+        # cleanup; a late response to it must not break the parser.
+        if future is None or future.done():
             return
         _LOGGER.debug(
             "%s: Received expected response to #%s, result: %s",

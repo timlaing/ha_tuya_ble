@@ -370,13 +370,10 @@ async def test_stop_cancels_background_tasks() -> None:
     dev._client = client  # type: ignore[assignment]
     dev._is_paired = True
     dev._reconnect_task = asyncio.create_task(asyncio.sleep(60))
-    dev._resend_task = asyncio.create_task(asyncio.sleep(60))
     dev._send_response_tasks.add(asyncio.create_task(asyncio.sleep(60)))
     await dev.stop()
     assert dev._reconnect_task is not None
     assert dev._reconnect_task.cancelled()
-    assert dev._resend_task is not None
-    assert dev._resend_task.cancelled()
     assert all(task.cancelled() for task in dev._send_response_tasks)
 
 
@@ -389,7 +386,6 @@ async def test_stop_with_done_tasks() -> None:
     done = asyncio.create_task(asyncio.sleep(0))
     await done
     dev._reconnect_task = done
-    dev._resend_task = done
     await dev.stop()
     assert dev._client is None
 
