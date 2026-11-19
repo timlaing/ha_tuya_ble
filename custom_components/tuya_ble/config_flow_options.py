@@ -27,7 +27,11 @@ from .const import (
     TUYA_RESPONSE_CODE,
     TUYA_RESPONSE_MSG,
 )
-from .tuya_ble import decode_tuya_ble_advertisement
+from .tuya_ble import (
+    decode_classic_record,
+    decode_fd50_identity_record,
+    decode_tuya_ble_advertisement,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -79,16 +83,26 @@ class TuyaBLEOptionsFlow(OptionsFlowWithConfigEntry, _QRCodeLoginMixin):
         )
 
     def _may_use_sec_key(self) -> bool:
-        """Refuse a security key only when the device shows it does not use one."""
+        """Refuse a security key only when the device shows it does not use one.
+
+        A full identity, an FD50 identity record alone (the encrypted identity
+        may only arrive in a scan response) or a classic record each say
+        whether the device uses Security V2. Only an advertisement carrying
+        none of them leaves the choice to the user.
+        """
         info = bluetooth.async_last_service_info(
             self.hass, self.config_entry.data[CONF_ADDRESS], connectable=True
         )
-        advertisement = (
-            decode_tuya_ble_advertisement(info.advertisement)
-            if info is not None
-            else None
-        )
-        return advertisement is None or advertisement.security_v2
+        if info is None:
+            return True
+        for decode in (
+            decode_tuya_ble_advertisement,
+            decode_fd50_identity_record,
+            decode_classic_record,
+        ):
+            if (record := decode(info.advertisement)) is not None:
+                return record.security_v2
+        return True
 
     def _replace_key_pair(
         self, local_key: str, sec_key: str | None

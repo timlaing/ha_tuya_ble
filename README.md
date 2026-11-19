@@ -52,7 +52,8 @@ already have its credentials, choose **Enter the device credentials manually** i
 logging in. Enter the UUID, local key, device ID, category and product ID, plus the
 security key only for devices that use the newer Security V2 login. Home Assistant checks
 them over Bluetooth before adding the device, so the product must already be supported.
-The keys are stored only in Home Assistant and are never shown again.
+If the check fails for a protocol v4 device, setup offers to add it anyway, as with the app
+login. The keys are stored only in Home Assistant and are never shown again.
 
 To change the keys of an existing device, for example after pairing it again in the app,
 open the integration's **Configure** menu and choose **Replace the device keys**. Both keys

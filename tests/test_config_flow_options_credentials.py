@@ -26,7 +26,16 @@ from custom_components.tuya_ble.const import (
     CONF_UUID,
     DOMAIN,
 )
+from custom_components.tuya_ble.tuya_ble import (
+    MANUFACTURER_DATA_ID,
+    SERVICE_UUID,
+    SERVICE_UUID_V4,
+    decode_classic_record,
+    decode_fd50_identity_record,
+    decode_tuya_ble_advertisement,
+)
 from tests import test_advertisement
+from tests.conftest import FakeAdvertisementData
 from tests.test_config_flow import FakeDiscovery
 
 LAST_SERVICE_INFO = (
@@ -70,20 +79,43 @@ def options_flow(
     return flow, entry
 
 
-def service_info(service: bytes | None) -> Any:
-    """Return the latest stored advertisement, or none when never seen."""
+def service_info(service: bytes | FakeAdvertisementData | None) -> Any:
+    """Return the latest stored advertisement, or none when never seen.
+
+    Bytes are an FD50 identity record with its complete encrypted identity.
+    """
     if service is None:
         return None
     info = FakeDiscovery()
-    info.advertisement = cast(Any, test_advertisement.v4_advertisement(service))
+    info.advertisement = cast(
+        Any,
+        test_advertisement.v4_advertisement(service)
+        if isinstance(service, bytes)
+        else service,
+    )
     return info
+
+
+def record_only(service: bytes) -> FakeAdvertisementData:
+    """An FD50 identity record whose encrypted identity is still missing."""
+    return FakeAdvertisementData(service_data={SERVICE_UUID_V4: service})
+
+
+# A bound classic record whose identity does not decrypt (#155).
+BOUND_CLASSIC = FakeAdvertisementData(
+    service_data={SERVICE_UUID: b"\x00prod"},
+    manufacturer_data={MANUFACTURER_DATA_ID: b"\x80\x03" + bytes(4) + bytes(16)},
+)
+UNRELATED = FakeAdvertisementData(
+    service_data={"0000feaa-0000-1000-8000-00805f9b34fb": b"x"}
+)
 
 
 async def replace_keys(
     hass: HomeAssistant,
     flow: TuyaBLEOptionsFlow,
     user_input: dict[str, Any],
-    service: bytes | None = V2_SERVICE,
+    service: bytes | FakeAdvertisementData | None = V2_SERVICE,
 ) -> tuple[Any, MagicMock]:
     """Submit the key form after applying its schema, as the frontend would."""
     form = await flow.async_step_credentials()
@@ -184,12 +216,37 @@ async def test_invalid_pair_changes_nothing(
 
 @pytest.mark.parametrize(
     ("service", "accepted"),
-    [(V2_SERVICE, True), (None, True), (NO_V2_SERVICE, False)],
+    [
+        (V2_SERVICE, True),
+        (NO_V2_SERVICE, False),
+        (record_only(V2_SERVICE), True),
+        (record_only(NO_V2_SERVICE), False),
+        (BOUND_CLASSIC, False),
+        (UNRELATED, True),
+        (None, True),
+    ],
+    ids=[
+        "identity-v2",
+        "identity-classic-login",
+        "record-v2",
+        "record-classic-login",
+        "bound-classic",
+        "no-tuya-data",
+        "never-seen",
+    ],
 )
 async def test_security_key_refused_when_the_device_does_not_use_one(
-    hass: HomeAssistant, service: bytes | None, accepted: bool
+    hass: HomeAssistant,
+    service: bytes | FakeAdvertisementData | None,
+    accepted: bool,
 ) -> None:
     """Setup's rule holds: a device without Security V2 gets no security key."""
+    if isinstance(service, FakeAdvertisementData) and service is not UNRELATED:
+        # The case reaches the intended decoder, not an earlier one.
+        adv = cast(Any, service)
+        assert decode_tuya_ble_advertisement(adv) is None
+        assert (decode_fd50_identity_record(adv) is None) is (service is BOUND_CLASSIC)
+        assert (decode_classic_record(adv) is None) is (service is not BOUND_CLASSIC)
     flow, entry = options_flow(hass, sec_key=None)
     result, reload = await replace_keys(
         hass,
