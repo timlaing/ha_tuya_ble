@@ -31,6 +31,9 @@ The coordinator exposes only the current report batch during synchronous
 listener dispatch and clears it afterwards. Event entities track report
 revisions (including identical values), not `changed_by_device`. Local writes,
 cached values, other data points and connection-only updates cannot create events.
+Event values come from the device's reported snapshot, even if another listener
+applies a local write during dispatch. Locally created data points start with no
+reports and cannot consume the initial report baseline.
 Subscriptions are removed through Home Assistant's entity lifecycle.
 
 The first matching report after setup or physical disconnect establishes a silent
