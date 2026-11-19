@@ -799,3 +799,35 @@ async def test_replaced_keys_discard_the_staged_mobile_pair(
     assert CONF_SEC_KEY not in updates
     assert CONF_CREDENTIAL_SOURCE not in updates
     assert updates[CONF_SECURITY_MODE] == "v2"
+
+
+async def test_keys_replaced_during_the_app_login_reject_the_recovered_pair(
+    hass: HomeAssistant,
+) -> None:
+    """A pair fetched for the old keys is never staged or verified."""
+    flow, _ = await eligible_flow(hass)
+    entry = reconfigure(flow, hass)
+    flow._probe_source_step = "reconfigure"
+    candidate = replace(make_credentials(), local_key=LOCAL, sec_key=SEC)
+
+    async def fetch_while_keys_change(*_args: Any, **_kwargs: Any) -> MobileResult:
+        # The options flow replaces the pair before the app login finishes.
+        hass.config_entries.async_update_entry(entry, data={**entry.data, **REPLACED})
+        return MobileResult(candidate, snapshot())
+
+    with (
+        patch(FETCH, side_effect=fetch_while_keys_change),
+        patch(DETECT) as detect,
+        patch.object(hass.config_entries, "async_unload") as unload,
+    ):
+        await flow.async_step_mobile_login(FORM)
+        await flow._mobile_task
+        result = await flow.async_step_mobile_finish()
+    assert result["step_id"] == "mobile_result"
+    assert result["errors"] == {"base": "reconfigure_keys_changed"}
+    assert flow._mobile_staged_credentials is None
+    assert not flow._mobile_keys_imported
+    detect.assert_not_called()
+    unload.assert_not_called()
+    assert entry.data[CONF_LOCAL_KEY] == REPLACED[CONF_LOCAL_KEY]
+    assert entry.data[CONF_SEC_KEY] == REPLACED[CONF_SEC_KEY]

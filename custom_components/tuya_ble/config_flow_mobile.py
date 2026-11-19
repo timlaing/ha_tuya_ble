@@ -241,6 +241,8 @@ class _MobileLoginMixin:
                 if flow.source == SOURCE_RECONFIGURE:
                     entry = flow._get_reconfigure_entry()  # pylint: disable=protected-access
                     cloud_uuid = entry.data.get(CONF_CLOUD_UUID, entry.data[CONF_UUID])
+                    # The recovered pair replaces the keys as they are now.
+                    flow._record_reconfigure_keys()  # pylint: disable=protected-access
                 self._mobile_task = flow.hass.async_create_task(
                     async_fetch_mobile_device(
                         flow.hass,
@@ -326,12 +328,16 @@ class _MobileLoginMixin:
             self._store_mobile_diagnostics()
             self._mobile_error = result.error or "mobile_invalid_keys"
             return await self.async_step_mobile_result()
+        if flow._reconfigure_keys_changed():  # pylint: disable=protected-access
+            # The options flow replaced the keys during the app login.
+            self._store_mobile_diagnostics()
+            self._mobile_error = "reconfigure_keys_changed"
+            return await self.async_step_mobile_result()
         discovery, advertisement, _, _ = pending
         self._mobile_staged_credentials = result.credentials
         self._mobile_attempted = True
         self._mobile_keys_imported = True
         if flow.source == SOURCE_RECONFIGURE:
-            flow._record_reconfigure_keys()  # pylint: disable=protected-access
             entry = flow._get_reconfigure_entry()  # pylint: disable=protected-access
             if not await flow.hass.config_entries.async_unload(entry.entry_id):
                 self._store_mobile_diagnostics()
