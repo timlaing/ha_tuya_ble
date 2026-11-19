@@ -3,6 +3,7 @@ category: jtmspro
 product_id: y2yaegze
 device_name: Drawer Lock CTL20H
 model_name: CTL20H
+sensitive_dp_ids: [71]
 entities:
   lock: []
   sensor:

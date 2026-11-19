@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning].
 
 ### Fixed
 
+- **Unlock-check privacy for the additional locks** (#179): H13 and both CTL20H drawer-lock variants withhold DP71 reports from logs and live diagnostics even though unlocking is not exposed. This does not enable an unlock command.
 - **Explicitly unsupported lock controls** (#179): an empty product lock descriptor now overrides the category's generic lock, rather than silently enabling unverified lock/unlock commands. Existing product mappings are unchanged.
 
 - **Bound classic devices with a misleading product ID** (#182): when an older Tuya BLE device's identity cannot be read, setup now tries the devices from your Tuya account whose product matches the advertisement first, then the other devices, up to four in total. Previously, if the advertised product matched a different device, only that device was tried and setup failed with `device_not_registered`. If more than four devices in your account match the advertised product, setup still stops with `too_many_candidates` without trying any.

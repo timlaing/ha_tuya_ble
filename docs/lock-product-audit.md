@@ -16,6 +16,10 @@ Only this issue's commits were replayed. Lock handlers use the last
 device-reported values, not optimistic local writes: sending Lock, Unlock or
 Open cannot confirm the physical state. Mobile credential/snapshot code is
 inherited unchanged; no unlock-check content enters mobile metadata.
+H13 and CTL20H mark schema-backed DP71 sensitive even though no unlock control
+is exposed. CTL20H_8018 conservatively protects the proposed DP71 as well.
+Unsolicited reports on that ID are withheld from logs and live diagnostics;
+this privacy filter does not verify or declare a control mapping.
 
 ## Disposition by product
 
