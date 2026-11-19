@@ -69,6 +69,33 @@ If the check fails, setup tells you and lets you add the device anyway. It may
 then show as unavailable, but its diagnostics download helps add support.
 See [Tuya BLE protocol v4 details](docs/PROTOCOL_4.md).
 
+## Extra app login for some Bluetooth devices
+
+If a device uses Tuya BLE protocol v4 Security V2 and the usual QR connection
+does not provide its extra security key, setup offers a one-time app login.
+Devices that already connect normally never need this step. Select **Tuya**
+or **Smart Life**, enter your email or phone number and app password, then
+optionally enter a numeric country dial code. A code is required for phone
+login. Email login uses your supplied code or a default from the QR cloud
+region (Europe uses 44).
+
+The app's matching local key and security key are retrieved together and
+checked over Bluetooth. Only the device keys are stored for offline operation;
+your app password and mobile session are not saved. The app API is private:
+captcha, MFA, social sign-in and expired application profiles can prevent
+login. You can still add the device without verification to collect diagnostics.
+
+For an existing device, use **Reconfigure**. Older entries may first ask for
+a QR login to determine the account's cloud region. Recovery keeps entity IDs
+and changes existing keys only after successful Bluetooth verification.
+
+Diagnostics include a stored, source-labelled `mobile_cloud_info` snapshot
+of device details, product information and status. Only explicitly approved
+metadata values are retained; other fields show their type and size. Unknown
+containers, live DP values, signed URLs, account identifiers and credentials
+are withheld before the snapshot is stored. Diagnostics do not log into the
+mobile service or automatically refresh this snapshot.
+
 ## Debug logging
 
 The integration is silent at the `info` level. To capture a detailed trace — useful when a device is not discovered, an entity never appears, or a value looks wrong — raise the relevant loggers to `debug` in `configuration.yaml`:

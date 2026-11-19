@@ -158,6 +158,33 @@ source.
 
 ## Security V2
 
+When verification indicates that a Security V2 key is missing or unusable,
+setup offers a one-time mobile-app login before the unverified add step.
+It uses `tuya-mobile==1.2.0` to sign into the explicitly selected Tuya Smart
+or Smart Life app, then reads `thing.m.device.get` v4.1 for the exact device.
+Returned device ID must match; UUID and product ID must also match if present.
+The mobile `localKey` and `secKey` replace the QR key as one pair, never mixed
+across APIs. The pair must be usable before retrying the normal BLE probe.
+
+The region from the QR gateway determines a fixed mobile endpoint. For email
+login the numeric country code is optional and overrides the regional default:
+Europe 44, Americas 1, China 86, India 91, Singapore 65. Phone-number login
+requires its real dial code. Only the European email default is verified by
+our live probe; other regions and shade hardware still need acceptance testing.
+
+Read-only enrichment also requests product metadata
+(`thing.m.device.ref.info.list` v5.4) and status (`s.m.dev.dp.get` v1.0).
+Those requests are individually bounded and optional failures do not discard
+the main record or its key pair. Data is sanitized before persistence and
+rechecked on diagnostics export, with depth, collection, node and byte limits.
+No reset, binding, key-creation or device-control endpoints are used.
+
+Reconfigure can recover existing entries. A failed recovery retains the old
+keys/profile and only stores sanitized metadata; a successful recovery updates
+the pair, profile and metadata together. Mobile account passwords/session
+tokens are ephemeral. This does not use the standalone research probe's
+session-file cache, and diagnostics never initiate mobile logins.
+
 Bit 2 of the FD50 frame control's low byte (service-data byte 1) announces the
 "Security V2" channel
 ([TuyaOpen `ble_mgr.c`](https://github.com/tuya/TuyaOpen/blob/master/src/tuya_cloud_service/ble/ble_mgr.c)).

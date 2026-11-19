@@ -33,12 +33,14 @@ from .const import (
     CONF_CATEGORY,
     CONF_CLOUD_INFO,
     CONF_CLOUD_UUID,
+    CONF_CREDENTIAL_SOURCE,
     CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
     CONF_ENDPOINT,
     CONF_FUNCTIONS,
     CONF_LOCAL_KEY,
     CONF_LOCAL_SCHEMA,
+    CONF_MOBILE_SNAPSHOT,
     CONF_PRODUCT_ID,
     CONF_PRODUCT_MODEL,
     CONF_PRODUCT_NAME,
@@ -51,6 +53,7 @@ from .const import (
     DOMAIN,
 )
 from .device_registry import get_registry
+from .mobile_snapshot import filter_mobile_snapshot
 
 if TYPE_CHECKING:
     from tuya_sharing import CustomerDevice
@@ -319,11 +322,21 @@ async def _async_diagnostics(
             "product_name": entry.data.get(CONF_PRODUCT_NAME),
             "product_model": entry.data.get(CONF_PRODUCT_MODEL),
             "sec_key_stored": bool(entry.data.get(CONF_SEC_KEY)),
+            "credential_source": (
+                "mobile_app"
+                if entry.data.get(CONF_CREDENTIAL_SOURCE) == "mobile_app"
+                else "stored"
+            ),
         },
         "home_assistant": _home_assistant_section(hass, entry, device),
     }
 
     redacted: dict[str, Any] = async_redact_data(payload, _TO_REDACT)
+    # Revalidated by path before bypassing name-based redaction, so withheld
+    # key lengths remain visible without exposing values.
+    redacted["mobile_cloud_info"] = filter_mobile_snapshot(
+        entry.data.get(CONF_MOBILE_SNAPSHOT)
+    )
     if cloud_fields is not None:
         redacted["cloud_info"]["fields"] = cloud_fields
     return redacted

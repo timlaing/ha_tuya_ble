@@ -7,6 +7,22 @@
       "already_configured": "Device is already configured"
     },
     "error": {
+      "mobile_invalid_app": "Choose Tuya or Smart Life.",
+      "mobile_invalid_username": "Enter a valid email address or phone number.",
+      "mobile_password_required": "Enter the password for the selected app.",
+      "mobile_country_required": "Enter your country's dial code for phone-number login.",
+      "mobile_invalid_country": "Enter a whole-number dial code between 1 and 999.",
+      "mobile_unknown_region": "The cloud region could not be recognized. Reconnect with the QR code or report this problem.",
+      "mobile_invalid_auth": "The app did not accept your login. Check the selected app, email or phone number, password and phone country code.",
+      "mobile_captcha": "The app requires a captcha. Complete it in the app before trying again.",
+      "mobile_mfa": "The app requires additional verification. Complete it in the app before trying again.",
+      "mobile_account_locked": "The app account is temporarily locked. Wait before trying again.",
+      "mobile_profile_expired": "Tuya no longer accepts this app login method. Add the device without verification and share its diagnostics.",
+      "mobile_connection_failed": "Could not retrieve the device information from the app service. Check your connection and try again.",
+      "mobile_device_not_found": "This device could not be found in the selected app account.",
+      "mobile_identity_mismatch": "The app returned a different device or product. No Bluetooth keys were changed.",
+      "mobile_invalid_keys": "The app returned Bluetooth keys that cannot be used. No invalid keys were saved.",
+      "mobile_missing_key": "The app did not return the extra Bluetooth security key for this device.",
       "device_not_registered": "No device in this Tuya account could be verified against the Bluetooth device.",
       "too_many_candidates": "More than four eligible devices were found in this Tuya account, so Bluetooth verification was not attempted. Remove unused devices of this type from the account and try again.",
       "bluetooth_probe_failed": "Bluetooth communication failed before the cloud credentials could be verified. Move the device closer and try again.",
@@ -38,9 +54,39 @@
     },
     "flow_title": "{name}",
     "progress": {
+      "fetch_mobile": "Retrieving this device's Bluetooth key and information...",
       "verify_device": "Checking that Home Assistant can connect to the device over Bluetooth..."
     },
     "step": {
+      "mobile_offer": {
+        "title": "Extra login needed",
+        "description": "This device needs an extra Bluetooth security key that the standard Tuya connection did not provide. Sign into the app once to retrieve it, or continue without a working Bluetooth connection. Your app password and session are not saved.",
+        "menu_options": {
+          "mobile_login": "Sign into the app",
+          "unverified": "Add the device without a working connection",
+          "reconfigure": "Keep the existing device settings"
+        }
+      },
+      "mobile_login": {
+        "title": "Retrieve the Bluetooth security key",
+        "description": "Choose the app where this device is registered. This is a one-time login to the app's private service; your password and session are not saved. Google, Apple, captcha and multi-factor sign-ins are not automated. For email login, the country code is optional and otherwise follows the QR-login region.",
+        "data": {
+          "mobile_app": "Mobile App",
+          "username": "Email or Phone Number",
+          "password": "Password",
+          "country_code": "Country Code (optional)"
+        },
+        "data_description": {
+          "country_code": "Only required for phone-number login, for example 44 for the UK or 1 for the US. If supplied for email login, this value overrides the regional default."
+        }
+      },
+      "mobile_result": {
+        "title": "App login could not recover the key",
+        "description": "You can retry explicitly or continue without replacing any existing working keys. Successfully retrieved device metadata remains available for diagnostics.",
+        "data": {
+          "next_action": "Next step"
+        }
+      },
       "reconfigure": {
         "description": "Check the Bluetooth connection to this Tuya BLE protocol v4 device again. The device disconnects briefly during the check. Keep it close to Home Assistant and close the Smart Life app first. Your entities and settings are kept."
       },
@@ -513,6 +559,20 @@
           "local_key": "Local key",
           "sec_key": "Security key (optional)"
         }
+      }
+    }
+  },
+  "selector": {
+    "mobile_app": {
+      "options": {
+        "tuya_smart": "Tuya",
+        "smart_life": "Smart Life"
+      }
+    },
+    "mobile_result": {
+      "options": {
+        "retry": "Retry app login",
+        "continue": "Continue without the extra key"
       }
     }
   }
