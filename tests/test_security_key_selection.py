@@ -564,3 +564,50 @@ async def test_key_replacement_keeps_an_allowed_login(
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert entry.data.get(CONF_SECURITY_MODE) == expected
     assert entry.data.get(CONF_SEC_KEY) == sec_key
+
+
+@pytest.mark.parametrize(
+    ("changes", "saved"),
+    [
+        ({}, True),
+        ({CONF_LOCAL_KEY: NEW_LOCAL_KEY}, False),
+        ({CONF_SEC_KEY: NEW_SEC_KEY}, False),
+    ],
+)
+async def test_reconfigure_never_saves_a_login_for_replaced_keys(
+    hass: HomeAssistant, changes: dict[str, str], saved: bool
+) -> None:
+    """Keys replaced in the options while Reconfigure probes discard its result."""
+    flow, entry = await configured_flow(hass)
+    info = discovery()
+    info.device = make_device()._ble_device
+    assert entry.data[CONF_SECURITY_MODE] == "classic"
+    detect = verified_by(ConnectionProfile.V2_MTU, SecurityMode.V2)
+
+    async def replace_keys_while_probing(*args: Any, **kwargs: Any) -> Any:
+        # The options flow writes a new pair before the probe finishes.
+        hass.config_entries.async_update_entry(entry, data={**entry.data, **changes})
+        return await detect(*args, **kwargs)
+
+    with (
+        patch.object(flow, "_async_scan_device", return_value=info),
+        patch(DETECT, side_effect=replace_keys_while_probing),
+        patch.object(hass.config_entries, "async_unload", return_value=True),
+        patch.object(
+            hass.config_entries, "async_reload", return_value=True
+        ) as reload_entry,
+    ):
+        await flow.async_step_reconfigure({})
+        assert flow._probe_task is not None
+        await flow._probe_task
+        result = await flow.async_step_probe_finish()
+        await hass.async_block_till_done()
+    if saved:
+        assert result["type"] == FlowResultType.ABORT
+        assert entry.data[CONF_SECURITY_MODE] == "v2"
+        return
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"] == {"base": "reconfigure_keys_changed"}
+    assert entry.data[CONF_SECURITY_MODE] == "classic"
+    assert entry.data[CONF_CONNECTION_PROFILE] == "v4_20"
+    reload_entry.assert_awaited_once_with(entry.entry_id)

@@ -459,6 +459,9 @@ class TuyaBLEConfigFlow(
         self._probe_discovery = None
         self._probe_advertisement = None
         credentials, pairing_uuid, error = probe_task_result(task)
+        if credentials is not None and self._reconfigure_keys_changed():
+            # The probe verified a key pair the options flow has since replaced.
+            credentials, error = None, "reconfigure_keys_changed"
         if credentials is not None and pairing_uuid is not None:
             result = self._complete_verified_probe(
                 discovery, advertisement, credentials, pairing_uuid
