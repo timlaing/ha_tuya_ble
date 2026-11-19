@@ -194,11 +194,13 @@ redacted shape with truncation marked. Only recognized structural mapping keys
 are retained (including numeric DP identifiers); opaque keys are anonymized
 regardless of their length, and the same policy is rechecked on export.
 
-Bit 2 of the FD50 frame control's low byte (service-data byte 1) announces the
-"Security V2" channel
-([TuyaOpen `ble_mgr.c`](https://github.com/tuya/TuyaOpen/blob/master/src/tuya_cloud_service/ble/ble_mgr.c)).
-Such firmware silently drops frames encrypted with the classic flags 4 and 5,
-then disconnects about 30 seconds later. It needs the cloud `sec_key`, a 16-byte
+Bit 2 of the FD50 frame control's low byte (service-data byte 1) announces that
+the firmware supports the "Security V2" channel
+([TuyaOpen `ble_mgr.c`](https://github.com/tuya/TuyaOpen/blob/master/src/tuya_cloud_service/ble/ble_mgr.c)),
+and bit 3 that it is switched on (see [Choosing the login](#choosing-the-login)).
+Firmware with Security V2 switched on silently drops frames encrypted with the
+classic flags 4 and 5, then disconnects about 30 seconds later; firmware that
+only supports it may still accept them. Security V2 needs the cloud `sec_key`, a 16-byte
 key stored beside the local key
 ([TuyaOpen `ble_cryption.c`](https://github.com/tuya/TuyaOpen/blob/master/src/tuya_cloud_service/ble/ble_cryption.c)):
 
@@ -245,7 +247,8 @@ on the previous one. A reply proves the device accepted that key, so a later
 failure (for example an unbound device) never leads to another login. A login
 is saved only after the same authenticated status read as a profile, together
 with the profile (`security_mode`: `classic` or `v2`). A saved classic login
-leaves the stored `sec_key` unused; **Reconfigure** tests both again. Entries
+leaves the stored `sec_key` unused; **Reconfigure** verifies again with the
+logins the table above allows for the current advertisement and key. Entries
 saved without a `security_mode` keep using Security V2 exactly when a `sec_key`
 is stored, until **Reconfigure** saves a verified login. Unverified entries keep that rule too. Replacing the keys in the
 integration options keeps the saved login unless the latest advertisement
