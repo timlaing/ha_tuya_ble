@@ -21,15 +21,20 @@ from custom_components.tuya_ble import (
     async_unload_entry,
 )
 from custom_components.tuya_ble.const import (
+    CONF_ADVERTISED_UUID,
     CONF_BLE_UNLOCK_CHECK,
+    CONF_CLOUD_REGION,
     CONF_CLOUD_UUID,
+    CONF_CREDENTIAL_SOURCE,
     CONF_DEVICE_ID,
+    CONF_MOBILE_SNAPSHOT,
     CONF_TOKEN_INFO,
     CONF_USER_CODE,
     CONF_UUID,
     DOMAIN,
 )
 from custom_components.tuya_ble.diagnostics import async_get_config_entry_diagnostics
+from custom_components.tuya_ble.mobile_snapshot import capture_mobile_snapshot
 from tests.test_config_flow import FakeLogin
 from tests.test_config_flow_options_credentials import options_flow
 from tests.test_init import _patch_deps
@@ -104,9 +109,21 @@ async def test_valid_refresh_is_atomic_and_preserves_identity(
     cloud_uuid: str | None,
     old_check: str | None,
 ) -> None:
-    """A refresh restores old entries too, never replacing the keys or schema."""
+    """Refresh preserves mobile-imported key pairs, identity and sanitized metadata."""
     flow, entry = options_flow(hass)
-    data = {**entry.data, CONF_CLOUD_UUID: cloud_uuid, "local_schema": {"dp": 1}}
+    data = {
+        **entry.data,
+        CONF_CLOUD_UUID: cloud_uuid,
+        CONF_ADVERTISED_UUID: "advertised-record",
+        CONF_CLOUD_REGION: "eu",
+        CONF_CREDENTIAL_SOURCE: "mobile_app",
+        CONF_MOBILE_SNAPSHOT: capture_mobile_snapshot(
+            "smart_life",
+            {"device": {"devId": "device123", CONF_BLE_UNLOCK_CHECK: MEMBER1_CHECK}},
+            {"device": True},
+        ),
+        "local_schema": {"dp": 1},
+    }
     if old_check is not None:
         data[CONF_BLE_UNLOCK_CHECK] = old_check
     hass.config_entries.async_update_entry(
@@ -121,6 +138,8 @@ async def test_valid_refresh_is_atomic_and_preserves_identity(
     manager.get_cloud_device_by_uuid = AsyncMock(
         return_value=SimpleNamespace(
             id=entry.data[CONF_DEVICE_ID],
+            local_key="different-cloud-key",
+            sec_key="different-cloud-security-key",
             status={CONF_BLE_UNLOCK_CHECK: MEMBER3_CHECK},
         )
     )
@@ -150,6 +169,8 @@ async def test_valid_refresh_is_atomic_and_preserves_identity(
     assert entry.unique_id == entry.data["address"]
     assert registry.async_get(entity.entity_id) is entity
     assert _build_credentials_from_entry(entry).ble_unlock_check == MEMBER3_CHECK
+    assert MEMBER1_CHECK not in repr(entry.data[CONF_MOBILE_SNAPSHOT])
+    assert MEMBER3_CHECK not in repr(entry.data[CONF_MOBILE_SNAPSHOT])
     for secret in (MEMBER1_CHECK, MEMBER3_CHECK, "87654321"):
         assert secret not in repr(result)
         assert secret not in caplog.text
@@ -159,7 +180,24 @@ async def test_refreshed_check_is_redacted_in_diagnostics(hass: HomeAssistant) -
     """Refreshed credentials are still only a stored-presence flag."""
     flow, entry = options_flow(hass)
     hass.config_entries.async_update_entry(
-        entry, options={CONF_TOKEN_INFO: {"access_token": "synthetic"}}
+        entry,
+        data={
+            **entry.data,
+            CONF_MOBILE_SNAPSHOT: capture_mobile_snapshot(
+                "smart_life",
+                {
+                    "device": {
+                        "devId": "device123",
+                        "dps": {"71": "synthetic-sensitive-command"},
+                        "status": [
+                            {"code": CONF_BLE_UNLOCK_CHECK, "value": MEMBER3_CHECK}
+                        ],
+                    }
+                },
+                {"device": True},
+            ),
+        },
+        options={CONF_TOKEN_INFO: {"access_token": "synthetic"}},
     )
     manager = MagicMock()
     manager.get_cloud_device_by_uuid = AsyncMock(
@@ -181,6 +219,7 @@ async def test_refreshed_check_is_redacted_in_diagnostics(hass: HomeAssistant) -
     assert diagnostics["identity"]["ble_unlock_check_stored"]
     assert MEMBER3_CHECK not in repr(diagnostics)
     assert "87654321" not in repr(diagnostics)
+    assert "synthetic-sensitive-command" not in repr(diagnostics)
 
 
 async def test_refresh_preserves_updates_made_during_cloud_request(
