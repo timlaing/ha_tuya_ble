@@ -331,6 +331,7 @@ class _MobileLoginMixin:
         self._mobile_attempted = True
         self._mobile_keys_imported = True
         if flow.source == SOURCE_RECONFIGURE:
+            flow._record_reconfigure_keys()  # pylint: disable=protected-access
             entry = flow._get_reconfigure_entry()  # pylint: disable=protected-access
             if not await flow.hass.config_entries.async_unload(entry.entry_id):
                 self._store_mobile_diagnostics()

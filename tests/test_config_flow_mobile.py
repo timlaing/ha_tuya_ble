@@ -730,3 +730,72 @@ async def test_explicit_recovery_retry_uses_staged_pair_without_login(
     assert updates[CONF_LOCAL_KEY] == LOCAL
     assert updates[CONF_SEC_KEY] == SEC
     assert updates[CONF_CONNECTION_PROFILE] == "v4_20"
+
+
+REPLACED = {CONF_LOCAL_KEY: "replacedlocalkey", CONF_SEC_KEY: "replacedsecurity"}
+
+
+@pytest.mark.parametrize("when", ["during_probe", "before_retry"])
+async def test_replaced_keys_discard_the_staged_mobile_pair(
+    hass: HomeAssistant, when: str
+) -> None:
+    """A mobile pair staged for old keys never overwrites keys replaced later."""
+    flow, scan = await eligible_flow(hass)
+    entry = reconfigure(flow, hass)
+    flow._probe_source_step = "reconfigure"
+    candidate = replace(make_credentials(), local_key=LOCAL, sec_key=SEC)
+    first = verified_by(
+        ConnectionProfile.V4_20 if when == "during_probe" else None, SecurityMode.V2
+    )
+    calls: list[Any] = []
+
+    async def detect(*args: Any, **kwargs: Any) -> Any:
+        calls.append(args[2])
+        if len(calls) == 1:
+            # The options flow replaces the pair while the mobile probe runs.
+            hass.config_entries.async_update_entry(
+                entry, data={**entry.data, **REPLACED}
+            )
+            return await first(*args, **kwargs)
+        return await verified_by(ConnectionProfile.V4_20, SecurityMode.V2)(
+            *args, **kwargs
+        )
+
+    with (
+        patch(FETCH, return_value=MobileResult(candidate, snapshot())) as fetch,
+        patch(DETECT, side_effect=detect),
+        patch.object(flow, "_async_scan_device", return_value=scan),
+        patch.object(hass.config_entries, "async_unload", return_value=True),
+        patch.object(hass.config_entries, "async_reload", return_value=True),
+        patch.object(
+            flow,
+            "async_update_reload_and_abort",
+            return_value={"type": FlowResultType.ABORT},
+        ) as update,
+    ):
+        await flow.async_step_mobile_login(FORM)
+        await flow._mobile_task
+        await flow.async_step_mobile_finish()
+        await flow._probe_task
+        result = await flow.async_step_probe_finish()
+        assert result["step_id"] == "reconfigure"
+        if when == "during_probe":
+            # The verified result is discarded together with the staged pair.
+            assert result["errors"] == {"base": "reconfigure_keys_changed"}
+            assert flow._mobile_staged_credentials is None
+        else:
+            # A failed probe keeps the pair staged until the retry checks keys.
+            assert flow._mobile_staged_credentials is not None
+        await flow.async_step_reconfigure({})
+        await flow._probe_task
+        await flow.async_step_probe_finish()
+    fetch.assert_awaited_once()
+    # The retry verifies the entry's replaced pair, not the staged mobile one.
+    assert calls[-1].local_key == REPLACED[CONF_LOCAL_KEY]
+    assert calls[-1].sec_key == REPLACED[CONF_SEC_KEY]
+    assert flow._mobile_staged_credentials is None
+    updates = update.call_args.kwargs["data_updates"]
+    assert CONF_LOCAL_KEY not in updates
+    assert CONF_SEC_KEY not in updates
+    assert CONF_CREDENTIAL_SOURCE not in updates
+    assert updates[CONF_SECURITY_MODE] == "v2"

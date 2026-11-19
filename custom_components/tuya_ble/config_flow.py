@@ -462,6 +462,7 @@ class TuyaBLEConfigFlow(
         if credentials is not None and self._reconfigure_keys_changed():
             # The probe verified a key pair the options flow has since replaced.
             credentials, error = None, "reconfigure_keys_changed"
+            self._discard_staged_mobile_keys()
         if credentials is not None and pairing_uuid is not None:
             result = self._complete_verified_probe(
                 discovery, advertisement, credentials, pairing_uuid
