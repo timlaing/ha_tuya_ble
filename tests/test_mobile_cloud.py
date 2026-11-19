@@ -360,11 +360,24 @@ async def test_slow_mandatory_read_preserves_keys_when_overall_budget_runs_out(
 ) -> None:
     """Optional reads cannot erase a pair retrieved just before the deadline."""
     original = make_credentials()
+    loop = asyncio.get_running_loop()
+    start = loop.time()
+    clock = start
+    operations: list[str] = []
+
+    def now() -> float:
+        """Expose controlled monotonic time to deadline and event-loop timers."""
+        return clock
 
     async def response(action: str, *_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        nonlocal clock
+        operations.append(action)
         if action == "thing.m.device.get":
-            await asyncio.sleep(0.15)
+            # No yield: return the successful record before any timer can fire.
+            clock = start + 0.15
             return {"result": record(original)}
+        # The mandatory timeout scope has ended. Expire only enrichment's timer.
+        clock = start + 0.3
         await asyncio.Event().wait()
         return {}
 
@@ -376,6 +389,7 @@ async def test_slow_mandatory_read_preserves_keys_when_overall_budget_runs_out(
         ),
         patch(FACTORY, return_value=fake),
         patch("custom_components.tuya_ble.mobile_cloud.MOBILE_TIMEOUT", 0.2),
+        patch.object(loop, "time", side_effect=now),
     ):
         result = await async_fetch_mobile_device(
             hass, LOGIN, "eu", original, original.uuid
@@ -389,6 +403,7 @@ async def test_slow_mandatory_read_preserves_keys_when_overall_budget_runs_out(
         "product": False,
         "status": False,
     }
+    assert operations == ["thing.m.device.get", "thing.m.device.ref.info.list"]
 
 
 async def test_cancellation_during_enrichment_is_not_a_partial_success(
