@@ -294,13 +294,12 @@ class TuyaBLEClimate(TuyaBLEEntity, ClimateEntity):
         sent its state yet is not shown as running.
         """
         switch_mode = self._mapping.hvac_switch_mode
-        if (
-            self._mapping.hvac_switch_dp_id == 0
-            or switch_mode is None
-            or self.device.datapoints[self._mapping.hvac_switch_dp_id] is None
-        ):
+        if self._mapping.hvac_switch_dp_id == 0 or switch_mode is None:
             return None
-        if self._attr_hvac_mode == HVACMode.OFF:
+        datapoint = self.device.datapoints[self._mapping.hvac_switch_dp_id]
+        if datapoint is None:
+            return None
+        if not datapoint.value:
             return HVACAction.OFF
         return SWITCH_MODE_ACTIONS.get(switch_mode)
 

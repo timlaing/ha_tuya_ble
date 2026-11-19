@@ -533,3 +533,32 @@ async def test_set_temperature_without_temperature_is_noop(
 def test_switch_action_modes_match_registry() -> None:
     """The registry's allowed switch-action modes match the platform's map."""
     assert {mode.value for mode in climate.SWITCH_MODE_ACTIONS} == (SWITCH_ACTION_MODES)
+
+
+async def test_switch_action_reads_switch_not_mode_datapoint(
+    hass: HomeAssistant,
+) -> None:
+    """With both a mode and a switch DP, the action follows the switch value."""
+    device, coordinator, product = build_context(hass)
+    mapping = climate.TuyaBLEClimateMapping(
+        description=ClimateEntityDescription(key="heater"),
+        hvac_mode_dp_id=4,
+        hvac_modes=[HVACMode.OFF, HVACMode.HEAT],
+        hvac_switch_dp_id=1,
+        hvac_switch_mode=HVACMode.HEAT,
+        hvac_action_from_switch=True,
+    )
+    entity = climate.TuyaBLEClimate(hass, coordinator, device, product, mapping)
+    entity.hass = hass
+    await entity.async_added_to_hass()
+    observed = []
+    for mode_value, switch_on in ((1, False), (0, True)):
+        add_dp(device, 4, TuyaBLEDataPointType.DT_VALUE, mode_value)
+        add_dp(device, 1, TuyaBLEDataPointType.DT_BOOL, switch_on)
+        coordinator.async_set_updated_data({})
+        await hass.async_block_till_done()
+        observed.append((entity.hvac_mode, entity.hvac_action))
+    assert observed == [
+        (HVACMode.HEAT, HVACAction.OFF),
+        (HVACMode.OFF, HVACAction.HEATING),
+    ]
