@@ -43,6 +43,7 @@ is how most of the categories below got their first device.
 | `jsq`     | Humidifier                                 | The one product here (`if1nolcm`) is a Dituo aroma diffuser.                                                                                                                                                        |
 | `slj`     | _not in Tuya's list_                       | Not in Tuya's published list. RESTMO FML026A water meter.                                                                                                                                                           |
 | `swtz`    | Cooking thermometer (undocumented)         | Cooking thermometers (GRILLMEISTER / SK-T100, BTH08). No category default; each product declares its own probes.                                                                                                    |
+| `sh`      | _not verified_                             | Yieryi BLE-YL01 water quality monitor, experimental read-only gateway-schema subset. No category default; direct BLE operation remains untested.                                                                    |
 
 To see the products in a category:
 

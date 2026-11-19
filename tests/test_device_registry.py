@@ -836,21 +836,17 @@ def test_kg_down_position_can_reach_half_way(product_id: str) -> None:
     assert down[0].max_value >= 50
 
 
-def test_sensor_descriptors_never_declare_a_dp_type() -> None:
-    """A sensor's ``dp_type`` is inert, so no descriptor may declare one.
+def test_sensor_dp_types_require_a_report_gate() -> None:
+    """A declared sensor wire type must participate in the setup ``has_id`` gate.
 
-    ``sensor.py`` reads ``dp_type`` only in the ``has_id`` gate deciding
-    whether the entity is created, and that gate is short-circuited because no
-    descriptor sets ``force_add: false``. Enum decoding uses the type the
-    device pushed, not a declared one. ``select`` is the one platform where
-    the field carries meaning: it picks the wire type used to serialise the
-    chosen option.
+    Force-added sensors still omit the inert field. Experimental report-only
+    subsets use ``force_add: false`` so a mismatched type creates no entity.
     """
     offenders = [
         f"{product.category}/{product.product_id} dp_id {desc.dp_id}"
         for product in get_registry().products.values()
         for desc in product.get("sensor")
-        if desc.dp_type is not None
+        if desc.dp_type is not None and desc.force_add
     ]
     assert offenders == []
 
