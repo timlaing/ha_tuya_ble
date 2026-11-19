@@ -181,7 +181,7 @@ No reset, binding, key-creation or device-control endpoints are used.
 
 Reconfigure can recover existing entries. A failed recovery retains the old
 keys/profile and only stores sanitized metadata; a successful recovery updates
-the pair, profile and metadata together. Mobile account passwords/session
+the pair, profile, verified login (`security_mode`) and metadata together. Mobile account passwords/session
 tokens are ephemeral. This does not use the standalone research probe's
 session-file cache, and diagnostics never initiate mobile logins.
 An imported pair remains staged in the flow after a transient BLE failure,
