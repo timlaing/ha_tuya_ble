@@ -46,6 +46,7 @@ class TuyaBLELightMapping:
     brightness_max: int = 255
     color_temp_min: int = 0
     color_temp_max: int = 100
+    descriptor: EntityDescriptor | None = None
 
 
 @dataclass
@@ -99,7 +100,7 @@ def _build_light_mapping(desc: EntityDescriptor) -> TuyaBLELightMapping:
     ):
         if field_name in extra:
             kwargs[field_name] = extra[field_name]
-    return TuyaBLELightMapping(**kwargs)
+    return TuyaBLELightMapping(**kwargs, descriptor=desc)
 
 
 def _build_mapping() -> dict[str, TuyaBLECategoryLightMapping]:
@@ -165,6 +166,11 @@ class TuyaBLELight(TuyaBLEEntity, LightEntity):
     ) -> None:
         super().__init__(hass, coordinator, device, product, light_mapping.description)
         self._mapping = light_mapping
+        descriptor = light_mapping.descriptor
+        self._read_handler = descriptor.resolved_handler("read") if descriptor else None
+        self._write_handler = (
+            descriptor.resolved_handler("write") if descriptor else None
+        )
         self._attr_supported_color_modes: set[ColorMode] = set()
 
         if self._mapping.color_data_dp_id != 0:
@@ -184,6 +190,8 @@ class TuyaBLELight(TuyaBLEEntity, LightEntity):
     @property
     def is_on(self) -> bool:
         """Return true if light is on."""
+        if self._read_handler is not None:
+            return bool(self._read_handler(self.device, self._mapping))
         if self._mapping.switch_dp_id != 0:
             datapoint = self.device.datapoints[self._mapping.switch_dp_id]
             if datapoint is not None:
@@ -286,6 +294,9 @@ class TuyaBLELight(TuyaBLEEntity, LightEntity):
 
     def turn_on(self, **kwargs: Any) -> None:
         """Turn on the light."""
+        if self._write_handler is not None:
+            self.hass.create_task(self.async_turn_on(**kwargs))
+            return
         commands: list[dict[str, Any]] = []
 
         if self._mapping.switch_dp_id != 0:
@@ -379,10 +390,27 @@ class TuyaBLELight(TuyaBLEEntity, LightEntity):
 
     def turn_off(self, **kwargs: Any) -> None:
         """Turn off the light."""
+        if self._write_handler is not None:
+            self.hass.create_task(self.async_turn_off(**kwargs))
+            return
         if self._mapping.switch_dp_id != 0:
             self.send_multiple_dp_values([
                 (self._mapping.switch_dp_id, TuyaBLEDataPointType.DT_BOOL, False)
             ])
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Await descriptor writes so BLE failures reach the service caller."""
+        if self._write_handler is None:
+            await super().async_turn_on(**kwargs)
+            return
+        await self._write_handler(self.device, self._mapping, True, kwargs)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Await descriptor turn-off writes."""
+        if self._write_handler is None:
+            await super().async_turn_off(**kwargs)
+            return
+        await self._write_handler(self.device, self._mapping, False, kwargs)
 
     def _get_color_data(self) -> tuple[int, int, int] | None:
         """Parse the color data DP value into (h, s, v)."""

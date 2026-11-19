@@ -119,6 +119,7 @@ Entities: on/off, brightness, color temperature. `work_mode` is driven internall
 
 ## Lights (category_id `dj`)
 
+- MiBoxer BS64 Stair Light Controller (product_id `c2twgywo`). Experimental. Mode-based on/off, atomic white-mode brightness writes and mode/auto-effect selects. Auto reads as off. Temperature and timing controls are deferred pending schema/calibration; see [DP evidence and physical verification](docs/devices/miboxer-bs64.md). The source author tested their implementation on hardware, not this port.
 - Tuya Smart LED Wall Lamp (product_id `joe8qqgiwhpqgwex`).
 - LED BULB B509Z2 (product_id `bpqbwf8y`). Experimental. On/off, brightness and colour temperature only (no RGB), on the standard `dj` DPs 20–23 because the cloud report has no DP IDs. The countdown (`countdown_1`) is not exposed until its DP ID is known; diagnostics are welcome.
 

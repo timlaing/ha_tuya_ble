@@ -353,6 +353,41 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, int | float) and not isinstance(value, bool)
 
 
+def _validate_light_mode(raw: dict[str, Any]) -> None:
+    """Validate optional mode-controlled light parameters before handler use."""
+    if "mode_dp_id" not in raw:
+        return
+    for key in ("mode_dp_id", "color_mode_dp_id", "brightness_dp_id"):
+        _validate_light_index(raw, key, 1)
+    if len({raw["mode_dp_id"], raw["color_mode_dp_id"], raw["brightness_dp_id"]}) != 3:
+        raise DeviceRegistryError(
+            "Light mode, work mode and brightness DP ids must differ"
+        )
+    for key in ("on_value", "off_value", "white_value"):
+        _validate_light_index(raw, key, 0)
+    if raw["on_value"] == raw["off_value"]:
+        raise DeviceRegistryError("Light on_value and off_value must differ")
+    minimum = raw.get("brightness_min", 0)
+    maximum = raw.get("brightness_max", 255)
+    if not _is_number(minimum) or not _is_number(maximum) or not 0 <= minimum < maximum:
+        raise DeviceRegistryError(
+            "Light brightness range must be non-negative and ordered"
+        )
+
+
+def _validate_light_index(raw: dict[str, Any], key: str, minimum: int) -> None:
+    """Validate a wire DP id or enum index, excluding bools."""
+    value = raw.get(key)
+    if (
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or not minimum <= value <= 255
+    ):
+        raise DeviceRegistryError(
+            f"Light {key} must be an integer from {minimum} to 255"
+        )
+
+
 def _validate_sensor_report_options(raw: dict[str, Any]) -> None:
     """Validate the gating and throttling options read by sensor handlers."""
     dp_id = raw.get("dp_id", "?")
@@ -375,6 +410,7 @@ def _validate_sensor_report_options(raw: dict[str, Any]) -> None:
 
 _PLATFORM_VALIDATORS: dict[str, tuple[Callable[[dict[str, Any]], None], ...]] = {
     "climate": (_validate_climate_modes, _validate_climate_action),
+    "light": (_validate_light_mode,),
     "select": (_validate_settable_options,),
     "sensor": (_validate_sensor_report_options,),
     "vacuum": (_validate_vacuum,),

@@ -212,6 +212,23 @@
       }
     },
     "select": {
+      "stair_mode": {
+        "name": "Mode",
+        "state": {
+          "auto": "Auto",
+          "on": "On",
+          "off": "Off"
+        }
+      },
+      "auto_effect": {
+        "name": "Auto effect",
+        "state": {
+          "full": "Full",
+          "gradual": "Gradual",
+          "following": "Following",
+          "flowing": "Flowing"
+        }
+      },
       "fingerbot_mode": {
         "name": "Mode",
         "state": {
