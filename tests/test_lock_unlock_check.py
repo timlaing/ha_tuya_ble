@@ -42,6 +42,11 @@ from tests.conftest import FakeBLEManager, FakeDatapointsOwner, make_credentials
 from tests.protocol_harness import ProtocolHarness, encrypt_payload, frame_packet0
 from tests.test_cloud import make_device as make_cloud_device
 from tests.test_config_flow import FakeManager, build_flow
+from tests.test_config_flow_options_credentials import (
+    NEW_LOCAL_KEY,
+    options_flow,
+    replace_keys,
+)
 from tests.test_diagnostics import _add_entry, _entry_data
 from tests.test_init import _make_entry_data, _patch_deps
 from tests.test_protocol import conclude
@@ -166,6 +171,18 @@ async def test_entry_stores_the_check(hass: HomeAssistant, check: str | None) ->
     data = cast(dict[str, Any], result["data"])
     assert data.get(CONF_BLE_UNLOCK_CHECK) == check
     assert (CONF_BLE_UNLOCK_CHECK in data) is (check is not None)
+
+
+async def test_key_pair_replacement_keeps_the_check(hass: HomeAssistant) -> None:
+    """Replacing the device keys leaves the lock's unlock check in place."""
+    flow, entry = options_flow(hass, sec_key=None)
+    hass.config_entries.async_update_entry(
+        entry, data={**entry.data, CONF_BLE_UNLOCK_CHECK: CHECK}
+    )
+    result, _reload = await replace_keys(hass, flow, {"local_key": NEW_LOCAL_KEY})
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert entry.data[CONF_BLE_UNLOCK_CHECK] == CHECK
+    assert entry.data["local_key"] == NEW_LOCAL_KEY
 
 
 def test_entry_credentials_restore_the_check() -> None:
