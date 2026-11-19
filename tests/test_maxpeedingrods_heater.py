@@ -253,20 +253,19 @@ async def test_heater_held_reading_shown_on_other_dp_update(
     exchanger = sensor.TuyaBLESensor(
         hass, coordinator, device, product, sensor.get_mapping_by_device(device)[0]
     )
-    clock = {"now": 100.0}
     with (
         patch.object(exchanger, "async_write_ha_state"),
-        patch.object(measurement, "monotonic", lambda: clock["now"]),
+        patch.object(measurement, "monotonic", return_value=100.0) as clock,
     ):
         await exchanger.async_added_to_hass()
         add_dp(device, 1, BOOL, True)
         add_dp(device, 3, VALUE, 200)
         coordinator.async_set_updated_data({})
-        clock["now"] += 1
+        clock.return_value = 101.0
         add_dp(device, 3, VALUE, 202)  # held back: +2 C after 1 s
         coordinator.async_set_updated_data({})
         held = exchanger.native_value
-        clock["now"] += 60  # time alone changes nothing
+        clock.return_value = 161.0  # time alone changes nothing
         idle = exchanger.native_value
         add_dp(device, 11, ENUM, 0)  # an unrelated report re-checks DP 3
         coordinator.async_set_updated_data({})
