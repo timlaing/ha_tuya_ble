@@ -892,3 +892,86 @@ def test_build_button_mapping_rejects_non_bool_press_value(press_value: Any) -> 
     )
     with pytest.raises(DeviceRegistryError, match="press_value must be a boolean"):
         button._build_button_mapping(desc)
+
+
+def test_build_climate_mapping_switch_action() -> None:
+    """The climate builder carries the switch-driven hvac action flag."""
+    desc = EntityDescriptor(
+        platform="climate",
+        dp_id=0,
+        translation_key="heater",
+        extra={
+            "hvac_switch_dp_id": 1,
+            "hvac_switch_mode": "heat",
+            "hvac_action_from_switch": True,
+        },
+    )
+    built = climate._build_climate_mapping(desc)
+    assert built.hvac_action_from_switch is True
+    assert built.hvac_switch_dp_id == 1
+
+
+def test_shipped_climates_keep_thermostat_action() -> None:
+    """Only the parking heater opts in to the switch-driven hvac action."""
+    opted_in = {
+        (category, product_id)
+        for category, category_mapping in climate.mapping.items()
+        for product_id, mappings in (category_mapping.products or {}).items()
+        for climate_mapping in mappings
+        if climate_mapping.hvac_action_from_switch
+    }
+    assert opted_in == {("qn", "vmdizama")}
+    for product_id in ("drlajpqc", "nhj2j7su"):
+        trv = climate.mapping["wk"].products[product_id][0]  # type: ignore[index]
+        assert trv.target_temperature_coefficient == 10.0
+        assert trv.current_temperature_dp_id == 102
+
+
+def test_build_select_mapping_settable_options() -> None:
+    """The select builder carries settable options and defaults them to None."""
+    desc = EntityDescriptor(
+        platform="select",
+        dp_id=5,
+        translation_key="level",
+        options=["1", "2", "3"],
+        extra={"settable_options": ["1", "2"]},
+    )
+    assert select._build_select_mapping(desc).settable_options == ["1", "2"]
+    plain = EntityDescriptor(platform="select", dp_id=5, options=["1"])
+    assert select._build_select_mapping(plain).settable_options is None
+
+
+def test_build_sensor_mapping_handler_options() -> None:
+    """The sensor builder hands descriptor-only fields to its read handler."""
+    desc = EntityDescriptor(
+        platform="sensor",
+        dp_id=3,
+        translation_key="exchanger",
+        handlers={"read": "measurement.active_throttled"},
+        extra={"active_dp_id": 1, "report_min_change": 5},
+    )
+    built = sensor._build_sensor_mapping(desc)
+    assert built.handler_options == {"active_dp_id": 1, "report_min_change": 5}
+    assert built.getter is not None
+    assert built.getter.__name__ == "active_throttled"
+
+
+def test_parking_heater_platform_mappings() -> None:
+    """qn/vmdizama maps each DP to exactly one platform entity."""
+    device = cast(Any, SimpleNamespace(category="qn", product_id="vmdizama"))
+    [heater] = climate.get_mapping_by_device(device)
+    assert heater.description.key == "parking_heater"
+    assert (heater.hvac_switch_dp_id, heater.target_temperature_dp_id) == (1, 2)
+    assert heater.current_temperature_dp_id == 0
+    assert heater.hvac_mode_dp_id == 0
+    assert [m.dp_id for m in sensor.get_mapping_by_device(device)] == [3, 11]
+    selects = select.get_mapping_by_device(device)
+    assert [(m.dp_id, m.dp_type) for m in selects] == [
+        (4, TuyaBLEDataPointType.DT_ENUM),
+        (5, TuyaBLEDataPointType.DT_ENUM),
+    ]
+    assert selects[0].settable_options is None
+    assert selects[1].settable_options == ["1", "2", "3"]
+    for platform in (switch, number, binary_sensor, button, text, valve):
+        assert platform.get_mapping_by_device(device) == []
+    assert get_mapped_dp_ids("qn", "vmdizama") == {1, 2, 3, 4, 5, 11}

@@ -1,0 +1,80 @@
+# MaXpeedingRods all-in-one diesel parking heater. Experimental: ported from
+# ha-tuya-ble/ha_tuya_ble PR 358 (@andybell007-creator), which lists the cloud
+# status_range below and reports on/off, set point and level writes on one
+# heater. Mode (DP 4) was not tested on hardware and the meaning of smart and
+# auto is unconfirmed.
+#
+# DP  code               wire   range                 exposed as
+# 1   switch             bool   -                     climate on/off
+# 2   temp_set           value  0-40 C, scale 0       climate set point
+# 3   temp_current       value  -20-300 C, scale 0    heat exchanger sensor
+# 4   mode               enum   smart, auto           select
+# 5   level              enum   1-5 (functions: 1-3)  select, 1-3 settable
+# 11  work_state         enum   heating               diagnostic sensor
+# 13  temp_unit_convert  enum   c, f                  not exposed
+category: qn
+product_id: vmdizama
+device_name: Diesel Heater
+model_name: vmdizama
+manufacturer: MaXpeedingRods
+entities:
+  climate:
+    # DP 3 is the heat exchanger, not the room, so there is no current
+    # temperature and hvac_action follows the switch.
+    - translation_key: parking_heater
+      hvac_switch_dp_id: 1
+      hvac_switch_mode: heat
+      hvac_action_from_switch: true
+      target_temperature_dp_id: 2
+      target_temperature_coefficient: 1.0
+      target_temperature_step: 1.0
+      target_temperature_min: 0.0
+      target_temperature_max: 40.0
+  sensor:
+    # Reported about once a second while burning and not at all once off, so
+    # the reading is blank while DP 1 is off and throttled while running.
+    - dp_id: 3
+      translation_key: heat_exchanger_temperature
+      name: Heat exchanger temperature
+      icon: mdi:fire
+      device_class: temperature
+      unit: °C
+      state_class: measurement
+      handlers:
+        read: measurement.active_throttled
+      active_dp_id: 1
+      report_min_change: 5
+      report_max_interval: 30
+    - dp_id: 11
+      translation_key: heater_work_state
+      name: Work state
+      icon: mdi:state-machine
+      device_class: enum
+      entity_category: diagnostic
+      options:
+        - heating
+  select:
+    - dp_id: 4
+      dp_type: 4
+      translation_key: heater_mode
+      name: Heater mode
+      icon: mdi:fire-circle
+      options:
+        - smart
+        - auto
+    - dp_id: 5
+      dp_type: 4
+      translation_key: heater_level
+      name: Heater level
+      icon: mdi:speedometer
+      options:
+        - "1"
+        - "2"
+        - "3"
+        - "4"
+        - "5"
+      # The cloud reports levels 1-5 but only accepts 1-3 as commands.
+      settable_options:
+        - "1"
+        - "2"
+        - "3"

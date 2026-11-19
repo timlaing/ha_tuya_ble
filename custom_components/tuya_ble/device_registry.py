@@ -11,7 +11,7 @@ replaces the hardcoded per-platform ``mapping`` dicts.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -33,6 +33,9 @@ _CATEGORY_PREFIX = "_category_"
 _HANDLER_ROLES = {"read", "write", "when", "pulse"}
 _SINGLE_ENTITY_PLATFORMS = {"climate", "cover", "light"}
 _INIT_LOCK_KEY = f"{DOMAIN}_registry_init_lock"
+# Switch modes with an unambiguous running action, for hvac_action_from_switch.
+SWITCH_ACTION_MODES = frozenset({"heat", "cool", "dry", "fan_only"})
+_SENSOR_NUMBER_OPTIONS = ("report_min_change", "report_max_interval")
 
 
 class DeviceRegistryError(Exception):
@@ -161,10 +164,8 @@ def _parse_entity(platform: str, raw: dict[str, Any]) -> EntityDescriptor:
             raise DeviceRegistryError(
                 f"Entity {raw.get('dp_id', '?')} legacy_keys items must be strings"
             )
-    if platform == "climate":
-        _validate_climate_modes(raw)
-    elif platform == "vacuum":
-        _validate_vacuum(raw)
+    for validator in _PLATFORM_VALIDATORS.get(platform, ()):
+        validator(raw)
     return EntityDescriptor(
         platform=platform,
         dp_id=int(raw.get("dp_id", 0)),
@@ -264,6 +265,85 @@ def _validate_vacuum(raw: dict[str, Any]) -> None:
         raise DeviceRegistryError(
             f"Vacuum entity {name!r} needs both mode_dp_id and fan_speeds, or neither"
         )
+
+
+def _validate_climate_action(raw: dict[str, Any]) -> None:
+    """Validate that a switch-driven hvac action names a usable switch."""
+    name = raw.get("translation_key", raw.get("dp_id", "?"))
+    from_switch = raw.get("hvac_action_from_switch", False)
+    if not isinstance(from_switch, bool):
+        raise DeviceRegistryError(
+            f"Climate entity {name!r} hvac_action_from_switch must be a boolean"
+        )
+    if not from_switch:
+        return
+    switch_dp_id = raw.get("hvac_switch_dp_id")
+    if (
+        not isinstance(switch_dp_id, int)
+        or isinstance(switch_dp_id, bool)
+        or switch_dp_id <= 0
+    ):
+        raise DeviceRegistryError(
+            f"Climate entity {name!r} hvac_action_from_switch needs a "
+            "positive hvac_switch_dp_id"
+        )
+    if raw.get("hvac_switch_mode") not in SWITCH_ACTION_MODES:
+        raise DeviceRegistryError(
+            f"Climate entity {name!r} hvac_action_from_switch needs "
+            f"hvac_switch_mode in {sorted(SWITCH_ACTION_MODES)}"
+        )
+
+
+def _validate_settable_options(raw: dict[str, Any]) -> None:
+    """Validate that settable select options are a subset of the options."""
+    if "settable_options" not in raw:
+        return
+    dp_id = raw.get("dp_id", "?")
+    settable = raw["settable_options"]
+    options = raw.get("options")
+    if not isinstance(settable, list) or not all(
+        isinstance(item, str) for item in settable
+    ):
+        raise DeviceRegistryError(
+            f"Select entity {dp_id} settable_options must be a list of strings"
+        )
+    if not isinstance(options, list) or not set(settable) <= set(options):
+        raise DeviceRegistryError(
+            f"Select entity {dp_id} settable_options must be a subset of options"
+        )
+
+
+def _is_number(value: Any) -> bool:
+    """Return True for an int or float that is not a bool."""
+    return isinstance(value, int | float) and not isinstance(value, bool)
+
+
+def _validate_sensor_report_options(raw: dict[str, Any]) -> None:
+    """Validate the gating and throttling options read by sensor handlers."""
+    dp_id = raw.get("dp_id", "?")
+    if "active_dp_id" in raw:
+        active_dp_id = raw["active_dp_id"]
+        if (
+            not isinstance(active_dp_id, int)
+            or isinstance(active_dp_id, bool)
+            or active_dp_id <= 0
+        ):
+            raise DeviceRegistryError(
+                f"Sensor entity {dp_id} active_dp_id must be a positive integer"
+            )
+    for option in _SENSOR_NUMBER_OPTIONS:
+        if option in raw and (not _is_number(raw[option]) or raw[option] < 0):
+            raise DeviceRegistryError(
+                f"Sensor entity {dp_id} {option} must be a non-negative number"
+            )
+
+
+_PLATFORM_VALIDATORS: dict[str, tuple[Callable[[dict[str, Any]], None], ...]] = {
+    "climate": (_validate_climate_modes, _validate_climate_action),
+    "select": (_validate_settable_options,),
+    "sensor": (_validate_sensor_report_options,),
+    "vacuum": (_validate_vacuum,),
+}
 
 
 _BASE_ENTITY_KEYS = {

@@ -1307,3 +1307,144 @@ def test_numeric_sensor_device_classes_declare_a_valid_unit() -> None:
             if units is not None and unit not in units:
                 invalid.append(f"{category}/{product_id} DP {desc.dp_id}")
     assert not invalid, invalid
+
+
+def test_climate_switch_action_valid_is_captured() -> None:
+    """A switch-driven hvac action with a usable switch parses."""
+    registry = DeviceRegistry()
+    _load_product(
+        registry,
+        {
+            "climate": [
+                {
+                    "hvac_switch_dp_id": 1,
+                    "hvac_switch_mode": "heat",
+                    "hvac_action_from_switch": True,
+                },
+                {"hvac_action_from_switch": False},
+            ]
+        },
+    )
+    descriptors = registry.get("ms", "foo").get("climate")  # type: ignore[union-attr]
+    assert descriptors[0].extra["hvac_action_from_switch"] is True
+    assert descriptors[1].extra["hvac_action_from_switch"] is False
+
+
+@pytest.mark.parametrize(
+    ("raw", "message"),
+    [
+        ({"hvac_action_from_switch": "yes"}, "must be a boolean"),
+        ({"hvac_action_from_switch": True}, "positive hvac_switch_dp_id"),
+        (
+            {
+                "hvac_action_from_switch": True,
+                "hvac_switch_dp_id": True,
+                "hvac_switch_mode": "heat",
+            },
+            "positive hvac_switch_dp_id",
+        ),
+        (
+            {
+                "hvac_action_from_switch": True,
+                "hvac_switch_dp_id": 0,
+                "hvac_switch_mode": "heat",
+            },
+            "positive hvac_switch_dp_id",
+        ),
+        (
+            {"hvac_action_from_switch": True, "hvac_switch_dp_id": 1},
+            "needs hvac_switch_mode",
+        ),
+        (
+            {
+                "hvac_action_from_switch": True,
+                "hvac_switch_dp_id": 1,
+                "hvac_switch_mode": "auto",
+            },
+            "needs hvac_switch_mode",
+        ),
+    ],
+)
+def test_climate_switch_action_invalid_raises(
+    raw: dict[str, object], message: str
+) -> None:
+    """A switch-driven action without a usable switch is rejected."""
+    with pytest.raises(DeviceRegistryError, match=message):
+        _load_product(DeviceRegistry(), {"climate": [raw]})
+
+
+def test_select_settable_options_valid_is_captured() -> None:
+    """Settable options that are a subset of the options parse."""
+    registry = DeviceRegistry()
+    _load_product(
+        registry,
+        {
+            "select": [
+                {"dp_id": 5, "options": ["1", "2", "3"], "settable_options": ["1"]},
+                {"dp_id": 6, "options": ["a"]},
+            ]
+        },
+    )
+    descriptors = registry.get("ms", "foo").get("select")  # type: ignore[union-attr]
+    assert descriptors[0].extra["settable_options"] == ["1"]
+    assert "settable_options" not in descriptors[1].extra
+
+
+@pytest.mark.parametrize(
+    ("raw", "message"),
+    [
+        ({"options": ["1"], "settable_options": "1"}, "list of strings"),
+        ({"options": ["1"], "settable_options": [1]}, "list of strings"),
+        ({"options": ["1"], "settable_options": ["2"]}, "subset of options"),
+        ({"settable_options": ["1"]}, "subset of options"),
+    ],
+)
+def test_select_settable_options_invalid_raises(
+    raw: dict[str, object], message: str
+) -> None:
+    """Settable options must be strings drawn from the declared options."""
+    with pytest.raises(DeviceRegistryError, match=message):
+        _load_product(DeviceRegistry(), {"select": [{"dp_id": 5, **raw}]})
+
+
+def test_sensor_report_options_valid_are_captured() -> None:
+    """Gating and throttling options parse into the descriptor extras."""
+    registry = DeviceRegistry()
+    _load_product(
+        registry,
+        {
+            "sensor": [
+                {
+                    "dp_id": 3,
+                    "active_dp_id": 1,
+                    "report_min_change": 5,
+                    "report_max_interval": 0.5,
+                }
+            ]
+        },
+    )
+    desc = registry.get("ms", "foo").get("sensor")[0]  # type: ignore[union-attr]
+    assert desc.extra == {
+        "active_dp_id": 1,
+        "report_min_change": 5,
+        "report_max_interval": 0.5,
+    }
+
+
+@pytest.mark.parametrize(
+    ("raw", "message"),
+    [
+        ({"active_dp_id": 0}, "active_dp_id must be a positive integer"),
+        ({"active_dp_id": True}, "active_dp_id must be a positive integer"),
+        ({"active_dp_id": "1"}, "active_dp_id must be a positive integer"),
+        ({"report_min_change": -1}, "report_min_change must be a non-negative"),
+        ({"report_min_change": True}, "report_min_change must be a non-negative"),
+        ({"report_max_interval": "30"}, "report_max_interval must be a non-negative"),
+    ],
+)
+def test_sensor_report_options_invalid_raises(
+    raw: dict[str, object], message: str
+) -> None:
+    """Gating and throttling options must be well-formed numbers."""
+    with pytest.raises(DeviceRegistryError, match=message):
+        _load_product(DeviceRegistry(), {"sensor": [{"dp_id": 3, **raw}]})

@@ -8,6 +8,7 @@ import logging
 
 from homeassistant.components.select import SelectEntityDescription
 from homeassistant.core import HomeAssistant, State
+from homeassistant.exceptions import ServiceValidationError
 import pytest
 from pytest_homeassistant_custom_component.common import mock_restore_cache
 
@@ -384,3 +385,68 @@ async def test_sfkzq_weather_delay_writes_the_enum_index(
     assert datapoint.dp_type is TuyaBLEDataPointType.DT_ENUM
     assert datapoint.value == 1
     assert datapoint.get_value() == b"\x01"
+
+
+def _make_level_entity(
+    hass: HomeAssistant,
+    device: TuyaBLEDevice,
+    coordinator: TuyaBLECoordinator,
+    product: TuyaBLEProductInfo,
+) -> TuyaBLESelect:
+    """Build an enum select that reports five levels but accepts three."""
+    mapping = select.TuyaBLESelectMapping(
+        dp_id=5,
+        description=SelectEntityDescription(
+            key="level", options=["1", "2", "3", "4", "5"]
+        ),
+        dp_type=TuyaBLEDataPointType.DT_ENUM,
+        settable_options=["1", "2", "3"],
+    )
+    entity = select.TuyaBLESelect(hass, coordinator, device, product, mapping)
+    entity.hass = hass
+    return entity
+
+
+async def test_settable_option_writes_enum_index(hass: HomeAssistant) -> None:
+    """A settable option is written as its ENUM index."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_level_entity(hass, device, coordinator, product)
+    entity.select_option("3")
+    await hass.async_block_till_done()
+    datapoint = device.datapoints[5]
+    assert datapoint is not None
+    assert datapoint.dp_type == TuyaBLEDataPointType.DT_ENUM
+    assert datapoint.value == 2
+
+
+async def test_read_only_option_is_reported_but_rejected(hass: HomeAssistant) -> None:
+    """A read-only option is shown when reported but cannot be selected."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_level_entity(hass, device, coordinator, product)
+    add_dp(device, 5, TuyaBLEDataPointType.DT_ENUM, 4)
+    assert entity.options == ["1", "2", "3", "4", "5"]
+    assert entity.current_option == "5"
+    with pytest.raises(ServiceValidationError) as exc_info:
+        entity.select_option("4")
+    assert exc_info.value.translation_key == "option_not_settable"
+    assert exc_info.value.translation_placeholders == {
+        "option": "4",
+        "settable": "1, 2, 3",
+    }
+    await hass.async_block_till_done()
+    datapoint = device.datapoints[5]
+    assert datapoint is not None
+    assert datapoint.value == 4
+
+
+async def test_without_settable_options_every_option_is_written(
+    hass: HomeAssistant,
+) -> None:
+    """Selects without settable_options keep writing any declared option."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(hass, device, coordinator, product)
+    entity.select_option("manual")
+    await hass.async_block_till_done()
+    datapoint = device.datapoints[3]
+    assert datapoint is not None
+    assert datapoint.value == 2
