@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import patch
 
+from bleak_retry_connector import BleakConnectionError
 from homeassistant.config_entries import SOURCE_RECONFIGURE
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
@@ -34,6 +35,7 @@ from custom_components.tuya_ble.const import (
     CONF_LOCAL_KEY,
     CONF_MOBILE_SNAPSHOT,
     CONF_SEC_KEY,
+    CONF_USER_CODE,
     CONF_UUID,
     DOMAIN,
 )
@@ -105,6 +107,35 @@ async def eligible_flow(hass: HomeAssistant) -> tuple[Any, Any]:
     assert result["type"] == FlowResultType.MENU
     assert result["step_id"] == "mobile_offer"
     return flow, scan
+
+
+async def complete_mobile_qr(
+    flow: Any, credentials: Any, endpoint: str = "https://apigw.tuyaeu.com"
+) -> dict[str, Any]:
+    """Complete QR authorization through the public login and scan transitions."""
+    flow._mobile_region_login = True  # Setup state for the recovery QR return path.
+    login_info = {
+        "t": 0,
+        "uid": "test-uid",
+        "expire_time": 3600,
+        "access_token": "test-access",
+        "refresh_token": "test-refresh",
+        "terminal_id": "test-terminal",
+        "endpoint": endpoint,
+    }
+    with (
+        patch.object(
+            flow._qr_login_control, "login_result", return_value=(True, login_info)
+        ),
+        patch(
+            "custom_components.tuya_ble.config_flow.HASSTuyaBLEDeviceManager",
+            return_value=FakeManager(credentials),
+        ),
+    ):
+        assert (await flow.async_step_login({CONF_USER_CODE: "test-code"}))[
+            "step_id"
+        ] == "qr"
+        return cast(dict[str, Any], await flow.async_step_qr({}))
 
 
 def test_form_order_and_secure_password() -> None:
@@ -316,6 +347,33 @@ async def test_invalid_phone_form_never_calls_cloud(hass: HomeAssistant) -> None
     fetch.assert_not_called()
 
 
+async def test_transport_failure_never_offers_mobile_password_login(
+    hass: HomeAssistant,
+) -> None:
+    """Exercise real profile probing: an unreachable device is not a missing key."""
+    flow = build_flow(hass)
+    scan = info()
+    flow.discovery_info = scan
+    flow._data = {CONF_ENDPOINT: "https://apigw.tuyaeu.com"}
+    flow._manager = cast(Any, FakeManager(make_credentials(local_key=LOCAL)))
+    with (
+        patch.object(flow, "_async_scan_device", return_value=scan),
+        patch(
+            "custom_components.tuya_ble.tuya_ble.probe.establish_connection",
+            side_effect=BleakConnectionError("out of range"),
+        ),
+        patch(FETCH) as fetch,
+    ):
+        await flow.async_step_discovered_device({})
+        assert flow._probe_task is not None
+        await flow._probe_task
+        result = await flow.async_step_probe_finish()
+    assert result["step_id"] == "unverified"
+    assert result["errors"] == {"base": "v4_failed_connect"}
+    assert flow._mobile_pending is None
+    fetch.assert_not_called()
+
+
 async def test_cancel_mobile_login_releases_task(hass: HomeAssistant) -> None:
     """A removed flow cancels the account request and never creates an entry."""
     flow, _ = await eligible_flow(hass)
@@ -352,9 +410,9 @@ async def test_steps_without_pending_state_abort(hass: HomeAssistant) -> None:
         flow.async_step_mobile_fetch,
         flow.async_step_mobile_finish,
         flow.async_step_mobile_result,
-        flow._async_mobile_region_ready,
     ):
         assert (await step())["type"] == FlowResultType.ABORT
+    assert (await complete_mobile_qr(flow, None))["type"] == FlowResultType.ABORT
 
 
 @pytest.mark.parametrize(
@@ -482,8 +540,7 @@ async def test_reconfigure_without_region_requests_qr_login(
     result = await flow.async_step_mobile_login()
     assert result["step_id"] == "login"
     assert flow._mobile_region_login
-    flow._data = {CONF_ENDPOINT: "https://apigw.tuyaeu.com"}
-    result = await flow._async_mobile_region_ready()
+    result = await complete_mobile_qr(flow, make_credentials())
     assert result["step_id"] == "mobile_login"
 
 
@@ -491,9 +548,15 @@ async def test_qr_reauthorization_must_match_device(hass: HomeAssistant) -> None
     """An unrelated QR account cannot set this existing entry's login region."""
     flow, _ = await eligible_flow(hass)
     reconfigure(flow, hass)
-    flow._manager = cast(Any, FakeManager(None))
-    result = await flow._async_mobile_region_ready()
+    result = await complete_mobile_qr(flow, None)
     assert result["errors"] == {"base": "mobile_identity_mismatch"}
+    assert not flow._data
+    assert flow._manager is None
+    # A previously known region must not bypass the rejected-account guard.
+    result = await flow.async_step_mobile_result({"next_action": "retry"})
+    assert result["step_id"] == "login"
+    result = await complete_mobile_qr(flow, make_credentials())
+    assert result["step_id"] == "mobile_login"
 
 
 async def test_reauthorization_unknown_gateway_does_not_loop(
@@ -508,8 +571,9 @@ async def test_reauthorization_unknown_gateway_does_not_loop(
             key: value for key, value in entry.data.items() if key != CONF_CLOUD_REGION
         },
     )
-    flow._data = {CONF_ENDPOINT: "https://unknown.example.org"}
-    result = await flow._async_mobile_region_ready()
+    result = await complete_mobile_qr(
+        flow, make_credentials(), "https://unknown.example.org"
+    )
     assert result["errors"] == {"base": "mobile_unknown_region"}
 
 
@@ -597,3 +661,55 @@ async def test_reconfigure_ble_failure_keeps_existing_pair(hass: HomeAssistant) 
     assert CONF_SEC_KEY not in entry.data
     assert CONF_MOBILE_SNAPSHOT in entry.data
     reload_entry.assert_awaited_once()
+
+
+@pytest.mark.parametrize("failure", ["ble", "unload"])
+async def test_explicit_recovery_retry_uses_staged_pair_without_login(
+    hass: HomeAssistant, failure: str
+) -> None:
+    """Transient failures retain the pair without saving it or repeating app login."""
+    flow, scan = await eligible_flow(hass)
+    entry = reconfigure(flow, hass)
+    flow._probe_source_step = "reconfigure"
+    candidate = replace(make_credentials(), local_key=LOCAL, sec_key=SEC)
+    profiles = (
+        [None, ConnectionProfile.V4_20]
+        if failure == "ble"
+        else [ConnectionProfile.V4_20]
+    )
+    unloads = [True, True] if failure == "ble" else [False, True]
+    with (
+        patch(FETCH, return_value=MobileResult(candidate, snapshot())) as fetch,
+        patch(DETECT, side_effect=profiles) as detect,
+        patch.object(flow, "_async_scan_device", return_value=scan),
+        patch.object(hass.config_entries, "async_unload", side_effect=unloads),
+        patch.object(hass.config_entries, "async_reload", return_value=True),
+        patch.object(
+            flow,
+            "async_update_reload_and_abort",
+            return_value={"type": FlowResultType.ABORT},
+        ) as update,
+    ):
+        await flow.async_step_mobile_login(FORM)
+        await flow._mobile_task
+        result = await flow.async_step_mobile_finish()
+        if failure == "ble":
+            await flow._probe_task
+            result = await flow.async_step_probe_finish()
+        assert entry.data[CONF_LOCAL_KEY] == "original-key"
+        assert CONF_SEC_KEY not in entry.data
+        if failure == "ble":
+            assert result["step_id"] == "reconfigure"
+            await flow.async_step_reconfigure({})
+        else:
+            assert result["step_id"] == "mobile_result"
+            await flow.async_step_mobile_result({"next_action": "retry"})
+        await flow._probe_task
+        await flow.async_step_probe_finish()
+    fetch.assert_awaited_once()
+    assert detect.call_args.args[2].local_key == LOCAL
+    assert detect.call_args.args[2].sec_key == SEC
+    updates = update.call_args.kwargs["data_updates"]
+    assert updates[CONF_LOCAL_KEY] == LOCAL
+    assert updates[CONF_SEC_KEY] == SEC
+    assert updates[CONF_CONNECTION_PROFILE] == "v4_20"

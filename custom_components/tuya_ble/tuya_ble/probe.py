@@ -124,9 +124,6 @@ class ProbeStage(StrEnum):
     DATAPOINTS = "datapoints"
 
 
-_STAGE_RANK = {stage: rank for rank, stage in enumerate(ProbeStage)}
-
-
 class ProbeOutcome(StrEnum):
     """Result of an authenticated status read (not a cloud-device guess)."""
 
@@ -670,8 +667,7 @@ def _explain_stage(
     """
     if (
         credentials.sec_key is None
-        and _STAGE_RANK[stage] <= _STAGE_RANK[ProbeStage.DEVICE_INFO]
-        and stage != ProbeStage.INELIGIBLE
+        and stage in (ProbeStage.CREDENTIALS, ProbeStage.DEVICE_INFO)
         and (info := decode_tuya_ble_advertisement(advertisement)) is not None
         and info.security_v2
     ):

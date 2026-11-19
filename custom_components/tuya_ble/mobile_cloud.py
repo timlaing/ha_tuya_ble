@@ -7,7 +7,8 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 from collections.abc import Mapping
-from dataclasses import dataclass, field, replace
+import copy
+from dataclasses import dataclass, field
 from itertools import islice
 from typing import Any
 from urllib.parse import urlsplit
@@ -101,7 +102,8 @@ def _target(
             break
         item, depth = pending.popleft()
         if isinstance(item, dict):
-            if any(str(item.get(name, "")) == expected for name in names):
+            identity = next((item[name] for name in names if item.get(name)), None)
+            if identity is not None and str(identity) == expected:
                 return item
             if depth < 8:
                 pending.extend(
@@ -127,7 +129,7 @@ def _identity_matches(
 
 
 async def _enrich(
-    client: TuyaPasswordClient, credentials: TuyaBLEDeviceCredentials
+    client: TuyaPasswordClient, credentials: TuyaBLEDeviceCredentials, deadline: float
 ) -> tuple[dict[str, Any], dict[str, bool]]:
     """Best-effort reads of product metadata and status; never modify a device."""
     records: dict[str, Any] = {}
@@ -146,8 +148,12 @@ async def _enrich(
             {"devId": credentials.device_id, "gwId": ""},
         ),
     ):
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            operations[name] = False
+            continue
         try:
-            async with asyncio.timeout(ENRICH_TIMEOUT):
+            async with asyncio.timeout(min(ENRICH_TIMEOUT, remaining)):
                 response = await client._call(action, payload, version=version)  # pylint: disable=protected-access
             if response.get("success") is False or response.get("errorCode"):
                 operations[name] = False
@@ -176,8 +182,14 @@ async def async_fetch_mobile_device(
     if region not in REGIONS or login.app not in ("smart_life", "tuya_smart"):
         return MobileResult(error="mobile_unknown_region")
     try:
-        async with asyncio.timeout(MOBILE_TIMEOUT):
-            return await _fetch(hass, login, region, credentials, cloud_uuid)
+        return await _fetch(
+            hass,
+            login,
+            region,
+            credentials,
+            cloud_uuid,
+            asyncio.get_running_loop().time() + MOBILE_TIMEOUT,
+        )
     except Exception as err:  # pylint: disable=broad-exception-caught
         return MobileResult(
             error=_ERRORS.get(type(err).__name__, "mobile_connection_failed")
@@ -190,6 +202,7 @@ async def _fetch(
     region: str,
     credentials: TuyaBLEDeviceCredentials,
     cloud_uuid: str,
+    deadline: float,
 ) -> MobileResult:
     """Do not close HA's shared session or persist mobile login/session values."""
     client = TuyaPasswordClient.for_application(
@@ -199,30 +212,39 @@ async def _fetch(
         endpoint=REGIONS[region][1],
         max_login_attempts=1,
     )
-    await client.login_with_password(login.password, country_code=login.country_code)
-    response = await client._call(  # pylint: disable=protected-access
-        "thing.m.device.get", {"devId": credentials.device_id}, version="4.1"
-    )
+    async with asyncio.timeout_at(deadline):
+        await client.login_with_password(
+            login.password, country_code=login.country_code
+        )
+        response = await client._call(  # pylint: disable=protected-access
+            "thing.m.device.get", {"devId": credentials.device_id}, version="4.1"
+        )
     if response.get("success") is False or response.get("errorCode"):
         return MobileResult(error="mobile_device_not_found")
     record = _target(response, credentials.device_id, ("devId", "deviceId", "id"))
     if record is None or not _identity_matches(record, credentials, cloud_uuid):
         return MobileResult(error="mobile_identity_mismatch")
-    records, operations = await _enrich(client, credentials)
+    candidate, error = _key_pair(record, credentials)
+    records, operations = await _enrich(client, credentials, deadline)
     records["device"] = record
     operations["device"] = True
     snapshot = capture_mobile_snapshot(login.app, records, operations)
-    # Import the two keys together, never mix a mobile secKey with the old localKey.
-    local = record.get("localKey") or record.get("local_key")
-    sec = record.get("secKey") or record.get("sec_key")
-    pair, errors = validate_key_pair({CONF_LOCAL_KEY: local, CONF_SEC_KEY: sec})
+    return MobileResult(credentials=candidate, snapshot=snapshot, error=error)
+
+
+def _key_pair(
+    record: Mapping[str, Any], credentials: TuyaBLEDeviceCredentials
+) -> tuple[TuyaBLEDeviceCredentials | None, str]:
+    """Validate/import both mobile keys before any optional enrichment read."""
+    pair, errors = validate_key_pair({
+        CONF_LOCAL_KEY: record.get("localKey") or record.get("local_key"),
+        CONF_SEC_KEY: record.get("secKey") or record.get("sec_key"),
+    })
     if errors or pair is None:
-        return MobileResult(snapshot=snapshot, error="mobile_invalid_keys")
+        return None, "mobile_invalid_keys"
     if pair[1] is None:
-        return MobileResult(snapshot=snapshot, error="mobile_missing_key")
-    return MobileResult(
-        credentials=replace(
-            credentials, local_key=pair[0], sec_key=pair[1], connection_profile=None
-        ),
-        snapshot=snapshot,
-    )
+        return None, "mobile_missing_key"
+    candidate = copy.copy(credentials)
+    candidate.local_key, candidate.sec_key = pair
+    candidate.connection_profile = None
+    return candidate, ""

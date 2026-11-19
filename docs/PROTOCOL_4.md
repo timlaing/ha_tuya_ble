@@ -184,6 +184,15 @@ keys/profile and only stores sanitized metadata; a successful recovery updates
 the pair, profile and metadata together. Mobile account passwords/session
 tokens are ephemeral. This does not use the standalone research probe's
 session-file cache, and diagnostics never initiate mobile logins.
+An imported pair remains staged in the flow after a transient BLE failure,
+so an explicit Reconfigure retry verifies it without another app login. It is
+not persisted until verification succeeds. Optional enrichment shares the
+remaining overall deadline but cannot discard a pair already retrieved.
+
+Snapshot schema strings that exceed decoder recursion limits fall back to a
+redacted shape with truncation marked. Only recognized structural mapping keys
+are retained (including numeric DP identifiers); opaque keys are anonymized
+regardless of their length, and the same policy is rechecked on export.
 
 Bit 2 of the FD50 frame control's low byte (service-data byte 1) announces the
 "Security V2" channel

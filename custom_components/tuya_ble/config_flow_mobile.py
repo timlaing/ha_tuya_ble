@@ -138,12 +138,16 @@ class _MobileLoginMixin:
     _mobile_snapshot: dict[str, Any] | None = None
     _mobile_attempted = False
     _mobile_keys_imported = False
+    _mobile_staged_credentials: TuyaBLEDeviceCredentials | None = None
+    _mobile_qr_rejected = False
     _mobile_region_login = False
     _mobile_error = ""
 
     def _mobile_region(self) -> str | None:
         """Prefer the QR gateway region; existing entries may need a new QR login."""
         flow = cast("TuyaBLEConfigFlow", self)
+        if self._mobile_qr_rejected:
+            return None
         region = region_from_endpoint(flow._data.get(CONF_ENDPOINT))  # pylint: disable=protected-access
         if region is not None or flow.source != SOURCE_RECONFIGURE:
             return region
@@ -187,6 +191,7 @@ class _MobileLoginMixin:
         if self._mobile_task is not None and not self._mobile_task.done():
             self._mobile_task.cancel()
         self._mobile_pending = None
+        self._mobile_staged_credentials = None
 
     def _store_mobile_diagnostics(self) -> None:
         """On failed recovery, update metadata only after BLE ownership is restored."""
@@ -264,8 +269,12 @@ class _MobileLoginMixin:
         )
         flow._abort_if_flow_removed()  # pylint: disable=protected-access
         if matched is None or matched.device_id != credentials.device_id:
+            flow._data.clear()  # pylint: disable=protected-access
+            flow._manager = None  # pylint: disable=protected-access
+            self._mobile_qr_rejected = True
             self._mobile_error = "mobile_identity_mismatch"
             return await self.async_step_mobile_result()
+        self._mobile_qr_rejected = False
         if self._mobile_region() is None:
             self._mobile_error = "mobile_unknown_region"
             return await self.async_step_mobile_result()
@@ -318,6 +327,9 @@ class _MobileLoginMixin:
             self._mobile_error = result.error or "mobile_invalid_keys"
             return await self.async_step_mobile_result()
         discovery, advertisement, _, _ = pending
+        self._mobile_staged_credentials = result.credentials
+        self._mobile_attempted = True
+        self._mobile_keys_imported = True
         if flow.source == SOURCE_RECONFIGURE:
             entry = flow._get_reconfigure_entry()  # pylint: disable=protected-access
             if not await flow.hass.config_entries.async_unload(entry.entry_id):
@@ -328,8 +340,6 @@ class _MobileLoginMixin:
             if flow._flow_removed:  # pylint: disable=protected-access
                 await flow._async_restore_entry()  # pylint: disable=protected-access
                 flow._abort_if_flow_removed()  # pylint: disable=protected-access
-        self._mobile_attempted = True
-        self._mobile_keys_imported = True
         flow._probe_discovery = discovery  # pylint: disable=protected-access
         flow._probe_advertisement = advertisement  # pylint: disable=protected-access
         flow._probe_task = flow.hass.async_create_task(  # pylint: disable=protected-access
@@ -347,6 +357,11 @@ class _MobileLoginMixin:
             return flow.async_abort(reason="unknown")
         if user_input is not None:
             if user_input.get("next_action") == "retry":
+                if (
+                    self._mobile_staged_credentials is not None
+                    and flow.source == SOURCE_RECONFIGURE
+                ):
+                    return await flow.async_step_reconfigure({})
                 return await self.async_step_mobile_login()
             if flow.source == SOURCE_RECONFIGURE:
                 return await flow.async_step_reconfigure()

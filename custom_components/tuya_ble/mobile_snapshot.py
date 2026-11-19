@@ -1,6 +1,6 @@
 """Bounded mobile cloud metadata capture, sanitized before storage and export."""
 
-# cspell:ignore ecode
+# cspell:ignore ecode topo
 
 from __future__ import annotations
 
@@ -17,7 +17,8 @@ MAX_DEPTH = 8
 MAX_ITEMS = 256
 MAX_NODES = 4096
 MAX_BYTES = 256 * 1024
-_FIELD = re.compile(r"(?:[A-Za-z]\w{0,63}|\d{1,3})", re.ASCII)
+_DP_ID = re.compile(r"\d{1,3}", re.ASCII)
+_MASKED_FIELD = re.compile(r"redacted_field_\d{1,3}", re.ASCII)
 _SENSITIVE = re.compile(
     r"key|token|secret|password|passwd|signature|certificate|checkcode|"
     r"endpoint|url|address|^ip$|^lat$|^lon$|owner|user|^uid$|^sid$|ecode|^mac$|^uuid$|"
@@ -77,6 +78,107 @@ _CHILDREN = {
     }),
 }
 _TYPES = frozenset({"null", "boolean", "number", "string", "object", "array", "other"})
+_STRUCTURAL = {
+    (): _ROOT
+    | frozenset({
+        "activeTime",
+        "active_time",
+        "biz_type",
+        "create_time",
+        "createTime",
+        "communication",
+        "dataPointInfo",
+        "devId",
+        "deviceId",
+        "id",
+        "devKey",
+        "deviceTopo",
+        "gatewayVerCAD",
+        "homeDisplayOrder",
+        "iconUrl",
+        "icon",
+        "ip",
+        "lat",
+        "localKey",
+        "local_key",
+        "secKey",
+        "sec_key",
+        "lon",
+        "mac",
+        "meta",
+        "name",
+        "otaInfo",
+        "ownerId",
+        "owner_id",
+        "runtimeEnv",
+        "shareInfo",
+        "timezoneId",
+        "time_zone",
+        "uuid",
+        "uid",
+        "update_time",
+        "dps",
+        "status",
+        "status_range",
+        "local_strategy",
+        "result",
+        "success",
+    }),
+    ("communication",): _CHILDREN["communication"]
+    | frozenset({
+        "uuid",
+        "mac",
+        "id",
+        "deviceId",
+        "address",
+        "key",
+        "secret",
+    }),
+    ("otaInfo",): _CHILDREN["otaInfo"]
+    | frozenset({
+        "url",
+        "upgradeUrl",
+        "modules",
+        "otaModules",
+    }),
+    ("dataPointInfo",): frozenset({
+        "schema",
+        "dps",
+        "dpMaxId",
+        "dpName",
+        "dpStatus",
+        "dpsTime",
+    }),
+}
+_SCHEMA_FIELDS = _CHILDREN["schema"] | frozenset({
+    "name",
+    "desc",
+    "values",
+    "valueDesc",
+    "properties",
+    "config_item",
+    "status_code",
+    "value_convert",
+    "enumMappingMap",
+    "ratio",
+    "secret",
+})
+
+
+def _numeric_dp(name: str) -> bool:
+    """DP identifiers are structural; opaque device/account IDs are not."""
+    return _DP_ID.fullmatch(name) is not None and int(name) <= 255
+
+
+def _recognized_field(path: tuple[str, ...], name: str) -> bool:
+    """Retain only known names in every expanded container, including on export."""
+    if _MASKED_FIELD.fullmatch(name):
+        return True
+    if path == ("dataPointInfo", "dps"):
+        return _numeric_dp(name)
+    if path[:2] == ("dataPointInfo", "schema"):
+        return name in _SCHEMA_FIELDS or _numeric_dp(name)
+    return name in _STRUCTURAL.get(path, ())
 
 
 def _shape(value: Any) -> dict[str, Any]:
@@ -198,6 +300,9 @@ class _Capture:
             return None
         try:
             decoded = json.loads(value)
+        except RecursionError:
+            self.truncated = True
+            return None
         except ValueError:
             return None
         return decoded if isinstance(decoded, dict | list) else None
@@ -216,9 +321,7 @@ class _Capture:
                 self.truncated = True
                 break
             name = str(key)
-            if not _FIELD.fullmatch(name) or (
-                len(name) >= 24 and not _allowed((*path, name))
-            ):
+            if not _recognized_field(path, name):
                 name = f"redacted_field_{index}"
                 item = _shape(item)
             self.bytes_used += len(name) + 80

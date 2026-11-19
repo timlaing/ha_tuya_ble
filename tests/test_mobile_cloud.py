@@ -353,3 +353,83 @@ async def test_identity_search_stops_at_node_budget(hass: HomeAssistant) -> None
     """Wide JSON responses cannot cause an unbounded account/device scan."""
     result, _, _ = await fetch(hass, device=[[None] * 256 for _ in range(256)])
     assert result.error == "mobile_identity_mismatch"
+
+
+async def test_slow_mandatory_read_preserves_keys_when_overall_budget_runs_out(
+    hass: HomeAssistant,
+) -> None:
+    """Optional reads cannot erase a pair retrieved just before the deadline."""
+    original = make_credentials()
+
+    async def response(action: str, *_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        if action == "thing.m.device.get":
+            await asyncio.sleep(0.15)
+            return {"result": record(original)}
+        await asyncio.Event().wait()
+        return {}
+
+    fake = SimpleNamespace(login_with_password=AsyncMock(), _call=response)
+    with (
+        patch(
+            "custom_components.tuya_ble.mobile_cloud.async_get_clientsession",
+            return_value=object(),
+        ),
+        patch(FACTORY, return_value=fake),
+        patch("custom_components.tuya_ble.mobile_cloud.MOBILE_TIMEOUT", 0.2),
+    ):
+        result = await async_fetch_mobile_device(
+            hass, LOGIN, "eu", original, original.uuid
+        )
+    assert result.credentials is not None
+    assert result.credentials.local_key == LOCAL
+    assert result.credentials.sec_key == SEC
+    assert result.snapshot is not None
+    assert result.snapshot["operations"] == {
+        "device": True,
+        "product": False,
+        "status": False,
+    }
+
+
+async def test_cancellation_during_enrichment_is_not_a_partial_success(
+    hass: HomeAssistant,
+) -> None:
+    """External flow cancellation still propagates after mandatory reads succeed."""
+    original = make_credentials()
+    enriching = asyncio.Event()
+
+    async def response(action: str, *_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        if action == "thing.m.device.get":
+            return {"result": record(original)}
+        enriching.set()
+        await asyncio.Event().wait()
+        return {}
+
+    fake = SimpleNamespace(login_with_password=AsyncMock(), _call=response)
+    with (
+        patch(
+            "custom_components.tuya_ble.mobile_cloud.async_get_clientsession",
+            return_value=object(),
+        ),
+        patch(FACTORY, return_value=fake),
+    ):
+        task = asyncio.create_task(
+            async_fetch_mobile_device(hass, LOGIN, "eu", original, original.uuid)
+        )
+        await enriching.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+
+@pytest.mark.parametrize("alias", ["devId", "deviceId"])
+async def test_primary_device_identifier_cannot_be_overridden_by_id_alias(
+    hass: HomeAssistant,
+    alias: str,
+) -> None:
+    """Match the canonical alias ordering used by the pinned mobile library."""
+    original = make_credentials()
+    response = record(original, devId=None, id=original.device_id)
+    response[alias] = "different-device"
+    result, _, _ = await fetch(hass, device=response)
+    assert result.error == "mobile_identity_mismatch"

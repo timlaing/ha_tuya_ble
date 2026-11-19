@@ -95,6 +95,8 @@ metadata values are retained; other fields show their type and size. Unknown
 containers, live DP values, signed URLs, account identifiers and credentials
 are withheld before the snapshot is stored. Diagnostics do not log into the
 mobile service or automatically refresh this snapshot.
+Known structural field names are preserved; opaque or unrecognized mapping
+keys are anonymized as well, so identifiers cannot leak through field names.
 
 ## Debug logging
 

@@ -65,8 +65,12 @@ class _ReconfigureMixin:
                 flow._probe_discovery = discovery  # pylint: disable=protected-access
                 flow._probe_advertisement = advertisement  # pylint: disable=protected-access
                 probe = flow._async_verify_v4  # pylint: disable=protected-access
+                credentials = (
+                    flow._mobile_staged_credentials  # pylint: disable=protected-access
+                    or _build_credentials_from_entry(entry)
+                )
                 flow._probe_task = flow.hass.async_create_task(  # pylint: disable=protected-access
-                    probe(discovery, _build_credentials_from_entry(entry))
+                    probe(discovery, credentials)
                 )
                 flow._probe_task.add_done_callback(_consume_probe_result)  # pylint: disable=protected-access
                 return await flow.async_step_probe()

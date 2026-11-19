@@ -141,20 +141,20 @@ def test_optional_record_shapes(records: dict[str, Any]) -> None:
 def test_snapshot_limits_and_truncation() -> None:
     """Huge collections are bounded, with explicit truncation metadata."""
     snapshot = capture({
-        "values": [dict.fromkeys(["x", "y"], "SECRET")] * 300,
-        "extras": dict.fromkeys([f"x{i}" for i in range(300)], 3),
+        "dataPointInfo": {"schema": [{"dpId": 13, "type": "Integer"}] * 300},
+        "communication": dict.fromkeys([f"x{i}" for i in range(300)], 3),
     })
     assert snapshot["truncated"] is True
-    assert len(snapshot["records"]["device"]["values"]) <= 256
-    assert len(snapshot["records"]["device"]["extras"]) <= 256
+    assert len(snapshot["records"]["device"]["dataPointInfo"]["schema"]) <= 256
+    assert len(snapshot["records"]["device"]["communication"]) <= 256
     assert filter_mobile_snapshot(snapshot)["truncated"] is True
 
 
 def test_depth_limit() -> None:
     """Deep input cannot recurse without a bound."""
-    schema: dict[str, Any] = {"x": 1}
+    schema: dict[str, Any] = {"type": "Integer"}
     for _ in range(15):
-        schema = {"child": schema}
+        schema = {"range": schema}
     assert capture({"dataPointInfo": {"schema": schema}})["truncated"] is True
 
 
@@ -162,7 +162,9 @@ def test_depth_limit() -> None:
 def test_node_and_byte_limits(limit: str) -> None:
     """Resource limits work for dictionaries and arrays."""
     with patch(f"custom_components.tuya_ble.mobile_snapshot.{limit}", 300):
-        snapshot = capture({"values": list(range(1000)), "other": {"x": 1}})
+        snapshot = capture({
+            "dataPointInfo": {"schema": [{"dpId": 13, "type": "Integer"}] * 1000}
+        })
     assert snapshot["truncated"] is True
 
 
@@ -234,3 +236,61 @@ def test_snapshot_budget_is_shared_across_records() -> None:
             {},
         )
     assert captured["truncated"]
+
+
+def test_schema_decoder_recursion_failure_does_not_discard_capture() -> None:
+    """Deep JSON text falls back to a shape before the traversal depth limit."""
+    with patch(
+        "custom_components.tuya_ble.mobile_snapshot.json.loads",
+        side_effect=RecursionError("decoder depth exceeded"),
+    ):
+        captured = capture({
+            "localKey": "PRIVATE_LOCAL",
+            "secKey": "PRIVATE_SEC",
+            "dataPointInfo": {"schema": "[[]]"},
+        })
+    assert captured["truncated"] is True
+    assert captured["records"]["device"]["dataPointInfo"]["schema"]["redacted"] is True
+    assert captured["key_presence"] == {"local_key": True, "sec_key": True}
+    assert "PRIVATE_LOCAL" not in json.dumps(captured)
+    assert "PRIVATE_SEC" not in json.dumps(captured)
+
+
+@pytest.mark.parametrize("identifier", ["a1b2c3d4e5f6g7h8i9j0", "opaque"])
+def test_opaque_keys_are_hidden_in_every_expanded_container(identifier: str) -> None:
+    """Field syntax and length alone cannot establish that a name is structural."""
+    record = {
+        identifier: "PRIVATE",
+        "productVer": "1.2",
+        "communication": {identifier: "PRIVATE", "ble": True},
+        "otaInfo": {identifier: "PRIVATE", "version": "1.2"},
+        "dataPointInfo": {
+            identifier: "PRIVATE",
+            "dps": {identifier: "PRIVATE", "13": 88, "256": "PRIVATE"},
+            "schema": [{identifier: "PRIVATE", "dpId": 13, "type": "Integer"}],
+        },
+    }
+    captured = capture(record)
+    exported = filter_mobile_snapshot(captured)
+    for value in (captured, exported):
+        serialized = json.dumps(value)
+        assert identifier not in serialized
+        assert "PRIVATE" not in serialized
+        device = value["records"]["device"]
+        assert device["productVer"] == "1.2"
+        assert device["communication"]["ble"] is True
+        assert device["otaInfo"]["version"] == "1.2"
+        assert "13" in device["dataPointInfo"]["dps"]
+        assert "256" not in device["dataPointInfo"]["dps"]
+        assert device["dataPointInfo"]["schema"][0]["dpId"] == 13
+
+
+def test_mapping_schema_dp_identifiers_and_fields_are_structural() -> None:
+    """Known schema metadata names are retained in dictionary-shaped schemas."""
+    captured = capture({
+        "dataPointInfo": {"schema": {"13": {"type": "Integer", "opaque": "PRIVATE"}}}
+    })
+    schema = captured["records"]["device"]["dataPointInfo"]["schema"]
+    assert "13" in schema
+    assert "type" in schema["13"]
+    assert "opaque" not in json.dumps(schema)
