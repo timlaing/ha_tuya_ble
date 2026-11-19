@@ -36,6 +36,8 @@ It is **not** Heat, Dry or Fan-only: the climate HVAC mode is unknown while
 the select reports Full open. Choose Manual/Heat, Auto or Off to leave it.
 The climate's action comes from DP6 rather than guessing from temperatures.
 The select intentionally exposes this safety-sensitive action explicitly.
+Eco-deviation availability and the child-lock diagnostic use the last
+device-reported preset/lock state; optimistic writes do not confirm those states.
 
 ## Evidence and parity limits
 

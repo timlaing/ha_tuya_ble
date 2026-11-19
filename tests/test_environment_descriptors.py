@@ -167,12 +167,12 @@ def test_new_wsdcg_products_only_add_entities_on_their_platforms(
 
 
 def test_unknown_wkf_product_has_no_mappings() -> None:
-    """The deferred wkf TRV gets no entities rather than a copied wk layout."""
+    """An unknown wkf product never inherits either registered TRV layout."""
     device = make_device()
     device.initialize_with_credentials(
-        make_credentials(category="wkf", product_id="llflaywg")
+        make_credentials(category="wkf", product_id="unknown")
     )
-    assert get_registry().get("wkf", "llflaywg") is None
+    assert get_registry().get("wkf", "unknown") is None
     for platform in (climate, number, select, sensor, switch):
         assert platform.get_mapping_by_device(device) == []
 
