@@ -23,10 +23,13 @@ Programming (series of actions) is implemented for Fingerbot Plus. Exposed entit
 - Soil moisture sensor (product_id `ojzlzzsw`).
 - Bluetooth Temperature Humidity Sensor (product_ids `iv7hudlj`, `jm6iasmb`, `vlzqwckk`, `tr0kabuq`).
 - Soil Thermo-Hygrometer (product_id `tv6peegl`).
+- **SS302 Temperature Humidity Sensor** (product_id `6lbesej0`) — experimental: temperature (DP 1, tenths of a degree), humidity (DP 2) and battery (DP 4). No calibration or temperature-unit entities, because the source mapping deliberately left them out. Not yet verified on a device through this integration.
+- **TH05 / TH05F Temperature Humidity Sensor** (product_ids `vyfoip9h`, `1jvidcsf`) — experimental: temperature (DP 1, tenths of a degree), humidity (DP 2) and battery (DP 4), a disabled-by-default °C/°F select (DP 9) that the temperature sensor follows, and disabled-by-default temperature (DP 23, −2.0 to 2.0 °C) and humidity (DP 24, −10 to 10 %) calibration. DP layout from the tuya-local TH05-BLE definition; not yet verified on a device through this integration.
 
 ## CO2 sensors (category_id `co2bj`)
 
 - CO2 Detector (product_id `59s19z5m`): bitmap alarm switches.
+- **XZ-JCO01 CO2 Detector** (product_id `wmb2xzj6`) — experimental: the `59s19z5m` layout, which the reporter of ha-tuya-ble/ha_tuya_ble#317 uses unchanged. No cloud schema has been captured.
 
 ## Smart Locks (category_id `ms`)
 
@@ -50,6 +53,8 @@ Supports lock/unlock, alarm events, fingerprint/card/password unlock tracking, a
 ## Climate (category_id `wk`)
 
 - Thermostatic Radiator Valve (product_ids `drlajpqc`, `nhj2j7su`, `zmachryv`). Supports temperature set, modes, and calibration. Additional switches: window check, antifreeze, child lock, water scale proof, programming mode.
+
+The `wkf` / `llflaywg` radiator valve is not supported yet. Its published datapoints differ from the `wk` valves (for example, DP 101 is temperature correction, not the heating switch), so the `wk` layout cannot be reused. Tracked in #198.
 
 ## Heaters (category_id `qn`)
 
@@ -143,9 +148,9 @@ Entities: open/close/stop, battery, work state and cover speed.
 
 - SRB-PM01 Soil Moisture Sensor (product_id `jabotj1z`).
 - Smartlife Plant Sensor SGS01 (product_id `gvygg3m8`).
-- SGS01B-JR Soil Sensor (product_id `gpkyrocn`).
+- SGS01B-JR Soil Sensor (product_id `gpkyrocn`). Also has a disabled-by-default °C/°F select (DP 9) that the soil temperature sensor follows, from the cloud schema in ha-tuya-ble/ha_tuya_ble#328. Whether the device converts its reported temperature when set to °F is not yet verified on a device.
 
-Entities: temperature, humidity, battery state, battery percentage.
+Entities: soil temperature, soil moisture, battery state, battery percentage. Soil moisture (DP 3) uses the moisture device class; existing installs keep its entity ID.
 
 ## Cooking thermometers (category_id `swtz`)
 

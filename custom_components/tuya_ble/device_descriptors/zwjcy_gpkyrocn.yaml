@@ -1,3 +1,4 @@
+# DP IDs, types and ranges from the cloud schema in ha-tuya-ble/ha_tuya_ble#328.
 category: zwjcy
 product_id: gpkyrocn
 entities:
@@ -9,9 +10,15 @@ entities:
       unit: °C
       state_class: measurement
       coefficient: 10.0
+      # The device reports in whichever unit the temperature_unit select holds,
+      # so the sensor follows that select rather than always declaring °C.
+      unit_dp_id: 9
+    # DP 3 is the cloud "humidity" code, but it is the soil reading, so it uses
+    # the moisture class. The legacy key keeps the existing unique ID.
     - dp_id: 3
-      translation_key: humidity
-      device_class: humidity
+      translation_key: moisture
+      legacy_keys: [humidity]
+      device_class: moisture
       unit: "%"
       state_class: measurement
     - dp_id: 14
@@ -34,5 +41,15 @@ entities:
       unit: "%"
       state_class: measurement
       entity_category: diagnostic
+  select:
+    # ENUM "c" / "f" (temp_unit_convert), from the cloud schema in
+    # ha-tuya-ble/ha_tuya_ble#328. Disabled by default so existing installs
+    # keep their current entities.
+    - dp_id: 9
+      translation_key: temperature_unit
+      options:
+        - °C
+        - °F
+      enabled_by_default: false
 device_name: SGS01B-JR Soil Sensor
 model_name: gpkyrocn

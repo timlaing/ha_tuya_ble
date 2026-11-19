@@ -236,19 +236,23 @@ class TuyaBLESensor(TuyaBLERestoreEntity, SensorEntity):
 
     @property
     def native_unit_of_measurement(self) -> str | None:
-        """Return the unit the device is currently reporting in.
+        """Return the unit the device last reported it is measuring in.
 
         Devices that expose a °C/°F select send their temperature in whichever
         unit the user chose there, so the declared unit only holds while the
         device is set to °C. Reporting the selected unit is enough: the value
-        itself needs no conversion.
+        itself needs no conversion. Only device reports of the unit datapoint
+        count: a unit change that is still being sent is applied to the
+        datapoint optimistically, and must not relabel the current reading.
+        Until the device reports a unit, the declared unit is used.
         """
         if self._mapping.unit_dp_id is None:
             return super().native_unit_of_measurement
         datapoint = self.device.datapoints[self._mapping.unit_dp_id]
-        if datapoint is None or not isinstance(datapoint.value, int):
+        reported = datapoint.reported_value if datapoint is not None else None
+        if not isinstance(reported, int):
             return super().native_unit_of_measurement
-        if datapoint.value == 0:
+        if reported == 0:
             return UnitOfTemperature.CELSIUS
         return UnitOfTemperature.FAHRENHEIT
 

@@ -71,6 +71,7 @@ class _NumberDescriptionKwargs(TypedDict, total=False):
     native_max_value: float | None
     native_step: float | None
     name: str | None
+    entity_registry_enabled_default: bool
 
 
 def _number_description(desc: EntityDescriptor) -> NumberEntityDescription:
@@ -94,6 +95,8 @@ def _number_description(desc: EntityDescriptor) -> NumberEntityDescription:
         kwargs["native_step"] = desc.step
     if desc.name is not None:
         kwargs["name"] = desc.name
+    if desc.enabled_by_default is False:
+        kwargs["entity_registry_enabled_default"] = False
     return NumberEntityDescription(**kwargs)
 
 
