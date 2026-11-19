@@ -150,16 +150,8 @@ class DeviceEntities:
         return None
 
 
-def _parse_entity(platform: str, raw: dict[str, Any]) -> EntityDescriptor:
-    """Parse a raw entity mapping dict into an EntityDescriptor."""
-    if "dp_id" not in raw and platform not in _SINGLE_ENTITY_PLATFORMS:
-        raise DeviceRegistryError(f"Entity in {platform!r} missing 'dp_id': {raw}")
-    if "kind" in raw:
-        raise DeviceRegistryError(
-            f"Entity {raw.get('dp_id', '?')} uses the removed 'kind' field. It named a "
-            "mapping class whose defaults were always overridden, so it had no effect. "
-            "Describe the entity with its own fields instead."
-        )
+def _parse_handlers(platform: str, raw: dict[str, Any]) -> dict[str, Any]:
+    """Return an entity's ``handlers`` mapping after validating its roles."""
     handlers_raw = raw.get("handlers", {})
     if not isinstance(handlers_raw, dict):
         raise DeviceRegistryError(
@@ -181,6 +173,20 @@ def _parse_entity(platform: str, raw: dict[str, Any]) -> EntityDescriptor:
             f"Entity {raw.get('dp_id', '?')} on {platform!r} cannot use handler "
             f"roles {misplaced_roles}"
         )
+    return handlers_raw
+
+
+def _parse_entity(platform: str, raw: dict[str, Any]) -> EntityDescriptor:
+    """Parse a raw entity mapping dict into an EntityDescriptor."""
+    if "dp_id" not in raw and platform not in _SINGLE_ENTITY_PLATFORMS:
+        raise DeviceRegistryError(f"Entity in {platform!r} missing 'dp_id': {raw}")
+    if "kind" in raw:
+        raise DeviceRegistryError(
+            f"Entity {raw.get('dp_id', '?')} uses the removed 'kind' field. It named a "
+            "mapping class whose defaults were always overridden, so it had no effect. "
+            "Describe the entity with its own fields instead."
+        )
+    handlers_raw = _parse_handlers(platform, raw)
     legacy_keys_raw = raw.get("legacy_keys")
     if legacy_keys_raw is not None:
         if isinstance(legacy_keys_raw, str):
