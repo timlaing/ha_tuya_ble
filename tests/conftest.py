@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -22,6 +22,9 @@ from custom_components.tuya_ble.tuya_ble import (
     TuyaBLEDataPointType,
     TuyaBLEDevice,
 )
+from custom_components.tuya_ble.tuya_ble.connection_cleanup import (
+    _orphaned_cleanups,
+)
 from custom_components.tuya_ble.tuya_ble.const import (
     CHARACTERISTIC_NOTIFY,
     CHARACTERISTIC_WRITE,
@@ -33,6 +36,14 @@ from custom_components.tuya_ble.tuya_ble.manager import (
     AbstractTuyaBLEDeviceManager,
     TuyaBLEDeviceCredentials,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_orphaned_cleanups() -> Iterator[None]:
+    """Keep links retained by one test's stopped devices out of the next test."""
+    _orphaned_cleanups.clear()
+    yield
+    _orphaned_cleanups.clear()
 
 
 class FakeBLEManager(AbstractTuyaBLEDeviceManager):

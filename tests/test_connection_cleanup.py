@@ -36,7 +36,8 @@ async def test_completed_cleanup_callback_does_not_drop_replacement_task() -> No
         nonlocal calls
         calls += 1
         if calls == 1:
-            await close()
+            # An ineffective close keeps the link pending, so the queued call
+            # retries it instead of treating the link as released.
             repeats.append(
                 asyncio.create_task(
                     cleanup.async_discard(

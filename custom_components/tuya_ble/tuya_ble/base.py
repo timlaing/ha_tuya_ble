@@ -474,9 +474,9 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
     async def stop(self) -> None:
         """Stop the TuyaBLE and cancel any in-flight background tasks."""
         _LOGGER.debug("%s: Stop", self.address)
-        # Set before touching any lock, otherwise an in-flight connect holds
-        # _connect_lock and stop() blocks behind its whole retry loop.
+        # Set first: in-flight connects check it, so stop() never waits on one.
         self._expected_disconnect = True
+        self._connection_cleanup.orphan()
         for task in self._background_tasks():
             if not task.done():
                 task.cancel()
@@ -501,14 +501,14 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
     def _disconnected(self, client: BleakClientWithServiceCache) -> None:
         """Handle BLE disconnection: fire callbacks and reconnect."""
         if client in self._discarded_clients:
-            # Closed on purpose before any handshake, see _discard_client. The
-            # callback can arrive after a later connection has replaced it, so
-            # it must not touch the current client or the paired state.
+            # Closed on purpose, see _discard_client. The callback can arrive
+            # after a later connection has replaced it, so it must not touch
+            # the current client or the paired state.
             self._discarded_clients.discard(client)
             # Only successful cleanup releases its ownership barrier. Proxy
             # callbacks can clear local state before disconnect is acknowledged.
             _LOGGER.debug(
-                "%s: Closed the connection made before the FD50 identity arrived",
+                "%s: Closed a connection that is no longer used",
                 self.address,
             )
             return
@@ -549,6 +549,22 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
         """Execute disconnection."""
         self._expected_disconnect = True
         self._cancel_pending_responses()
+        if self._connect_lock.locked():
+            # Never wait behind an attempt stop() may not cancel. Close a client it
+            # already owns behind the gate replacements check; once the attempt
+            # sees _expected_disconnect it joins this teardown.
+            _LOGGER.debug("%s: Closing the in-flight connection", self.address)
+            if self._client is not None:
+                self._connection_cleanup.schedule_discard(
+                    self._client, _DISCARDED_CLIENT_CLEANUP_TIMEOUT
+                )
+        else:
+            await self._disconnect_current_client()
+        async with self._seq_num_lock:
+            self._current_seq_num = 1
+
+    async def _disconnect_current_client(self) -> None:
+        """Close the adopted client while no connection attempt can replace it."""
         async with self._connect_lock:
             client = self._client
             if client is not None and self._is_fingerbot_touch:
@@ -564,8 +580,6 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
                     await client.stop_notify(self._notify_char)
                     await client.disconnect()
                     self._pending_client_cleanup.discard(client)
-        async with self._seq_num_lock:
-            self._current_seq_num = 1
 
     @property
     def _is_fingerbot_touch(self) -> bool:
@@ -744,6 +758,8 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
         """Try to establish a BLE connection. Returns client or None."""
         try:
             async with global_connect_lock:
+                if self._expected_disconnect or self._connection_cleanup.blocked():
+                    return None
                 _LOGGER.debug("%s: Connecting; RSSI: %s", self.address, self.rssi)
                 client = await establish_connection(
                     BleakClientWithServiceCache,
@@ -885,56 +901,6 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
                 "%s: starting notifications failed, retrying: %s",
                 self.address,
                 err,
-                exc_info=True,
-            )
-            return False
-
-    async def _try_send_device_info(self) -> bool:
-        """Send device info request. Returns True on success."""
-        if not self._client or not self._client.is_connected:
-            return False
-        _LOGGER.debug("%s: Sending device info request", self.address)
-        try:
-            if not await self._send_packet_while_connected(
-                TuyaBLECode.FUN_SENDER_DEVICE_INFO,
-                self._build_device_info_request(),
-                0,
-                True,
-            ):
-                self._client = None
-                _LOGGER.debug("%s: Sending device info request failed", self.address)
-                return False
-            return True
-        except BLE_CONNECTION_EXCEPTIONS:
-            self._client = None
-            _LOGGER.debug(
-                "%s: Sending device info request failed",
-                self.address,
-                exc_info=True,
-            )
-            return False
-
-    async def _try_send_pairing(self) -> bool:
-        """Send pairing request. Returns True on success."""
-        if not self._client or not self._client.is_connected:
-            return False
-        _LOGGER.debug("%s: Sending pairing request", self.address)
-        try:
-            if not await self._send_packet_while_connected(
-                TuyaBLECode.FUN_SENDER_PAIR,
-                self._build_pairing_request(),
-                0,
-                True,
-            ):
-                self._client = None
-                _LOGGER.debug("%s: Sending pairing request failed", self.address)
-                return False
-            return True
-        except BLE_CONNECTION_EXCEPTIONS:
-            self._client = None
-            _LOGGER.debug(
-                "%s: Sending pairing request failed",
-                self.address,
                 exc_info=True,
             )
             return False

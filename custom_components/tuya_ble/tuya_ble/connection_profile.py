@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 import logging
 from struct import pack
 from typing import Any
@@ -20,8 +20,9 @@ from .const import (
     GATT_MTU,
     PROTOCOL_VERSION_V4,
     ConnectionProfile,
+    TuyaBLECode,
 )
-from .exceptions import TuyaBLEDeviceError
+from .exceptions import BLE_CONNECTION_EXCEPTIONS, TuyaBLEDeviceError
 
 _LOGGER = logging.getLogger(__name__)
 MTU_NEGOTIATION_TIMEOUT = 2.0
@@ -43,6 +44,11 @@ class TuyaBLEConnectionProfile:
     # never change them during a handshake.
     _device_info_protocol: int | None = None
     _device_info_bound: bool | None = None
+    # Provided by the protocol mixin; the handshake requests below use them.
+    _send_packet_while_connected: Callable[
+        [TuyaBLECode, bytes, int, bool], Awaitable[bool]
+    ]
+    _build_pairing_request: Callable[[], bytes]
 
     @property
     @abstractmethod
@@ -156,3 +162,35 @@ class TuyaBLEConnectionProfile:
                     await asyncio.sleep(MTU_NEGOTIATION_POLL_INTERVAL)
         except TimeoutError:
             raise TuyaBLEDeviceError(0) from None
+
+    async def _try_send_device_info(self) -> bool:
+        """Send device info request. Returns True on success."""
+        return await self._try_send_handshake_request(
+            TuyaBLECode.FUN_SENDER_DEVICE_INFO,
+            self._build_device_info_request,
+            "device info",
+        )
+
+    async def _try_send_pairing(self) -> bool:
+        """Send pairing request. Returns True on success."""
+        return await self._try_send_handshake_request(
+            TuyaBLECode.FUN_SENDER_PAIR, self._build_pairing_request, "pairing"
+        )
+
+    async def _try_send_handshake_request(
+        self, code: TuyaBLECode, build: Callable[[], bytes], name: str
+    ) -> bool:
+        """Send one handshake request, dropping the client if it fails."""
+        if not self._client or not self._client.is_connected:
+            return False
+        _LOGGER.debug("%s: Sending %s request", self.address, name)
+        try:
+            if await self._send_packet_while_connected(code, build(), 0, True):
+                return True
+            _LOGGER.debug("%s: Sending %s request failed", self.address, name)
+        except BLE_CONNECTION_EXCEPTIONS:
+            _LOGGER.debug(
+                "%s: Sending %s request failed", self.address, name, exc_info=True
+            )
+        self._client = None
+        return False

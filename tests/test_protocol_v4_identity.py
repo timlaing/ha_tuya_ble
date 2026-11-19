@@ -328,7 +328,7 @@ async def test_restart_waits_on_a_beacon_then_connects(
         device._disconnected(early)
         assert device._client is late
         assert device._is_paired
-        assert "before the FD50 identity arrived" in caplog.text
+        assert "Closed a connection that is no longer used" in caplog.text
         assert "unexpectedly disconnected" not in caplog.text
         await device.stop()
 
