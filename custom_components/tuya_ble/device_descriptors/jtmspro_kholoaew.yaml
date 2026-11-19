@@ -3,6 +3,7 @@ category: jtmspro
 product_id: kholoaew
 device_name: Smart Lock H13
 model_name: H13
+sensitive_dp_ids: [71]
 entities:
   lock: []
   button:

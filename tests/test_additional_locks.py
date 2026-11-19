@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -20,9 +21,15 @@ from custom_components.tuya_ble import (
     sensor,
     switch,
 )
-from custom_components.tuya_ble.const import DOMAIN
+from custom_components.tuya_ble.const import (
+    CONF_CATEGORY,
+    CONF_PRODUCT_ID,
+    CONF_UUID,
+    DOMAIN,
+)
 from custom_components.tuya_ble.coordinator import TuyaBLECoordinator
 from custom_components.tuya_ble.device_registry import get_mapped_dp_ids, get_registry
+from custom_components.tuya_ble.diagnostics import async_get_config_entry_diagnostics
 from custom_components.tuya_ble.entity import get_device_product_info
 from custom_components.tuya_ble.tuya_ble import (
     TuyaBLEDataPoint,
@@ -367,3 +374,41 @@ async def test_lock_setup_requires_report_when_not_forced(
     await lock.async_setup_entry(hass, entry, add_entities)
     (entity,) = add_entities.call_args.args[0]
     assert entity.is_locked is True
+
+
+@pytest.mark.parametrize("product_id", ["kholoaew", "y2yaegze", "qcrilcpr"])
+async def test_unmapped_unlock_check_reports_remain_private(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture, product_id: str
+) -> None:
+    """A known check DP is private even without an exposed unlock command."""
+    device = _device("jtmspro", product_id)
+    product = get_device_product_info(device)
+    assert product.sensitive_dp_ids == {71}
+    assert 71 not in get_mapped_dp_ids("jtmspro", product_id)
+    device.datapoints.sensitive_ids = product.sensitive_dp_ids
+    command = b"synthetic-check-payload"
+    with caplog.at_level(logging.DEBUG):
+        device.datapoints.update_from_device(
+            71, 0.0, 0, TuyaBLEDataPointType.DT_RAW, b"", b""
+        )
+        device.datapoints.update_from_device(
+            71, 1.0, 0, TuyaBLEDataPointType.DT_RAW, command, command
+        )
+    assert command.decode() not in caplog.text
+    assert "<redacted>" in caplog.text
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CATEGORY: "jtmspro",
+            CONF_PRODUCT_ID: product_id,
+            CONF_UUID: "synthetic-device",
+        },
+    )
+    entry.add_to_hass(hass)
+    hass.data[DOMAIN] = {entry.entry_id: SimpleNamespace(device=device)}
+    payload = await async_get_config_entry_diagnostics(hass, entry)
+    assert payload["live"]["71"]["value"] == "**REDACTED**"
+    assert payload["live"]["71"]["raw"] == "**REDACTED**"
+    assert command.decode() not in repr(payload)
+    assert command.hex() not in repr(payload)
