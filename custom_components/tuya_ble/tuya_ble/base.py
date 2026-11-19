@@ -900,38 +900,6 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
             )
             return False
 
-    async def _try_send_device_info(self) -> bool:
-        """Send device info request. Returns True on success."""
-        return await self._try_send_handshake_request(
-            TuyaBLECode.FUN_SENDER_DEVICE_INFO,
-            self._build_device_info_request,
-            "device info",
-        )
-
-    async def _try_send_pairing(self) -> bool:
-        """Send pairing request. Returns True on success."""
-        return await self._try_send_handshake_request(
-            TuyaBLECode.FUN_SENDER_PAIR, self._build_pairing_request, "pairing"
-        )
-
-    async def _try_send_handshake_request(
-        self, code: TuyaBLECode, build: Callable[[], bytes], name: str
-    ) -> bool:
-        """Send one handshake request, dropping the client if it fails."""
-        if not self._client or not self._client.is_connected:
-            return False
-        _LOGGER.debug("%s: Sending %s request", self.address, name)
-        try:
-            if await self._send_packet_while_connected(code, build(), 0, True):
-                return True
-            _LOGGER.debug("%s: Sending %s request failed", self.address, name)
-        except BLE_CONNECTION_EXCEPTIONS:
-            _LOGGER.debug(
-                "%s: Sending %s request failed", self.address, name, exc_info=True
-            )
-        self._client = None
-        return False
-
     def _log_connection_status(self) -> None:
         """Log final connection status after setup."""
         if not self._client:
