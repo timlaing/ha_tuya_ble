@@ -135,7 +135,7 @@ async def test_init_offers_qr_login_and_key_replacement(
     flow, _ = options_flow(hass)
     result = await flow.async_step_init()
     assert result["type"] == FlowResultType.MENU
-    assert result["menu_options"] == ["user", "credentials"]
+    assert result["menu_options"] == ["user", "credentials", "connection"]
 
 
 async def test_key_form_never_shows_stored_keys(hass: HomeAssistant) -> None:

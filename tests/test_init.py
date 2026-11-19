@@ -27,10 +27,13 @@ from custom_components.tuya_ble.const import (
     CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
     CONF_FUNCTIONS,
+    CONF_IDLE_DISCONNECT_DELAY,
+    CONF_KEEP_CONNECTION,
     CONF_LOCAL_KEY,
     CONF_PRODUCT_ID,
     CONF_PRODUCT_MODEL,
     CONF_PRODUCT_NAME,
+    CONF_STATUS_POLL_INTERVAL,
     CONF_STATUS_RANGE,
     CONF_UUID,
     DOMAIN,
@@ -38,6 +41,16 @@ from custom_components.tuya_ble.const import (
 from custom_components.tuya_ble.device_registry import DeviceEntities, EntityDescriptor
 from custom_components.tuya_ble.devices import get_product_info_by_ids
 from custom_components.tuya_ble.entity import _find_legacy_keys, _resolve_unique_id
+
+
+def _running_data(
+    title: str, idle_disconnect_delay: float | None = None, poll_interval: int = 0
+) -> MagicMock:
+    """Return integration data for a running entry with the given policy."""
+    data = MagicMock(title=title)
+    data.device.idle_disconnect_delay = idle_disconnect_delay
+    data.coordinator.poll_interval = poll_interval
+    return data
 
 
 class FakeBLEAddress:
@@ -550,8 +563,11 @@ async def test_async_setup_entry_device_not_found(hass: HomeAssistant) -> None:
 
     captured: dict[str, Any] = {}
 
-    def _make_device(_manager: Any, ble_device: Any) -> Any:
+    def _make_device(
+        _manager: Any, ble_device: Any, *, idle_disconnect_delay: float | None
+    ) -> Any:
         captured["ble_device"] = ble_device
+        captured["idle_disconnect_delay"] = idle_disconnect_delay
         return deps["device"]
 
     # Force a cache miss so the placeholder BLEDevice path is taken.
@@ -574,6 +590,8 @@ async def test_async_setup_entry_device_not_found(hass: HomeAssistant) -> None:
     placeholder = captured["ble_device"]
     assert isinstance(placeholder, BLEDevice)
     assert placeholder.address == "AA:BB:CC:DD:EE:FF"
+    # Entries without connection options keep the link open, as before.
+    assert captured["idle_disconnect_delay"] is None
     assert hass.data[DOMAIN][entry.entry_id].device is deps["device"]
     _close_background_tasks(deps)
     await hass.async_stop()
@@ -682,6 +700,7 @@ async def test_setup_registers_and_calls_ble_callback(hass: HomeAssistant) -> No
     deps["device"].set_ble_device_and_advertisement_data.assert_called_once_with(
         service_info.device, service_info.advertisement
     )
+    deps["coordinator"].async_handle_advertisement.assert_called_once_with()
 
     _close_background_tasks(deps)
     await hass.async_stop()
@@ -868,9 +887,111 @@ async def test_async_update_listener_title_unchanged(hass: HomeAssistant) -> Non
     )
     entry.add_to_hass(hass)
 
-    hass.data[DOMAIN] = {entry.entry_id: MagicMock(title="Same")}
+    hass.data[DOMAIN] = {entry.entry_id: _running_data("Same")}
     with patch.object(
         hass.config_entries, "async_reload", new=AsyncMock()
     ) as reload_mock:
         await _async_update_listener(hass, entry)
     reload_mock.assert_not_awaited()
+
+
+ON_DEMAND = {
+    CONF_KEEP_CONNECTION: False,
+    CONF_IDLE_DISCONNECT_DELAY: 45,
+    CONF_STATUS_POLL_INTERVAL: 600,
+}
+
+
+@pytest.mark.parametrize(
+    ("options", "delay", "poll"),
+    [
+        ({}, None, None),
+        ({CONF_KEEP_CONNECTION: True, CONF_STATUS_POLL_INTERVAL: 60}, None, None),
+        (ON_DEMAND, 45.0, 600),
+        ({CONF_KEEP_CONNECTION: False}, 30.0, 900),
+    ],
+    ids=["default", "kept", "on_demand", "on_demand_defaults"],
+)
+async def test_setup_applies_the_connection_policy(
+    hass: HomeAssistant,
+    options: dict[str, Any],
+    delay: float | None,
+    poll: int | None,
+) -> None:
+    """The device and coordinator follow the entry's connection options."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Device",
+        data=_make_entry_data(),
+        options=options,
+        entry_id="entry-policy",
+    )
+    entry.add_to_hass(hass)
+    deps = _patch_deps(hass, product_info=MagicMock())
+    with ExitStack() as stack:
+        for p in deps["patches"]:
+            stack.enter_context(p)
+        device_cls = stack.enter_context(
+            patch(
+                "custom_components.tuya_ble.TuyaBLEDevice", return_value=deps["device"]
+            )
+        )
+        unloads: list[Any] = []
+        stack.enter_context(
+            patch.object(entry, "async_on_unload", side_effect=unloads.append)
+        )
+        assert await async_setup_entry(hass, entry) is True
+
+    assert device_cls.call_args.kwargs == {"idle_disconnect_delay": delay}
+    start = deps["coordinator"].async_start_on_demand
+    if poll is None:
+        start.assert_not_called()
+    else:
+        start.assert_called_once_with(poll)
+        # Unloading the entry stops the advertisement tracking and the poll.
+        assert start.return_value in unloads
+    _close_background_tasks(deps)
+
+
+@pytest.mark.parametrize(
+    ("options", "running", "reloads"),
+    [
+        ({}, (None, 0), False),
+        ({CONF_STATUS_POLL_INTERVAL: 60}, (None, 0), False),
+        (ON_DEMAND, (45.0, 600), False),
+        (ON_DEMAND, (None, 0), True),
+        ({CONF_KEEP_CONNECTION: True}, (45.0, 600), True),
+        ({**ON_DEMAND, CONF_IDLE_DISCONNECT_DELAY: 60}, (45.0, 600), True),
+        ({**ON_DEMAND, CONF_STATUS_POLL_INTERVAL: 0}, (45.0, 600), True),
+    ],
+    ids=[
+        "default",
+        "kept_poll_ignored",
+        "on_demand_unchanged",
+        "to_on_demand",
+        "to_kept",
+        "idle_changed",
+        "poll_changed",
+    ],
+)
+async def test_update_listener_reloads_on_policy_change(
+    hass: HomeAssistant,
+    options: dict[str, Any],
+    running: tuple[float | None, int],
+    reloads: bool,
+) -> None:
+    """Only a changed connection policy reloads the device."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Same",
+        data=_make_entry_data(),
+        options=options,
+        entry_id="entry-policy-change",
+    )
+    entry.add_to_hass(hass)
+    hass.data[DOMAIN] = {entry.entry_id: _running_data("Same", *running)}
+    with patch.object(
+        hass.config_entries, "async_reload", new=AsyncMock()
+    ) as reload_mock:
+        await _async_update_listener(hass, entry)
+    assert reload_mock.await_count == int(reloads)

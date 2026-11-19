@@ -69,6 +69,38 @@ If the check fails, setup tells you and lets you add the device anyway. It may
 then show as unavailable, but its diagnostics download helps add support.
 See [Tuya BLE protocol v4 details](docs/PROTOCOL_4.md).
 
+### Connection settings
+
+By default Home Assistant keeps each device's Bluetooth connection open and reconnects
+whenever it drops. This gives the fastest response, but it uses one connection slot on
+the Bluetooth adapter or ESPHome proxy, and a battery-powered device such as a Fingerbot
+spends battery on the open link and on every reconnect. To change this, open the
+integration's **Configure** menu and choose **Connection settings**:
+
+- **Keep the Bluetooth connection open** (default on): today's behaviour.
+- **Idle delay before disconnecting** (5–3600 s, default 30): with the connection not
+  kept open, Home Assistant connects when a command is sent, which adds about 1–3
+  seconds, and disconnects once the device has been idle for this long. Each command
+  restarts the delay, so a burst of commands shares one connection. A connection that
+  drops is not reopened until the next command or status refresh.
+- **Status refresh interval** (0 or 60–86400 s, default 900): with the connection not
+  kept open, a device only reports its values while connected, so Home Assistant
+  connects this often to read them. Every connection also reads them. Enter 0 for
+  devices whose values only change through commands, for example a Fingerbot.
+
+Saving changed settings reloads the device; its entities are kept. With the connection
+not kept open, the device's entities become available once Home Assistant has connected
+to it after startup. They stay available between connections while Home Assistant's
+Bluetooth integration still receives the device's advertisements, and become unavailable
+when it marks the device as unavailable, until advertisements arrive again. A command
+that cannot connect fails with an error; a failed connection is then retried in the
+background, as with the connection kept open, until it succeeds.
+
+Battery devices also stay awake while a Bluetooth proxy in active scanning mode is close
+to them: a battery pack's Bluetooth module may never go to sleep. If a battery drains
+while not in use, consider a passive proxy near it, or moving the proxy further away
+(reported in ha-tuya-ble/ha_tuya_ble#283).
+
 ## Extra app login for some Bluetooth devices
 
 If a device uses Tuya BLE protocol v4 Security V2 and the usual QR connection
