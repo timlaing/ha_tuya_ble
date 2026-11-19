@@ -632,3 +632,48 @@ async def test_replacement_waits_for_a_stopped_handshake(
         assert stopped._client is None
     finally:
         await replacement.stop()
+
+
+async def test_released_late_link_is_not_closed_again(
+    firmware: AbsentFirmware,
+) -> None:
+    """A resumed stopped handshake must not close its released link twice.
+
+    Proxy backends disconnect by address, so a second close of the stopped
+    device's link would drop the replacement that now holds that address.
+    """
+    firmware.advertising = True
+    stopped = _paired_device()
+    configuring, release = asyncio.Event(), asyncio.Event()
+    configure = stopped._configure_client
+
+    async def pause() -> bool:
+        configuring.set()
+        await release.wait()
+        return await configure()
+
+    replacement = _paired_device()
+    try:
+        with patch.object(stopped, "_configure_client", side_effect=pause):
+            attempt = asyncio.create_task(stopped.update())
+            await configuring.wait()
+            late = firmware.clients[0]
+            await stopped.stop()
+            await _until(lambda: not late.physical_connected)
+            await replacement.update()
+            current = firmware.clients[1]
+
+            async def by_address() -> None:
+                """Model a proxy backend that disconnects whatever holds the address."""
+                late.disconnect_calls += 1
+                current.drop()
+
+            late.disconnect = by_address  # type: ignore[method-assign]
+            release.set()
+            await attempt
+        await asyncio.sleep(0.02)
+        assert late.disconnect_calls == 1
+        assert current.physical_connected
+        assert replacement._is_ready()
+    finally:
+        await replacement.stop()

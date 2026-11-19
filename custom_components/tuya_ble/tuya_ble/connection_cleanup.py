@@ -66,6 +66,9 @@ class _ConnectionCleanup:
         self.address = address
         self.discarded: WeakSet[BleakClientWithServiceCache] = WeakSet()
         self.pending: set[BleakClientWithServiceCache] = set()
+        # Confirmed teardowns. A proxy backend disconnects by address, so closing
+        # one again would drop whichever link now uses that address.
+        self.released: WeakSet[BleakClientWithServiceCache] = WeakSet()
         self.tasks: dict[BleakClientWithServiceCache, asyncio.Task[None]] = {}
         self._proxy_sources: dict[BleakClientWithServiceCache, _ProxySource] = {}
         self._native_sources: dict[BleakClientWithServiceCache, _BlueZSource] = {}
@@ -149,6 +152,7 @@ class _ConnectionCleanup:
     def _release_pending(self, client: BleakClientWithServiceCache) -> None:
         """Release both the ownership barrier and its retained source references."""
         self.pending.discard(client)
+        self.released.add(client)
         self.release_source(client)
 
     async def _disconnect_discarded(
@@ -177,8 +181,13 @@ class _ConnectionCleanup:
 
     def schedule_discard(
         self, client: BleakClientWithServiceCache, cleanup_duration: float
-    ) -> asyncio.Task[None]:
-        """Hold the ownership barrier now and start closing an unused link."""
+    ) -> asyncio.Task[None] | None:
+        """Hold the ownership barrier now and start closing an unused link.
+
+        A link whose teardown was already confirmed is never closed again.
+        """
+        if client in self.released:
+            return None
         self.discarded.add(client)
         self.pending.add(client)
         self.capture_source(client)
@@ -198,6 +207,8 @@ class _ConnectionCleanup:
     ) -> None:
         """Close an unused link without allowing cancellation to lose ownership."""
         task = self.schedule_discard(client, cleanup_duration)
+        if task is None:
+            return
         try:
             await asyncio.shield(task)
         except asyncio.CancelledError:
