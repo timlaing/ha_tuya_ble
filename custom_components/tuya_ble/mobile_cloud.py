@@ -247,4 +247,5 @@ def _key_pair(
     candidate = copy.copy(credentials)
     candidate.local_key, candidate.sec_key = pair
     candidate.connection_profile = None
+    candidate.security_mode = None
     return candidate, ""

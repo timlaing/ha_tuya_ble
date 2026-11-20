@@ -29,6 +29,7 @@
       "cloud_refresh_failed": "Could not refresh the Tuya cloud device list. Try again later.",
       "probe_setup_failed": "Could not prepare device verification. Try again later.",
       "device_verification_expired": "Device verification expired or was claimed by another setup. Please retry.",
+      "reconfigure_keys_changed": "The device keys were changed while the connection was being checked. Run the check again to use the new keys.",
       "v4_verification_failed": "Home Assistant could not connect to this device over Bluetooth. Check that it is added in the Smart Life app, close the app, move the device closer and try again.",
       "v4_failed_unsupported_model": "This device model is not supported yet, so its Bluetooth connection could not be checked.",
       "v4_failed_credentials": "The login details from the Tuya cloud cannot be used for this device.",

@@ -181,7 +181,7 @@ No reset, binding, key-creation or device-control endpoints are used.
 
 Reconfigure can recover existing entries. A failed recovery retains the old
 keys/profile and only stores sanitized metadata; a successful recovery updates
-the pair, profile and metadata together. Mobile account passwords/session
+the pair, profile, verified login (`security_mode`) and metadata together. Mobile account passwords/session
 tokens are ephemeral. This does not use the standalone research probe's
 session-file cache, and diagnostics never initiate mobile logins.
 An imported pair remains staged in the flow after a transient BLE failure,
@@ -194,11 +194,13 @@ redacted shape with truncation marked. Only recognized structural mapping keys
 are retained (including numeric DP identifiers); opaque keys are anonymized
 regardless of their length, and the same policy is rechecked on export.
 
-Bit 2 of the FD50 frame control's low byte (service-data byte 1) announces the
-"Security V2" channel
-([TuyaOpen `ble_mgr.c`](https://github.com/tuya/TuyaOpen/blob/master/src/tuya_cloud_service/ble/ble_mgr.c)).
-Such firmware silently drops frames encrypted with the classic flags 4 and 5,
-then disconnects about 30 seconds later. It needs the cloud `sec_key`, a 16-byte
+Bit 2 of the FD50 frame control's low byte (service-data byte 1) announces that
+the firmware supports the "Security V2" channel
+([TuyaOpen `ble_mgr.c`](https://github.com/tuya/TuyaOpen/blob/master/src/tuya_cloud_service/ble/ble_mgr.c)),
+and bit 3 that it is switched on (see [Choosing the login](#choosing-the-login)).
+Firmware with Security V2 switched on silently drops frames encrypted with the
+classic flags 4 and 5, then disconnects about 30 seconds later; firmware that
+only supports it may still accept them. Security V2 needs the cloud `sec_key`, a 16-byte
 key stored beside the local key
 ([TuyaOpen `ble_cryption.c`](https://github.com/tuya/TuyaOpen/blob/master/src/tuya_cloud_service/ble/ble_cryption.c)):
 
@@ -213,11 +215,52 @@ pair handler compares only the leading 16-byte UUID. Framing, reports and writes
 are unchanged. A reply with any other security flag is logged at debug level
 with the flag it carried, so an unsupported scheme (for example activation key 11) is identifiable.
 
-The channel is used only when the device advertises Security V2 and its cloud
-record carries a `sec_key` of exactly 16 bytes. Setup stores the key only for
-such a device; diagnostics report whether the cloud record had one
-(`cloud_info.sec_key_present`), whether it is stored (`identity.sec_key_stored`)
-and whether the runtime uses it (`device.security_v2`), never the key itself.
+### Choosing the login
+
+The FD50 advertisement carries two Security V2 bits in frame-control byte 1
+([TuyaOS `tuya_ble_main.c`](https://github.com/electron-01/TLSR8250/blob/8af57b976243995ae1bbdf58f77c8766e9c659a4/software/TuyaOS/components/tal_ble_protocol/src/tuya_ble_main.c#L768-L775)):
+`0x04` means the firmware supports Security V2 and `0x08` that it is switched
+on. Once it is on, the firmware accepts only flags 14, 15 and 16
+([`tuya_ble_cryption_v2_command_check`](https://github.com/electron-01/TLSR8250/blob/8af57b976243995ae1bbdf58f77c8766e9c659a4/software/TuyaOS/components/tal_ble_protocol/src/tuya_ble_data_handler.c#L330-L410)).
+Firmware that only supports it keeps the classic login until the app
+provisions Security V2. Several products, for example `qcrilcpr`, `mknd4lci`,
+`gvygg3m8`, `c2twgywo` and `cq7xquhj`, use the classic login although the
+cloud returns a `sec_key`
+([ha-tuya-ble #318](https://github.com/ha-tuya-ble/ha_tuya_ble/pull/318),
+[#331](https://github.com/ha-tuya-ble/ha_tuya_ble/pull/331),
+[#341](https://github.com/ha-tuya-ble/ha_tuya_ble/pull/341),
+[#355](https://github.com/ha-tuya-ble/ha_tuya_ble/pull/355),
+[#359](https://github.com/ha-tuya-ble/ha_tuya_ble/pull/359)). Transport, frame
+marker, device-info payload and login key are therefore chosen independently.
+
+Setup verification tries every handshake profile with each login the
+advertisement allows, in this order:
+
+| Byte 1 bits             | `sec_key` in cloud | Logins tried     |
+| ----------------------- | ------------------ | ---------------- |
+| `0x04` and `0x08` (on)  | yes                | Security V2      |
+| `0x04` only (supported) | yes                | Classic, then V2 |
+| `0x04` clear, or no key | any                | Classic          |
+
+The next login is tried only when the device answered no device-info request
+on the previous one. A reply proves the device accepted that key, so a later
+failure (for example an unbound device) never leads to another login. A login
+is saved only after the same authenticated status read as a profile, together
+with the profile (`security_mode`: `classic` or `v2`). A saved classic login
+leaves the stored `sec_key` unused; **Reconfigure** verifies again with the
+logins the table above allows for the current advertisement and key. Entries
+saved without a `security_mode` keep using Security V2 exactly when a `sec_key`
+is stored, until **Reconfigure** saves a verified login. Unverified entries keep that rule too. Replacing the keys in the
+integration options keeps the saved login unless the latest advertisement
+rules it out: a classic login on firmware that has switched Security V2 on
+becomes `v2`, and without a security key the saved login is removed.
+
+Setup stores the key only for a device announcing Security V2 support with a
+`sec_key` of exactly 16 bytes. Diagnostics report whether the cloud record had
+one (`cloud_info.sec_key_present`), whether it is stored
+(`identity.sec_key_stored`), the saved login (`identity.security_mode`) and
+whether the runtime uses Security V2 (`device.security_v2`), never the key
+itself.
 `cloud_info.fields` names every field of the raw cloud record captured at setup
 or refreshed with re-authentication tokens: allowlisted product and version
 fields keep their value, every other field shows only its type and size, for
@@ -272,8 +315,12 @@ followed by the usual `Received DP` line for each datapoint.
   bits 1 and 3 announce it. The flags appear in the `Device info` debug line.
 - `0x8013` app local-time requests. They are logged as an unknown message and
   dropped.
-- Any other security mode; a profile does not invent missing credentials or
-  downgrade an encryption scheme.
+- Security V2 provisioning flags 11 and 12, and the flag-16 anomaly unbind.
+  They need the device's factory `auth_key`, which the cloud does not provide.
+- Any other security mode. A profile does not invent missing credentials.
+  When a valid `sec_key` is available, the classic login is never tried on
+  firmware announcing Security V2 as on; without one, the classic login is the
+  only one tried, and a silent device is reported as missing its key.
 
 ## Control writes
 
@@ -299,6 +346,17 @@ Synthetic firmware tests are not physical-device validation. For the shade:
    reconnection and the same entity IDs, without a new cloud login.
 5. Move the device out of range and back, or power-cycle it; confirm recovery.
 6. Stop HA during a connection attempt; confirm the BLE link is released.
+
+For the login choice, on a device announcing Security V2 (`41 04` or `49 0c`
+in diagnostics or the debug log):
+
+1. Set up the device with debug logging and note which login verified
+   (`Verifying connection profile ... with the classic/v2 login`).
+2. Confirm `identity.security_mode` and `device.security_v2` in diagnostics
+   match it, and that readings arrive.
+3. Reboot HA with the app closed; confirm the same login reconnects.
+4. For `41 04`, record whether the classic login was answered; this decides
+   whether the classic-first order is correct for that firmware.
 
 ## Evidence
 

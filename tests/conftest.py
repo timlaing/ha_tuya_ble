@@ -4,8 +4,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable, Iterable, Iterator
+from dataclasses import dataclass, replace
 from typing import Any, cast
 
 from bleak.backends.device import BLEDevice
@@ -19,6 +19,8 @@ from custom_components.tuya_ble.devices import (
     TuyaBLEProductInfo,
 )
 from custom_components.tuya_ble.tuya_ble import (
+    ConnectionProfile,
+    SecurityMode,
     TuyaBLEDataPointType,
     TuyaBLEDevice,
 )
@@ -184,6 +186,25 @@ def make_credentials(
         product_model="Model",
         product_name="Product",
     )
+
+
+def verified_by(
+    profile: ConnectionProfile | None, mode: SecurityMode = SecurityMode.CLASSIC
+) -> Callable[..., Awaitable[TuyaBLEDeviceCredentials | None]]:
+    """Fake ``async_detect_v4_credentials`` verifying ``profile`` with ``mode``."""
+
+    async def detect(
+        _device: Any,
+        _advertisement: Any,
+        credentials: TuyaBLEDeviceCredentials,
+        *_: Any,
+        **__: Any,
+    ) -> TuyaBLEDeviceCredentials | None:
+        if profile is None:
+            return None
+        return replace(credentials, connection_profile=profile, security_mode=mode)
+
+    return detect
 
 
 class FakeDatapointsOwner:

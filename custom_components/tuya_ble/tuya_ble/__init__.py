@@ -8,6 +8,7 @@ __version__ = "0.1.0"
 from .advertisement import (
     TuyaBLEAdvertisementInfo,
     TuyaBLEClassicRecord,
+    TuyaBLEIdentityRecord,
     decode_classic_record,
     decode_fd50_identity_record,
     decode_tuya_ble_advertisement,
@@ -22,6 +23,7 @@ from .const import (
     SERVICE_UUIDS,
     ConnectionProfile,
     DPType,
+    SecurityMode,
     TuyaBLEDataPointType,
 )
 from .datapoints import TuyaBLEDataPoint, TuyaBLEDataPoints
@@ -32,11 +34,12 @@ from .manager import (
 from .probe import (
     ProbeOutcome,
     ProbeStage,
+    async_detect_v4_credentials,
     async_detect_v4_profile,
     async_probe_authenticated_status,
 )
 from .protocol_mixin import BLE_CONNECTION_EXCEPTIONS, BLEAK_EXCEPTIONS
-from .security import is_valid_sec_key
+from .security import is_valid_sec_key, security_modes
 
 __all__ = [
     "AbstractTuyaBLEDeviceManager",
@@ -46,6 +49,7 @@ __all__ = [
     "ConnectionProfile",
     "ProbeOutcome",
     "ProbeStage",
+    "SecurityMode",
     "MANUFACTURER_DATA_ID",
     "MAX_DEVICE_ID_LENGTH",
     "MAX_UUID_LENGTH",
@@ -54,6 +58,7 @@ __all__ = [
     "SERVICE_UUIDS",
     "TuyaBLEAdvertisementInfo",
     "TuyaBLEClassicRecord",
+    "TuyaBLEIdentityRecord",
     "TuyaBLEDataPoint",
     "TuyaBLEDataPoints",
     "TuyaBLEDataPointType",
@@ -64,6 +69,8 @@ __all__ = [
     "decode_fd50_identity_record",
     "decode_tuya_ble_advertisement",
     "is_valid_sec_key",
+    "security_modes",
     "async_probe_authenticated_status",
+    "async_detect_v4_credentials",
     "async_detect_v4_profile",
 ]

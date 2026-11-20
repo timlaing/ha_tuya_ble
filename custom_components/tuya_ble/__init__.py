@@ -28,6 +28,7 @@ from .const import (
     CONF_PRODUCT_MODEL,
     CONF_PRODUCT_NAME,
     CONF_SEC_KEY,
+    CONF_SECURITY_MODE,
     CONF_STATUS_RANGE,
     CONF_UUID,
     DOMAIN,
@@ -39,6 +40,7 @@ from .tuya_ble import (
     BLE_CONNECTION_EXCEPTIONS,
     AbstractTuyaBLEDeviceManager,
     ConnectionProfile,
+    SecurityMode,
     TuyaBLEDevice,
     TuyaBLEDeviceCredentials,
 )
@@ -97,6 +99,11 @@ def _build_credentials_from_entry(entry: ConfigEntry) -> TuyaBLEDeviceCredential
             else None
         ),
         sec_key=data.get(CONF_SEC_KEY),
+        security_mode=(
+            SecurityMode(data[CONF_SECURITY_MODE])
+            if data.get(CONF_SECURITY_MODE) is not None
+            else None
+        ),
     )
 
 

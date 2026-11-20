@@ -35,19 +35,24 @@ from custom_components.tuya_ble.const import (
     CONF_LOCAL_KEY,
     CONF_MOBILE_SNAPSHOT,
     CONF_SEC_KEY,
+    CONF_SECURITY_MODE,
     CONF_USER_CODE,
     CONF_UUID,
     DOMAIN,
 )
 from custom_components.tuya_ble.mobile_cloud import MobileResult
 from custom_components.tuya_ble.mobile_snapshot import capture_mobile_snapshot
-from custom_components.tuya_ble.tuya_ble import ConnectionProfile, ProbeStage
-from tests.conftest import make_credentials
+from custom_components.tuya_ble.tuya_ble import (
+    ConnectionProfile,
+    ProbeStage,
+    SecurityMode,
+)
+from tests.conftest import make_credentials, verified_by
 from tests.test_advertisement import v4_advertisement
 from tests.test_config_flow import FakeManager, build_flow
 from tests.test_config_flow_v4 import discovery
 
-DETECT = "custom_components.tuya_ble.config_flow.async_detect_v4_profile"
+DETECT = "custom_components.tuya_ble.config_flow.async_detect_v4_credentials"
 FETCH = "custom_components.tuya_ble.config_flow_mobile.async_fetch_mobile_device"
 FORM = {
     CONF_APP: "tuya_smart",
@@ -255,7 +260,9 @@ async def test_successful_fallback_persists_keys_not_login(hass: HomeAssistant) 
     candidate = replace(make_credentials(), local_key=LOCAL, sec_key=SEC)
     with (
         patch(FETCH, return_value=MobileResult(candidate, snapshot())) as fetch,
-        patch(DETECT, return_value=ConnectionProfile.V4_20),
+        patch(
+            DETECT, side_effect=verified_by(ConnectionProfile.V4_20, SecurityMode.V2)
+        ),
     ):
         result = await flow.async_step_mobile_login(FORM)
         assert result["type"] in (
@@ -294,7 +301,7 @@ async def test_cloud_success_bluetooth_failure_still_allows_diagnostics(
     candidate = replace(make_credentials(), local_key=LOCAL, sec_key=SEC)
     with (
         patch(FETCH, return_value=MobileResult(candidate, snapshot())),
-        patch(DETECT, return_value=None),
+        patch(DETECT, side_effect=verified_by(None)),
     ):
         await flow.async_step_mobile_login(FORM)
         await flow._mobile_task
@@ -503,7 +510,9 @@ async def test_reconfigure_success_updates_pair_and_profile_atomically(
     candidate = replace(make_credentials(), local_key=LOCAL, sec_key=SEC)
     with (
         patch(FETCH, return_value=MobileResult(candidate, snapshot())),
-        patch(DETECT, return_value=ConnectionProfile.V4_20),
+        patch(
+            DETECT, side_effect=verified_by(ConnectionProfile.V4_20, SecurityMode.V2)
+        ),
         patch.object(hass.config_entries, "async_unload", return_value=True),
         patch.object(
             flow,
@@ -520,6 +529,7 @@ async def test_reconfigure_success_updates_pair_and_profile_atomically(
     assert updates[CONF_LOCAL_KEY] == LOCAL
     assert updates[CONF_SEC_KEY] == SEC
     assert updates[CONF_CONNECTION_PROFILE] == "v4_20"
+    assert updates[CONF_SECURITY_MODE] == "v2"
     assert updates[CONF_CREDENTIAL_SOURCE] == "mobile_app"
     assert entry.data[CONF_LOCAL_KEY] == "original-key"  # update itself is stubbed
 
@@ -645,7 +655,7 @@ async def test_reconfigure_ble_failure_keeps_existing_pair(hass: HomeAssistant) 
     candidate = replace(make_credentials(), local_key=LOCAL, sec_key=SEC)
     with (
         patch(FETCH, return_value=MobileResult(candidate, snapshot())),
-        patch(DETECT, return_value=None),
+        patch(DETECT, side_effect=verified_by(None)),
         patch.object(hass.config_entries, "async_unload", return_value=True),
         patch.object(
             hass.config_entries, "async_reload", return_value=True
@@ -672,11 +682,18 @@ async def test_explicit_recovery_retry_uses_staged_pair_without_login(
     entry = reconfigure(flow, hass)
     flow._probe_source_step = "reconfigure"
     candidate = replace(make_credentials(), local_key=LOCAL, sec_key=SEC)
-    profiles = (
-        [None, ConnectionProfile.V4_20]
-        if failure == "ble"
-        else [ConnectionProfile.V4_20]
-    )
+    detectors = [
+        verified_by(profile, SecurityMode.V2)
+        for profile in (
+            [None, ConnectionProfile.V4_20]
+            if failure == "ble"
+            else [ConnectionProfile.V4_20]
+        )
+    ]
+
+    async def profiles(*args: Any, **kwargs: Any) -> Any:
+        return await detectors.pop(0)(*args, **kwargs)
+
     unloads = [True, True] if failure == "ble" else [False, True]
     with (
         patch(FETCH, return_value=MobileResult(candidate, snapshot())) as fetch,
@@ -713,3 +730,104 @@ async def test_explicit_recovery_retry_uses_staged_pair_without_login(
     assert updates[CONF_LOCAL_KEY] == LOCAL
     assert updates[CONF_SEC_KEY] == SEC
     assert updates[CONF_CONNECTION_PROFILE] == "v4_20"
+
+
+REPLACED = {CONF_LOCAL_KEY: "replacedlocalkey", CONF_SEC_KEY: "replacedsecurity"}
+
+
+@pytest.mark.parametrize("when", ["during_probe", "before_retry"])
+async def test_replaced_keys_discard_the_staged_mobile_pair(
+    hass: HomeAssistant, when: str
+) -> None:
+    """A mobile pair staged for old keys never overwrites keys replaced later."""
+    flow, scan = await eligible_flow(hass)
+    entry = reconfigure(flow, hass)
+    flow._probe_source_step = "reconfigure"
+    candidate = replace(make_credentials(), local_key=LOCAL, sec_key=SEC)
+    first = verified_by(
+        ConnectionProfile.V4_20 if when == "during_probe" else None, SecurityMode.V2
+    )
+    calls: list[Any] = []
+
+    async def detect(*args: Any, **kwargs: Any) -> Any:
+        calls.append(args[2])
+        if len(calls) == 1:
+            # The options flow replaces the pair while the mobile probe runs.
+            hass.config_entries.async_update_entry(
+                entry, data={**entry.data, **REPLACED}
+            )
+            return await first(*args, **kwargs)
+        return await verified_by(ConnectionProfile.V4_20, SecurityMode.V2)(
+            *args, **kwargs
+        )
+
+    with (
+        patch(FETCH, return_value=MobileResult(candidate, snapshot())) as fetch,
+        patch(DETECT, side_effect=detect),
+        patch.object(flow, "_async_scan_device", return_value=scan),
+        patch.object(hass.config_entries, "async_unload", return_value=True),
+        patch.object(hass.config_entries, "async_reload", return_value=True),
+        patch.object(
+            flow,
+            "async_update_reload_and_abort",
+            return_value={"type": FlowResultType.ABORT},
+        ) as update,
+    ):
+        await flow.async_step_mobile_login(FORM)
+        await flow._mobile_task
+        await flow.async_step_mobile_finish()
+        await flow._probe_task
+        result = await flow.async_step_probe_finish()
+        assert result["step_id"] == "reconfigure"
+        if when == "during_probe":
+            # The verified result is discarded together with the staged pair.
+            assert result["errors"] == {"base": "reconfigure_keys_changed"}
+            assert flow._mobile_staged_credentials is None
+        else:
+            # A failed probe keeps the pair staged until the retry checks keys.
+            assert flow._mobile_staged_credentials is not None
+        await flow.async_step_reconfigure({})
+        await flow._probe_task
+        await flow.async_step_probe_finish()
+    fetch.assert_awaited_once()
+    # The retry verifies the entry's replaced pair, not the staged mobile one.
+    assert calls[-1].local_key == REPLACED[CONF_LOCAL_KEY]
+    assert calls[-1].sec_key == REPLACED[CONF_SEC_KEY]
+    assert flow._mobile_staged_credentials is None
+    updates = update.call_args.kwargs["data_updates"]
+    assert CONF_LOCAL_KEY not in updates
+    assert CONF_SEC_KEY not in updates
+    assert CONF_CREDENTIAL_SOURCE not in updates
+    assert updates[CONF_SECURITY_MODE] == "v2"
+
+
+async def test_keys_replaced_during_the_app_login_reject_the_recovered_pair(
+    hass: HomeAssistant,
+) -> None:
+    """A pair fetched for the old keys is never staged or verified."""
+    flow, _ = await eligible_flow(hass)
+    entry = reconfigure(flow, hass)
+    flow._probe_source_step = "reconfigure"
+    candidate = replace(make_credentials(), local_key=LOCAL, sec_key=SEC)
+
+    async def fetch_while_keys_change(*_args: Any, **_kwargs: Any) -> MobileResult:
+        # The options flow replaces the pair before the app login finishes.
+        hass.config_entries.async_update_entry(entry, data={**entry.data, **REPLACED})
+        return MobileResult(candidate, snapshot())
+
+    with (
+        patch(FETCH, side_effect=fetch_while_keys_change),
+        patch(DETECT) as detect,
+        patch.object(hass.config_entries, "async_unload") as unload,
+    ):
+        await flow.async_step_mobile_login(FORM)
+        await flow._mobile_task
+        result = await flow.async_step_mobile_finish()
+    assert result["step_id"] == "mobile_result"
+    assert result["errors"] == {"base": "reconfigure_keys_changed"}
+    assert flow._mobile_staged_credentials is None
+    assert not flow._mobile_keys_imported
+    detect.assert_not_called()
+    unload.assert_not_called()
+    assert entry.data[CONF_LOCAL_KEY] == REPLACED[CONF_LOCAL_KEY]
+    assert entry.data[CONF_SEC_KEY] == REPLACED[CONF_SEC_KEY]

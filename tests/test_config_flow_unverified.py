@@ -26,11 +26,11 @@ from custom_components.tuya_ble.const import (
 )
 from custom_components.tuya_ble.tuya_ble import ConnectionProfile, ProbeStage
 from tests import test_advertisement
-from tests.conftest import make_credentials, make_device
+from tests.conftest import make_credentials, make_device, verified_by
 from tests.test_config_flow import FakeManager, build_flow
 from tests.test_config_flow_v4 import discovery
 
-DETECT = "custom_components.tuya_ble.config_flow.async_detect_v4_profile"
+DETECT = "custom_components.tuya_ble.config_flow.async_detect_v4_credentials"
 V2_SERVICE = b"\x41\x04\x00\x08abcdefgh"
 SEC_KEY = "fedcba9876543210"
 
@@ -125,7 +125,7 @@ async def test_unverified_entry_is_not_offered_after_success(
     flow._manager = cast(Any, FakeManager(make_credentials()))
     with (
         patch.object(flow, "_async_scan_device", return_value=info),
-        patch(DETECT, new=AsyncMock(return_value=profile)),
+        patch(DETECT, new=AsyncMock(side_effect=verified_by(profile))),
     ):
         await flow.async_step_discovered_device({})
         assert flow._probe_task is not None

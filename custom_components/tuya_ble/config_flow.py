@@ -42,6 +42,8 @@ from .config_flow_state import (
     claimed_elsewhere,
     probe_task_result,
     reserve_device,
+    sec_key_data,
+    verified_login_data,
 )
 from .config_flow_state import advertisement_hex as _advertisement_hex
 from .config_flow_state import probe_state as _probe_state
@@ -55,7 +57,6 @@ from .const import (
     CONF_CATEGORY,
     CONF_CLOUD_INFO,
     CONF_CLOUD_UUID,
-    CONF_CONNECTION_PROFILE,
     CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
     CONF_ENDPOINT,
@@ -65,7 +66,6 @@ from .const import (
     CONF_PRODUCT_ID,
     CONF_PRODUCT_MODEL,
     CONF_PRODUCT_NAME,
-    CONF_SEC_KEY,
     CONF_STATUS_RANGE,
     CONF_TERMINAL_ID,
     CONF_TOKEN_INFO,
@@ -82,12 +82,12 @@ from .tuya_ble import (
     ConnectionProfile,
     ProbeOutcome,
     ProbeStage,
+    SecurityMode,
     TuyaBLEAdvertisementInfo,
     TuyaBLEDeviceCredentials,
-    async_detect_v4_profile,
+    async_detect_v4_credentials,
     async_probe_authenticated_status,
     decode_tuya_ble_advertisement,
-    is_valid_sec_key,
 )
 
 PROBE_MAX_CANDIDATES = 4
@@ -130,6 +130,7 @@ class TuyaBLEConfigFlow(
         self._probe_source_step = "device"
         self._probe_error: str | None = None
         self._verified_profile: ConnectionProfile | None = None
+        self._verified_security_mode: SecurityMode | None = None
         self._unverified_credentials: tuple[TuyaBLEDeviceCredentials, str] | None = None
         self._unverified_setup: UnverifiedSetup | None = None
         self._reconfigure_unloaded = False
@@ -281,6 +282,7 @@ class TuyaBLEConfigFlow(
         self._abort_if_flow_removed()
         pairing_uuid: str | None = None
         self._verified_profile = None
+        self._verified_security_mode = None
         if credentials is None or advertisement.protocol_version == 4:
             self._get_device_info_error = credentials is None
             self._probe_refresh_failed = refresh_failed
@@ -395,16 +397,8 @@ class TuyaBLEConfigFlow(
             CONF_LOCAL_SCHEMA: credentials.local_schema,
             CONF_CLOUD_INFO: credentials.cloud_info,
         }
-        if credentials.connection_profile is not None:
-            entry_data[CONF_CONNECTION_PROFILE] = credentials.connection_profile.value
-        if (
-            credentials.sec_key is not None
-            and advertisement.security_v2
-            and is_valid_sec_key(credentials.sec_key)
-        ):
-            # Only a device advertising Security V2 needs, and receives, the key.
-            # A malformed key is never stored: runtime could not load the entry.
-            entry_data[CONF_SEC_KEY] = credentials.sec_key
+        entry_data.update(verified_login_data(credentials))
+        entry_data.update(sec_key_data(credentials, advertisement.security_v2))
         entry_data.update(self._mobile_entry_updates())
         _LOGGER.debug(
             "%s: config entry created (category: %s, product_id: %s, device_name: %s)",
@@ -465,6 +459,10 @@ class TuyaBLEConfigFlow(
         self._probe_discovery = None
         self._probe_advertisement = None
         credentials, pairing_uuid, error = probe_task_result(task)
+        if credentials is not None and self._reconfigure_keys_changed():
+            # The probe verified a key pair the options flow has since replaced.
+            credentials, error = None, "reconfigure_keys_changed"
+            self._discard_staged_mobile_keys()
         if credentials is not None and pairing_uuid is not None:
             result = self._complete_verified_probe(
                 discovery, advertisement, credentials, pairing_uuid
@@ -524,7 +522,10 @@ class TuyaBLEConfigFlow(
             self._reconfigure_unloaded = False
             return self.async_update_reload_and_abort(
                 self._get_reconfigure_entry(),
-                data_updates=self._mobile_reconfigure_updates(credentials),
+                data_updates={
+                    **self._mobile_reconfigure_updates(credentials),
+                    **verified_login_data(credentials),
+                },
                 reload_even_if_entry_is_unchanged=True,
             )
         if profile is not None:
@@ -618,7 +619,11 @@ class TuyaBLEConfigFlow(
                     discovery_info.address,
                 )
                 return (
-                    replace(credentials, connection_profile=self._verified_profile),
+                    replace(
+                        credentials,
+                        connection_profile=self._verified_profile,
+                        security_mode=self._verified_security_mode,
+                    ),
                     pairing_uuid,
                     "",
                 )
@@ -664,14 +669,15 @@ class TuyaBLEConfigFlow(
         # An undecoded identity has no advertised UUID to try.
         for uuid in dict.fromkeys(filter(None, (advertisement.uuid, credentials.uuid))):
             if advertisement.protocol_version == 4:
-                profile = await async_detect_v4_profile(
+                verified = await async_detect_v4_credentials(
                     discovery_info.device,
                     discovery_info.advertisement,
                     replace(credentials, uuid=uuid),
                     expected,
                 )
-                if profile is not None:
-                    self._verified_profile = profile
+                if verified is not None:
+                    self._verified_profile = verified.connection_profile
+                    self._verified_security_mode = verified.security_mode
                     return ProbeOutcome.MATCHED, uuid
                 failure = ProbeOutcome.INCONCLUSIVE
                 continue
@@ -734,7 +740,7 @@ class TuyaBLEConfigFlow(
             ):
                 return None, None, "device_verification_expired"
             stages: list[ProbeStage] = []
-            profile = await async_detect_v4_profile(
+            verified = await async_detect_v4_credentials(
                 discovery.device,
                 discovery.advertisement,
                 credentials,
@@ -742,7 +748,7 @@ class TuyaBLEConfigFlow(
                 stages=stages,
             )
             self._abort_if_flow_removed()
-            if profile is not None:
+            if verified is not None:
                 reserve_device(
                     claims,
                     credentials.device_id,
@@ -750,11 +756,11 @@ class TuyaBLEConfigFlow(
                     discovery.address,
                 )
         self._abort_if_flow_removed()
-        if profile is None:
+        if verified is None:
             # Kept so the user may still add the device to collect diagnostics.
             self._unverified_credentials = (credentials, unverified_error(stages))
             return None, None, "v4_verification_failed"
-        return replace(credentials, connection_profile=profile), credentials.uuid, ""
+        return verified, credentials.uuid, ""
 
     async def _async_restore_entry(self) -> None:
         """Restore runtime ownership after failed or cancelled reconfiguration."""

@@ -196,7 +196,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
         if self._connection_profile is not None:
             self._protocol_version = PROTOCOL_VERSION_V4
         self._local_key, self._security_v2_key, self._login_key = derive_login_keys(
-            credentials.local_key, credentials.sec_key
+            credentials.local_key, credentials.login_sec_key
         )
         self.append_functions(
             credentials.functions if credentials.functions else [],

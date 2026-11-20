@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
 
-from homeassistant.config_entries import ConfigFlowResult
+from homeassistant.config_entries import SOURCE_RECONFIGURE, ConfigFlowResult
 from homeassistant.const import CONF_ADDRESS
 import probatio
 
 from . import _build_credentials_from_entry
 from .config_flow_state import _consume_probe_result
+from .const import CONF_LOCAL_KEY, CONF_SEC_KEY
 from .tuya_ble import decode_tuya_ble_advertisement
 
 if TYPE_CHECKING:
@@ -18,6 +19,43 @@ if TYPE_CHECKING:
 
 class _ReconfigureMixin:
     """Keep the form-stage scan/unload lifecycle under the setup lock."""
+
+    # The entry's key pair when the probe started, to detect a replacement.
+    _reconfigure_keys: tuple[str, str | None] | None = None
+
+    def _entry_keys(self) -> tuple[str, str | None]:
+        """Return the reconfigured entry's current local and security keys."""
+        flow = cast("TuyaBLEConfigFlow", self)
+        data = flow._get_reconfigure_entry().data  # pylint: disable=protected-access
+        return data[CONF_LOCAL_KEY], data.get(CONF_SEC_KEY)
+
+    def _record_reconfigure_keys(self) -> None:
+        """Remember the entry's key pair before a Reconfigure probe starts."""
+        self._reconfigure_keys = self._entry_keys()
+
+    def _reconfigure_keys_changed(self) -> bool:
+        """Return whether the entry's keys changed while Reconfigure probed.
+
+        The options flow can replace the key pair while verification runs; the
+        probe's profile and login then belong to the old pair and are not saved.
+        """
+        flow = cast("TuyaBLEConfigFlow", self)
+        if flow.source != SOURCE_RECONFIGURE or self._reconfigure_keys is None:
+            return False
+        return self._entry_keys() != self._reconfigure_keys
+
+    def _begin_reconfigure_probe(self) -> None:
+        """Drop a staged mobile pair for replaced keys, then record the new pair."""
+        if self._reconfigure_keys_changed():
+            # A staged mobile pair belongs to the keys it replaced.
+            self._discard_staged_mobile_keys()
+        self._record_reconfigure_keys()
+
+    def _discard_staged_mobile_keys(self) -> None:
+        """Forget a mobile key pair staged for an entry whose keys were replaced."""
+        flow = cast("TuyaBLEConfigFlow", self)
+        flow._mobile_staged_credentials = None  # pylint: disable=protected-access
+        flow._mobile_keys_imported = False  # pylint: disable=protected-access
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
@@ -65,6 +103,7 @@ class _ReconfigureMixin:
                 flow._probe_discovery = discovery  # pylint: disable=protected-access
                 flow._probe_advertisement = advertisement  # pylint: disable=protected-access
                 probe = flow._async_verify_v4  # pylint: disable=protected-access
+                self._begin_reconfigure_probe()
                 credentials = (
                     flow._mobile_staged_credentials  # pylint: disable=protected-access
                     or _build_credentials_from_entry(entry)

@@ -12,7 +12,7 @@ from homeassistant.data_entry_flow import FlowResultType
 import pytest
 
 from custom_components.tuya_ble.tuya_ble import SERVICE_UUID_V4, ConnectionProfile
-from tests.conftest import make_credentials, make_device
+from tests.conftest import make_credentials, make_device, verified_by
 from tests.test_advertisement import v4_advertisement
 from tests.test_config_flow import FakeDiscovery, FakeManager, build_flow
 
@@ -75,8 +75,8 @@ async def test_fd50_setup(hass: HomeAssistant, version: int) -> None:
             side_effect=process_advertisements,
         ),
         patch(
-            "custom_components.tuya_ble.config_flow.async_detect_v4_profile",
-            return_value=ConnectionProfile.V4_20,
+            "custom_components.tuya_ble.config_flow.async_detect_v4_credentials",
+            side_effect=verified_by(ConnectionProfile.V4_20),
         ),
     ):
         result = await flow.async_step_discovered_device({})
@@ -413,8 +413,8 @@ async def test_partial_candidates_are_resolved_concurrently(
         patch.object(flow, "_async_current_ids", return_value=set()),
         patch.object(flow, "_async_scan_device", side_effect=scan),
         patch(
-            "custom_components.tuya_ble.config_flow.async_detect_v4_profile",
-            return_value=ConnectionProfile.V4_20,
+            "custom_components.tuya_ble.config_flow.async_detect_v4_credentials",
+            side_effect=verified_by(ConnectionProfile.V4_20),
         ),
     ):
         step = asyncio.create_task(flow.async_step_device())
@@ -634,8 +634,8 @@ async def test_deferred_device_is_selectable_but_requires_validated_setup(
         patch.object(flow, "_async_current_ids", return_value=set()),
         patch.object(flow, "_async_scan_device", side_effect=scan),
         patch(
-            "custom_components.tuya_ble.config_flow.async_detect_v4_profile",
-            return_value=ConnectionProfile.V4_20,
+            "custom_components.tuya_ble.config_flow.async_detect_v4_credentials",
+            side_effect=verified_by(ConnectionProfile.V4_20),
         ),
     ):
         form = await asyncio.wait_for(flow.async_step_device(), 0.5)
