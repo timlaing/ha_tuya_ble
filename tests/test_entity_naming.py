@@ -175,4 +175,6 @@ def test_english_labels_and_exception_object(filename: str) -> None:
         "invalid_fan_speed",
         "button_press_failed",
         "option_not_settable",
+        "ble_unlock_check_missing",
+        "ble_unlock_check_invalid",
     }
