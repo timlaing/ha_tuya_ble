@@ -204,6 +204,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
             credentials.status_range if credentials.status_range else [],
         )
         self._decode_advertisement_data()
+        self._log_security_v2_mismatch()
 
     async def pair(self) -> None:
         """Send pairing request."""

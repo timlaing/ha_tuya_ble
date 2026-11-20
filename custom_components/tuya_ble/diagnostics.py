@@ -190,7 +190,7 @@ def _security_v2_state(device: TuyaBLEDevice) -> dict[str, Any]:
     """Report the announced Security V2 state, never identity or key material.
 
     ``security_v2`` above is the channel in use; this is what the last FD50
-    advertisement and the last long DEVICE_INFO reply announced, so a key
+    advertisement and the latest DEVICE_INFO reply announced, so a key
     mismatch can be diagnosed from a report.
     """
     record = device.advertised_identity_record

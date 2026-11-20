@@ -8,6 +8,7 @@ Neither changes the key choice. All vectors are synthetic.
 # pylint: disable=protected-access
 from __future__ import annotations
 
+from dataclasses import replace
 import logging
 from unittest.mock import MagicMock, patch
 
@@ -19,6 +20,7 @@ from custom_components.tuya_ble.devices import TuyaBLEData
 from custom_components.tuya_ble.diagnostics import async_get_config_entry_diagnostics
 from custom_components.tuya_ble.tuya_ble import (
     ProbeOutcome,
+    SecurityMode,
     TuyaBLEDevice,
     async_probe_authenticated_status,
 )
@@ -145,13 +147,15 @@ def test_device_info_security_from_reply() -> None:
 
 
 MISMATCH = "advertises Security V2"
+ENABLED_CLASSIC = "enabled but the classic login is in use"
+SUPPORTED_V2 = "supported but not enabled; the Security V2 login is in use"
 
 
 @pytest.mark.parametrize(
     ("service", "sec_key", "message"),
     [
-        (V2_ENABLED_SERVICE, None, "enabled but has no valid sec_key"),
-        (V2_SUPPORTED_SERVICE, SEC_KEY, "supported but not enabled; using sec_key"),
+        (V2_ENABLED_SERVICE, None, ENABLED_CLASSIC),
+        (V2_SUPPORTED_SERVICE, SEC_KEY, SUPPORTED_V2),
         (V2_ENABLED_SERVICE, SEC_KEY, None),
         (V2_SUPPORTED_SERVICE, None, None),
         (CLASSIC_SERVICE, SEC_KEY, None),
@@ -181,6 +185,56 @@ def test_security_v2_mismatch_is_logged_once(
         assert caplog.text.count(f"{MISMATCH} {message}") == 1
     assert SEC_KEY not in caplog.text
     assert LOCAL_KEY not in caplog.text
+
+
+def test_stored_advertisement_is_checked_at_initialisation(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An advertisement stored before the credentials is checked once they load."""
+    credentials = v2_credentials(None)
+    device = make_device()
+    device.set_ble_device_and_advertisement_data(
+        device._ble_device,
+        v4_advertisement(uuid=credentials.uuid.encode(), service=V2_ENABLED_SERVICE),
+    )
+    with caplog.at_level(logging.DEBUG):
+        device.initialize_with_credentials(credentials)
+    assert caplog.text.count(f"{MISMATCH} {ENABLED_CLASSIC}") == 1
+
+
+def test_saved_classic_login_on_enabled_firmware_is_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A stored sec_key unused by a saved classic login is named as such."""
+    credentials = replace(v2_credentials(), security_mode=SecurityMode.CLASSIC)
+    device = make_device()
+    device.set_ble_device_and_advertisement_data(
+        device._ble_device,
+        v4_advertisement(uuid=credentials.uuid.encode(), service=V2_ENABLED_SERVICE),
+    )
+    with caplog.at_level(logging.DEBUG):
+        device.initialize_with_credentials(credentials)
+    assert device.security_v2 is False
+    assert caplog.text.count(f"{MISMATCH} {ENABLED_CLASSIC}") == 1
+    assert SEC_KEY not in caplog.text
+
+
+def test_filtered_debug_does_not_consume_the_mismatch_log(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """With debug off nothing is logged, and enabling it later still logs once."""
+    credentials = v2_credentials(None)
+    device = make_device()
+    adv = v4_advertisement(uuid=credentials.uuid.encode(), service=V2_ENABLED_SERVICE)
+    logger = "custom_components.tuya_ble.tuya_ble.protocol_parse"
+    with caplog.at_level(logging.INFO, logger=logger):
+        device.initialize_with_credentials(credentials)
+        device.set_ble_device_and_advertisement_data(device._ble_device, adv)
+    assert MISMATCH not in caplog.text
+    with caplog.at_level(logging.DEBUG, logger=logger):
+        device.set_ble_device_and_advertisement_data(device._ble_device, adv)
+        device.set_ble_device_and_advertisement_data(device._ble_device, adv)
+    assert caplog.text.count(f"{MISMATCH} {ENABLED_CLASSIC}") == 1
 
 
 def test_security_v2_mismatch_needs_an_fd50_record(

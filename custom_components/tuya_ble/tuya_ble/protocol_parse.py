@@ -52,7 +52,7 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
     """Mixin providing packet decryption, parsing and dispatch."""
 
     _advertisement_data: AdvertisementData | None
-    # The Security V2 state announced by the last long DEVICE_INFO reply.
+    # The Security V2 state of the latest DEVICE_INFO reply; None if too short.
     _device_info_security: DeviceInfoSecurity | None = None
     _security_v2_mismatch_logged = False
 
@@ -65,7 +65,7 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
 
     @property
     def device_info_security(self) -> DeviceInfoSecurity | None:
-        """Return the Security V2 state of the last long DEVICE_INFO reply."""
+        """Return the Security V2 state of the latest DEVICE_INFO reply, if any."""
         return self._device_info_security
 
     def _log_security_v2_mismatch(self) -> None:
@@ -73,19 +73,23 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
 
         Diagnostics only: the key choice itself is left unchanged.
         """
-        if self._security_v2_mismatch_logged or self._device_info is None:
+        if (
+            self._security_v2_mismatch_logged
+            or self._device_info is None
+            or not _LOGGER.isEnabledFor(logging.DEBUG)
+        ):
             return
         record = self.advertised_identity_record
         if record is None:
             return
         if record.security_v2_enabled and self._security_v2_key is None:
-            reason = "enabled but has no valid sec_key"
+            reason = "enabled but the classic login is in use"
         elif (
             record.security_v2
             and not record.security_v2_enabled
             and self._security_v2_key is not None
         ):
-            reason = "supported but not enabled; using sec_key"
+            reason = "supported but not enabled; the Security V2 login is in use"
         else:
             return
         self._security_v2_mismatch_logged = True

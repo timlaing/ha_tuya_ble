@@ -258,11 +258,13 @@ The advertised bits choose the login as described in
 reported. Diagnostics export both under `device.security_v2_state`:
 `advertisement` holds the raw frame-control bytes of the last stored FD50
 identity record with its bound, shared, supported and enabled flags, and
-`device_info` the byte-54 value of the last long device-info reply with its
-supported and enabled flags. Either is `null` when nothing was received. The
-probe outcome debug line names the advertised supported and enabled state.
-A device that advertises V2 enabled without a valid `sec_key`, or supported but
-not enabled while a `sec_key` is used, is logged once at debug level.
+`device_info` the byte-54 value of the latest device-info reply with its
+supported and enabled flags. `advertisement` is `null` without a stored FD50
+identity record; `device_info` is `null` when no reply was received or the
+latest reply is too short to contain byte 54. The probe outcome debug line
+names the advertised supported and enabled state. A device that advertises V2
+enabled while the classic login is in use, or supported but not enabled while
+the Security V2 login is in use, is logged once at debug level.
 
 ### Choosing the login
 
