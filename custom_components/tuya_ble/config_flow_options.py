@@ -1,4 +1,4 @@
-"""Options flow for Tuya BLE: QR-code re-authentication and key replacement."""
+"""Options flow for Tuya BLE: re-authentication, key replacement, connection."""
 
 from __future__ import annotations
 
@@ -11,7 +11,8 @@ from homeassistant.config_entries import (
     ConfigFlowResult,
     OptionsFlowWithConfigEntry,
 )
-from homeassistant.const import CONF_ADDRESS
+from homeassistant.const import CONF_ADDRESS, UnitOfTime
+from homeassistant.helpers import selector
 import probatio
 from tuya_sharing import LoginControl
 
@@ -19,12 +20,22 @@ from .config_flow_manual import PASSWORD_SELECTOR, validate_key_pair
 from .config_flow_qr import UNKNOWN_ERROR, _QRCodeLoginMixin
 from .const import (
     CONF_ENDPOINT,
+    CONF_IDLE_DISCONNECT_DELAY,
+    CONF_KEEP_CONNECTION,
     CONF_LOCAL_KEY,
     CONF_SEC_KEY,
     CONF_SECURITY_MODE,
+    CONF_STATUS_POLL_INTERVAL,
     CONF_TERMINAL_ID,
     CONF_TOKEN_INFO,
     CONF_USER_CODE,
+    DEFAULT_IDLE_DISCONNECT_DELAY,
+    DEFAULT_KEEP_CONNECTION,
+    DEFAULT_STATUS_POLL_INTERVAL,
+    IDLE_DISCONNECT_DELAY_MAX,
+    IDLE_DISCONNECT_DELAY_MIN,
+    STATUS_POLL_INTERVAL_MAX,
+    STATUS_POLL_INTERVAL_MIN,
     TUYA_RESPONSE_CODE,
     TUYA_RESPONSE_MSG,
 )
@@ -46,6 +57,76 @@ type SecurityRecord = (
 )
 
 
+def _seconds_selector(minimum: int, maximum: int) -> selector.NumberSelector:
+    """Return a whole-seconds number box."""
+    return selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=minimum,
+            max=maximum,
+            step=1,
+            unit_of_measurement=UnitOfTime.SECONDS,
+            mode=selector.NumberSelectorMode.BOX,
+        )
+    )
+
+
+def _connection_schema(values: dict[str, Any]) -> probatio.Schema:
+    """Build the connection policy form, prefilled with `values`."""
+    return probatio.Schema({
+        probatio.Required(
+            CONF_KEEP_CONNECTION,
+            default=values.get(CONF_KEEP_CONNECTION, DEFAULT_KEEP_CONNECTION),
+        ): selector.BooleanSelector(),
+        probatio.Required(
+            CONF_IDLE_DISCONNECT_DELAY,
+            default=values.get(
+                CONF_IDLE_DISCONNECT_DELAY, DEFAULT_IDLE_DISCONNECT_DELAY
+            ),
+        ): _seconds_selector(IDLE_DISCONNECT_DELAY_MIN, IDLE_DISCONNECT_DELAY_MAX),
+        probatio.Required(
+            CONF_STATUS_POLL_INTERVAL,
+            default=values.get(CONF_STATUS_POLL_INTERVAL, DEFAULT_STATUS_POLL_INTERVAL),
+        ): _seconds_selector(0, STATUS_POLL_INTERVAL_MAX),
+    })
+
+
+def _whole_seconds(value: Any) -> int | None:
+    """Return *value* as whole seconds, or None when it is not integral.
+
+    The number box checks bounds but not its step, so a typed ``0.5`` reaches
+    here; truncating it would silently turn the interval into ``0``.
+    """
+    try:
+        seconds = float(value)
+    except TypeError, ValueError:
+        return None
+    return int(seconds) if seconds.is_integer() else None
+
+
+def _validate_connection(
+    user_input: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Return the normalised connection policy and any field errors."""
+    errors: dict[str, str] = {}
+    idle = _whole_seconds(user_input[CONF_IDLE_DISCONNECT_DELAY])
+    poll = _whole_seconds(user_input[CONF_STATUS_POLL_INTERVAL])
+    if (
+        idle is None
+        or not IDLE_DISCONNECT_DELAY_MIN <= idle <= IDLE_DISCONNECT_DELAY_MAX
+    ):
+        errors[CONF_IDLE_DISCONNECT_DELAY] = "invalid_idle_disconnect_delay"
+    if poll is None or (
+        poll and not STATUS_POLL_INTERVAL_MIN <= poll <= STATUS_POLL_INTERVAL_MAX
+    ):
+        errors[CONF_STATUS_POLL_INTERVAL] = "invalid_status_poll_interval"
+    return {
+        CONF_KEEP_CONNECTION: bool(user_input[CONF_KEEP_CONNECTION]),
+        # Only used when *errors* is empty, so a rejected value never persists.
+        CONF_IDLE_DISCONNECT_DELAY: idle if idle is not None else 0,
+        CONF_STATUS_POLL_INTERVAL: poll if poll is not None else 0,
+    }, errors
+
+
 class TuyaBLEOptionsFlow(OptionsFlowWithConfigEntry, _QRCodeLoginMixin):
     """Handle a Tuya BLE options flow."""
 
@@ -59,9 +140,35 @@ class TuyaBLEOptionsFlow(OptionsFlowWithConfigEntry, _QRCodeLoginMixin):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Offer QR-code re-authentication or replacing the device keys."""
+        """Offer re-authentication, key replacement or the connection policy."""
         return self.async_show_menu(
-            step_id="init", menu_options=["user", "credentials"]
+            step_id="init", menu_options=["user", "credentials", "connection"]
+        )
+
+    async def async_step_connection(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Keep the Bluetooth link open, or connect on demand.
+
+        Saving a changed policy reloads the entry through its update listener.
+        The other options, such as the cloud login, are kept.
+        """
+        errors: dict[str, str] = {}
+        values: dict[str, Any] = dict(self.config_entry.options)
+        if user_input is not None:
+            policy, errors = _validate_connection(user_input)
+            if not errors:
+                _LOGGER.debug(
+                    "%s: connection policy set (keep connection: %s)",
+                    self.config_entry.data.get(CONF_ADDRESS),
+                    policy[CONF_KEEP_CONNECTION],
+                )
+                return self.async_create_entry(title="", data=values | policy)
+            values |= user_input
+        return self.async_show_form(
+            step_id="connection",
+            data_schema=_connection_schema(values),
+            errors=errors,
         )
 
     async def async_step_credentials(

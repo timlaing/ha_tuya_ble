@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta
 import logging
 from typing import Any
 
+from homeassistant.components import bluetooth
 from homeassistant.const import CONF_ADDRESS, CONF_DEVICE_ID
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
-from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.event import async_call_later, async_track_time_interval
 from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
 )
@@ -40,6 +42,12 @@ class TuyaBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.device = device
         self._disconnected: bool = True
+        # On-demand availability: the link is up, the device was reached since
+        # setup, and Home Assistant still receives its advertisements.
+        self._linked = False
+        self._reached = False
+        self._present = False
+        self._poll_interval = 0
         self._unsub_disconnect: CALLBACK_TYPE | None = None
         self._status_task: asyncio.Task[None] | None = None
         self._dp_classification: tuple[bool, frozenset[int]] | None = None
@@ -60,13 +68,104 @@ class TuyaBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     @property
     def connected(self) -> bool:
-        """Return whether the device is currently connected."""
-        return not self._disconnected
+        """Return whether the device's entities are available.
+
+        A kept-open link counts as connected until `SET_DISCONNECTED_DELAY`
+        after it drops. An on-demand link closes between commands, so the
+        device counts as connected while linked, or once it has been reached
+        since setup for as long as Home Assistant's Bluetooth stack has not
+        marked its connectable advertisements unavailable.
+        """
+        if self.device.keep_connection:
+            return not self._disconnected
+        return self._linked or (self._reached and self._present)
+
+    @property
+    def poll_interval(self) -> int:
+        """Return the on-demand status poll interval in seconds, 0 when off."""
+        return self._poll_interval
+
+    @callback
+    def async_start_on_demand(self, poll_interval: int) -> CALLBACK_TYPE:
+        """Track advertisements, and poll the status if `poll_interval` is set.
+
+        Returns the callback that stops both, for the config entry's unload.
+        """
+        address = self.device.address
+        self._poll_interval = poll_interval
+        self._present = bluetooth.async_address_present(
+            self.hass, address, connectable=True
+        )
+        stoppers = [
+            bluetooth.async_track_unavailable(
+                self.hass, self._async_handle_unavailable, address, connectable=True
+            )
+        ]
+        if poll_interval:
+            stoppers.append(
+                async_track_time_interval(
+                    self.hass,
+                    self._async_poll,
+                    timedelta(seconds=poll_interval),
+                    name=f"{DOMAIN} {address} status poll",
+                    cancel_on_shutdown=True,
+                )
+            )
+
+        @callback
+        def _async_stop() -> None:
+            for stop in stoppers:
+                stop()
+
+        return _async_stop
+
+    @callback
+    def async_handle_advertisement(self) -> None:
+        """Note a received advertisement; on demand it restores availability."""
+        if self._present:
+            return
+        self._present = True
+        if not self.device.keep_connection:
+            _LOGGER.debug("%s: Advertising again", self.device.address)
+            self.async_update_listeners()
+
+    @callback
+    def _async_handle_unavailable(
+        self, _service_info: bluetooth.BluetoothServiceInfoBleak
+    ) -> None:
+        """Mark an on-demand device unavailable once its advertisements stop."""
+        self._present = False
+        _LOGGER.debug("%s: No longer advertising", self.device.address)
+        self.async_update_listeners()
+
+    @callback
+    def _async_poll(self, _now: datetime) -> None:
+        """Connect an idle on-demand device to refresh its data points."""
+        address = self.device.address
+        if self._linked or (self._status_task and not self._status_task.done()):
+            _LOGGER.debug("%s: Status poll skipped, device is busy", address)
+            return
+        if not self._present:
+            _LOGGER.debug("%s: Status poll skipped, device not advertising", address)
+            return
+        self._async_request_status()
 
     @callback
     def _async_handle_connect(self) -> None:
         if self._unsub_disconnect is not None:
             self._unsub_disconnect()
+            self._unsub_disconnect = None
+        newly_linked = not self._linked
+        self._linked = True
+        self._reached = True
+        if not self.device.keep_connection:
+            if newly_linked:
+                _LOGGER.debug("%s: Connected on demand", self.device.address)
+                # The status request that opened this link is still in flight.
+                if self._status_task is None or self._status_task.done():
+                    self._async_request_status()
+                self.async_update_listeners()
+            return
         if self._disconnected:
             self._disconnected = False
             _LOGGER.debug("%s: Connected", self.device.address)
@@ -212,7 +311,15 @@ class TuyaBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     @callback
     def _async_handle_disconnect(self) -> None:
-        """Schedule a delayed transition to disconnected state."""
+        """Schedule a delayed transition to disconnected state.
+
+        An on-demand link closes on purpose, so availability is decided at once
+        by `connected` instead of after a delay.
+        """
+        self._linked = False
+        if not self.device.keep_connection:
+            self.async_update_listeners()
+            return
         if self._unsub_disconnect is None:
             delay: float = SET_DISCONNECTED_DELAY
             _LOGGER.debug(

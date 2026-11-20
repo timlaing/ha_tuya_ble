@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
+from datetime import datetime, timedelta
 import logging
 from struct import pack
 from typing import cast
@@ -642,3 +644,250 @@ async def test_undeclared_dp_from_real_notification_is_logged(
     )
     assert "Unmapped DP id=102" not in caplog.text
     assert coordinator.connected is True
+
+
+async def test_reconnect_resets_the_delayed_disconnect_timer(
+    hass: HomeAssistant,
+) -> None:
+    """A drop after a reconnect schedules a fresh delayed disconnect."""
+    coordinator, _ = _make_coord(hass)
+    coordinator._async_handle_connect()
+    coordinator._async_handle_disconnect()
+    first = coordinator._unsub_disconnect
+    coordinator._async_handle_connect()
+    assert coordinator._unsub_disconnect is None
+
+    coordinator._async_handle_disconnect()
+
+    assert coordinator._unsub_disconnect is not None
+    assert coordinator._unsub_disconnect is not first
+    await coordinator.async_shutdown()
+
+
+PRESENT = "custom_components.tuya_ble.coordinator.bluetooth.async_address_present"
+TRACK_UNAVAILABLE = (
+    "custom_components.tuya_ble.coordinator.bluetooth.async_track_unavailable"
+)
+TRACK_INTERVAL = "custom_components.tuya_ble.coordinator.async_track_time_interval"
+
+
+def _make_on_demand_coord(
+    hass: HomeAssistant, device_cls: type[StatusRecordingDevice] = StatusRecordingDevice
+) -> tuple[TuyaBLECoordinator, StatusRecordingDevice]:
+    """Build a coordinator for a device that connects on demand."""
+    device = make_status_device(device_cls=device_cls)
+    device._device_info = make_credentials()
+    # Setup state: the policy normally comes from the device constructor.
+    device._idle_disconnect_delay = 30.0
+    return TuyaBLECoordinator(hass, device), device
+
+
+def _start_on_demand(
+    coordinator: TuyaBLECoordinator, present: bool = True, poll_interval: int = 0
+) -> tuple[list[object], list[str]]:
+    """Start on-demand tracking, recording the trackers it registers."""
+    handlers: list[object] = []
+    stopped: list[str] = []
+
+    def _track(
+        _hass: HomeAssistant, handler: object, *_args: object, **_kw: object
+    ) -> Callable[[], None]:
+        handlers.append(handler)
+        return lambda: stopped.append("unavailable")
+
+    with (
+        patch(PRESENT, return_value=present),
+        patch(TRACK_UNAVAILABLE, side_effect=_track),
+    ):
+        stop = coordinator.async_start_on_demand(poll_interval)
+    handlers.append(stop)
+    return handlers, stopped
+
+
+async def test_kept_connection_has_no_poll(hass: HomeAssistant) -> None:
+    """The default policy keeps the delayed-disconnect availability."""
+    coordinator, device = _make_coord(hass)
+    assert device.keep_connection is True
+    assert coordinator.poll_interval == 0
+    coordinator.async_handle_advertisement()
+    coordinator._async_handle_connect()
+    coordinator._async_handle_disconnect()
+    assert coordinator.connected is True
+    await coordinator.async_shutdown()
+
+
+async def test_on_demand_needs_a_first_connection(hass: HomeAssistant) -> None:
+    """An advertising device stays unavailable until it has been reached."""
+    coordinator, _ = _make_on_demand_coord(hass)
+    _start_on_demand(coordinator)
+    assert coordinator.connected is False
+    coordinator._async_handle_connect()
+    assert coordinator.connected is True
+    await coordinator.async_shutdown()
+
+
+async def test_on_demand_stays_available_between_commands(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An idle disconnect keeps entities available while advertisements arrive."""
+    coordinator, _ = _make_on_demand_coord(hass)
+    _start_on_demand(coordinator)
+    updates: list[bool] = []
+    coordinator.async_add_listener(lambda: updates.append(coordinator.connected))
+    caplog.set_level(logging.DEBUG)
+    coordinator._async_handle_connect()
+
+    coordinator._async_handle_disconnect()
+
+    assert coordinator.connected is True
+    assert coordinator._unsub_disconnect is None
+    assert updates == [True, True]
+    assert "marking as disconnected" not in caplog.text
+    await coordinator.async_shutdown()
+
+
+async def test_on_demand_follows_advertisement_presence(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Entities go unavailable with the advertisements and return with them."""
+    coordinator, _ = _make_on_demand_coord(hass)
+    handlers, _ = _start_on_demand(coordinator)
+    coordinator._async_handle_connect()
+    coordinator._async_handle_disconnect()
+    updates: list[bool] = []
+    coordinator.async_add_listener(lambda: updates.append(coordinator.connected))
+    caplog.set_level(logging.DEBUG)
+
+    unavailable = cast("Callable[[object], None]", handlers[0])
+    unavailable(object())
+    assert coordinator.connected is False
+    assert f"{ADDRESS}: No longer advertising" in caplog.text
+
+    coordinator.async_handle_advertisement()
+    coordinator.async_handle_advertisement()
+    assert coordinator.connected is True
+    assert f"{ADDRESS}: Advertising again" in caplog.text
+    assert updates == [False, True]
+    await coordinator.async_shutdown()
+
+
+async def test_on_demand_link_keeps_entities_available_without_adverts(
+    hass: HomeAssistant,
+) -> None:
+    """A connected device need not advertise to stay available."""
+    coordinator, _ = _make_on_demand_coord(hass)
+    _start_on_demand(coordinator, present=False)
+    coordinator._async_handle_connect()
+    assert coordinator.connected is True
+    coordinator._async_handle_disconnect()
+    assert coordinator.connected is False
+    await coordinator.async_shutdown()
+
+
+async def test_kept_connection_ignores_advertisements(hass: HomeAssistant) -> None:
+    """Advertisements do not push updates for a kept-open link."""
+    coordinator, _ = _make_coord(hass)
+    updates: list[bool] = []
+    coordinator.async_add_listener(lambda: updates.append(True))
+    coordinator.async_handle_advertisement()
+    assert not updates
+
+
+async def test_on_demand_link_requests_status_once_per_connection(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Each new on-demand link refreshes the data points, updates do not."""
+    coordinator, device = _make_on_demand_coord(hass)
+    _start_on_demand(coordinator)
+    caplog.set_level(logging.DEBUG)
+    coordinator._async_handle_connect()
+    await hass.async_block_till_done()
+    coordinator._async_handle_update([])
+    await hass.async_block_till_done()
+    assert device.status_requests == [1]
+    assert f"{ADDRESS}: Connected on demand" in caplog.text
+
+    coordinator._async_handle_disconnect()
+    coordinator._async_handle_connect()
+    await hass.async_block_till_done()
+    assert device.status_requests == [1, 1]
+    await coordinator.async_shutdown()
+
+
+async def test_on_demand_connect_keeps_the_status_request_that_opened_it(
+    hass: HomeAssistant,
+) -> None:
+    """A poll's status request is not cancelled by the link it opens."""
+    coordinator, _ = _make_on_demand_coord(hass, _PendingStatusDevice)
+    _start_on_demand(coordinator)
+    coordinator._async_poll(cast(datetime, None))
+    pending = coordinator._status_task
+    assert pending is not None
+    coordinator._async_handle_connect()
+    await asyncio.sleep(0)
+    assert coordinator._status_task is pending
+    assert not pending.done()
+    await coordinator.async_shutdown()
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+
+
+async def test_poll_requests_status_from_an_idle_device(hass: HomeAssistant) -> None:
+    """A poll connects an idle, advertising device to read its data points."""
+    coordinator, device = _make_on_demand_coord(hass)
+    _start_on_demand(coordinator)
+    coordinator._async_poll(cast(datetime, None))
+    await hass.async_block_till_done()
+    assert device.status_requests == [1]
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.parametrize("state", ["linked", "pending", "absent"])
+async def test_poll_is_skipped(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture, state: str
+) -> None:
+    """A poll does nothing while linked, busy, or when the device is gone."""
+    coordinator, device = _make_on_demand_coord(hass, _PendingStatusDevice)
+    _start_on_demand(coordinator, present=state != "absent")
+    if state == "linked":
+        coordinator._linked = True
+    elif state == "pending":
+        coordinator._async_request_status()
+    pending = coordinator._status_task
+    caplog.set_level(logging.DEBUG)
+
+    coordinator._async_poll(cast(datetime, None))
+
+    assert coordinator._status_task is pending
+    reason = "device not advertising" if state == "absent" else "device is busy"
+    assert f"{ADDRESS}: Status poll skipped, {reason}" in caplog.text
+    assert not device.status_requests
+    await coordinator.async_shutdown()
+
+
+async def test_start_on_demand_schedules_the_poll(hass: HomeAssistant) -> None:
+    """A poll interval registers a timer; the returned callback stops everything."""
+    coordinator, _ = _make_on_demand_coord(hass)
+    stopped: list[str] = []
+    with patch(
+        TRACK_INTERVAL, return_value=lambda: stopped.append("poll")
+    ) as track_interval:
+        handlers, unavailable_stopped = _start_on_demand(coordinator, poll_interval=900)
+    assert coordinator.poll_interval == 900
+    assert track_interval.call_args.args[2] == timedelta(seconds=900)
+    assert track_interval.call_args.kwargs["name"] == (
+        f"tuya_ble {ADDRESS} status poll"
+    )
+    stop = cast("Callable[[], None]", handlers[-1])
+    stop()
+    assert unavailable_stopped == ["unavailable"]
+    assert stopped == ["poll"]
+
+
+async def test_start_on_demand_without_poll(hass: HomeAssistant) -> None:
+    """A zero poll interval registers no timer."""
+    coordinator, _ = _make_on_demand_coord(hass)
+    with patch(TRACK_INTERVAL) as track_interval:
+        _start_on_demand(coordinator, poll_interval=0)
+    track_interval.assert_not_called()
+    assert coordinator.poll_interval == 0

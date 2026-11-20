@@ -24,14 +24,20 @@ from .const import (
     CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
     CONF_FUNCTIONS,
+    CONF_IDLE_DISCONNECT_DELAY,
+    CONF_KEEP_CONNECTION,
     CONF_LOCAL_KEY,
     CONF_PRODUCT_ID,
     CONF_PRODUCT_MODEL,
     CONF_PRODUCT_NAME,
     CONF_SEC_KEY,
     CONF_SECURITY_MODE,
+    CONF_STATUS_POLL_INTERVAL,
     CONF_STATUS_RANGE,
     CONF_UUID,
+    DEFAULT_IDLE_DISCONNECT_DELAY,
+    DEFAULT_KEEP_CONNECTION,
+    DEFAULT_STATUS_POLL_INTERVAL,
     DOMAIN,
 )
 from .device_registry import async_setup_registry
@@ -110,6 +116,17 @@ def _build_credentials_from_entry(entry: ConfigEntry) -> TuyaBLEDeviceCredential
     )
 
 
+def _connection_policy(entry: ConfigEntry) -> tuple[float | None, int]:
+    """Return the idle disconnect delay (None keeps the link) and poll interval."""
+    options = entry.options
+    if options.get(CONF_KEEP_CONNECTION, DEFAULT_KEEP_CONNECTION):
+        return None, 0
+    return (
+        float(options.get(CONF_IDLE_DISCONNECT_DELAY, DEFAULT_IDLE_DISCONNECT_DELAY)),
+        int(options.get(CONF_STATUS_POLL_INTERVAL, DEFAULT_STATUS_POLL_INTERVAL)),
+    )
+
+
 @callback
 def _remove_legacy_sensor_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Remove sensor-domain entries superseded by correctly typed entities."""
@@ -182,7 +199,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ble_device = BLEDevice(address, credentials.device_name, {})
 
     manager = OfflineTuyaBLEDeviceManager(credentials)
-    device = TuyaBLEDevice(manager, ble_device)
+    idle_disconnect_delay, poll_interval = _connection_policy(entry)
+    device = TuyaBLEDevice(
+        manager, ble_device, idle_disconnect_delay=idle_disconnect_delay
+    )
     device.initialize_with_credentials(credentials)
 
     @callback
@@ -217,6 +237,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
     coordinator = TuyaBLECoordinator(hass, device)
+    if idle_disconnect_delay is not None:
+        entry.async_on_unload(coordinator.async_start_on_demand(poll_interval))
 
     async def _async_initial_update() -> None:
         """Request the initial device status without blocking setup."""
@@ -246,6 +268,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         device.set_ble_device_and_advertisement_data(
             service_info.device, service_info.advertisement
         )
+        coordinator.async_handle_advertisement()
 
     entry.async_on_unload(
         bluetooth.async_register_callback(
@@ -284,9 +307,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload the config entry when the title changes in options."""
+    """Reload the config entry when its title or connection policy changes."""
     data: TuyaBLEData = hass.data[DOMAIN][entry.entry_id]
-    if entry.title != data.title:
+    running = (data.device.idle_disconnect_delay, data.coordinator.poll_interval)
+    if entry.title != data.title or _connection_policy(entry) != running:
         await hass.config_entries.async_reload(entry.entry_id)
 
 

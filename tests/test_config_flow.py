@@ -800,7 +800,7 @@ async def test_options_init(hass: HomeAssistant) -> None:
     result = await flow.async_step_init(user_input=None)
     assert result["type"] == FlowResultType.MENU
     assert result["step_id"] == "init"
-    assert result["menu_options"] == ["user", "credentials"]
+    assert result["menu_options"] == ["user", "credentials", "connection"]
 
 
 async def test_options_user_no_input(hass: HomeAssistant) -> None:

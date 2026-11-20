@@ -92,6 +92,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
         device_manager: AbstractTuyaBLEDeviceManager,
         ble_device: BLEDevice,
         advertisement_data: AdvertisementData | None = None,
+        idle_disconnect_delay: float | None = None,
     ) -> None:
         """Initialize device state, connection locks, and credential buffers."""
         self.device_manager = device_manager
@@ -140,6 +141,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
         self._status_range: dict[str, TuyaBLEDeviceFunction] = {}
 
         self._reconnect_task: asyncio.Task[None] | None = None
+        self._initialize_on_demand_state(idle_disconnect_delay)
         self._initialize_reconnect_state()
         self._send_response_tasks: set[asyncio.Task[None]] = set()
 
@@ -495,6 +497,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
             for task in (
                 self._reconnect_task,
                 self._identity_connect_task,
+                self._idle_task,
                 *self._send_response_tasks,
             )
             if task is not None
@@ -533,6 +536,9 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
             return
         self._session_key = None
         self._auth_key = None
+        if not self.keep_connection:
+            _LOGGER.debug("%s: Disconnected; reconnecting on demand", self.address)
+            return
         _LOGGER.log(
             logging.WARNING if was_paired else logging.DEBUG,
             "%s: Device unexpectedly disconnected; RSSI: %s",
@@ -918,6 +924,7 @@ class TuyaBLEDevice(TuyaBLEProtocol, TuyaBLEConnectionProfile):
         if self._is_paired:
             self._awaiting_fd50_identity = False
             _LOGGER.debug("%s: Successfully connected", self.address)
+            self._note_activity()
             self._fire_connected_callbacks()
         else:
             _LOGGER.error("%s: Connected but not paired", self.address)

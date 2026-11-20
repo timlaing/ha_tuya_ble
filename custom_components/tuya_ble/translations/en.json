@@ -626,14 +626,17 @@
       "login_error": "Login error ({code}): {msg}",
       "invalid_local_key": "Enter the local key as printable characters without spaces, at least 6 characters.",
       "invalid_sec_key": "The security key must be exactly 16 characters without spaces.",
-      "sec_key_not_used": "This device does not use a security key. Leave the field empty."
+      "sec_key_not_used": "This device does not use a security key. Leave the field empty.",
+      "invalid_idle_disconnect_delay": "Enter an idle delay from 5 to 3600 seconds.",
+      "invalid_status_poll_interval": "Enter 0 to turn the status refresh off, or from 60 to 86400 seconds."
     },
     "step": {
       "init": {
         "description": "Choose what to change.",
         "menu_options": {
           "user": "Log in again with the QR code",
-          "credentials": "Replace the device keys"
+          "credentials": "Replace the device keys",
+          "connection": "Connection settings"
         }
       },
       "user": {
@@ -654,6 +657,19 @@
         "data": {
           "local_key": "Local key",
           "sec_key": "Security key (optional)"
+        }
+      },
+      "connection": {
+        "title": "Connection settings",
+        "description": "Keeping the Bluetooth connection open gives the fastest response, but uses one connection slot on the Bluetooth adapter or proxy and drains battery-powered devices faster. With it off, Home Assistant connects for each command, which adds about 1 to 3 seconds, and disconnects after the idle delay. The device then stays available while Home Assistant receives its Bluetooth advertisements. Changing these settings reloads the device.",
+        "data": {
+          "keep_connection": "Keep the Bluetooth connection open",
+          "idle_disconnect_delay": "Idle delay before disconnecting",
+          "status_poll_interval": "Status refresh interval"
+        },
+        "data_description": {
+          "idle_disconnect_delay": "Only used when the connection is not kept open. Each command restarts the delay, so a burst of commands shares one connection.",
+          "status_poll_interval": "Only used when the connection is not kept open. How often to connect and read the device's values, so sensors stay current without commands. Enter 0 to turn it off, for example for a Fingerbot."
         }
       }
     }

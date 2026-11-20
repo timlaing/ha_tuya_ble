@@ -84,6 +84,7 @@ class TuyaBLEProtocolSendMixin:
     _callbacks: list[Callable[[list[TuyaBLEDataPoint]], None]]
     _reconnect_task: asyncio.Task[None] | None
     _send_response_tasks: set[asyncio.Task[None]]
+    _connect_lock: asyncio.Lock
 
     def _initialize_response_state(self) -> None:
         """Create connection response correlation state without storing secrets."""
@@ -114,6 +115,13 @@ class TuyaBLEProtocolSendMixin:
     def _is_fingerbot_touch(self) -> bool:
         """Return whether Fingerbot Touch reconnect handling is enabled."""
         return False
+
+    def _is_ready(self) -> bool:
+        """Return whether the link is connected and paired."""
+        return False
+
+    async def _discard_client(self, client: Any) -> None:
+        """Close `client` behind the connection cleanup barrier."""
 
     async def _recover_session(self, client: Any) -> None:
         """Release the session of `client` after a failed or unanswered command.
@@ -381,16 +389,24 @@ class TuyaBLEProtocolSendMixin:
         """
         if self._expected_disconnect:
             return
-        await self._ensure_connected()
-        if self._expected_disconnect:  # noqa: S2583
-            return
-        client = self._client
-        sent = await self._send_packet_while_connected(code, data, 0, wait_for_response)
-        if not sent:
-            # The session may be out of step with the device: release it
-            # instead of retrying a command whose outcome is unknown.
-            await self._recover_session(client)
-            raise TuyaBLEResponseTimeoutError(code.name)
+        # Restart the idle timer before and after: an on-demand link must not
+        # close under a command, and stays open for the idle delay after it.
+        self._note_activity()
+        try:
+            await self._ensure_connected()
+            if self._expected_disconnect:  # noqa: S2583
+                return
+            client = self._client
+            sent = await self._send_packet_while_connected(
+                code, data, 0, wait_for_response
+            )
+            if not sent:
+                # The session may be out of step with the device: release it
+                # instead of retrying a command whose outcome is unknown.
+                await self._recover_session(client)
+                raise TuyaBLEResponseTimeoutError(code.name)
+        finally:
+            self._note_activity()
 
     async def _send_response(
         self,
@@ -452,6 +468,66 @@ class TuyaBLEProtocolSendMixin:
         self._reconnect_task = self._spawn_background_task(
             self._reconnect(), "reconnect task"
         )
+
+    # On-demand connections: a device built with an idle delay connects when a
+    # command is sent and closes the link once nothing was sent for that long.
+    # Each command restarts the delay, so a burst of commands shares one link.
+    # A closed or dropped link is not reopened until the next command. Without
+    # a delay the link is held open and reconnected whenever it drops.
+
+    def _initialize_on_demand_state(self, idle_disconnect_delay: float | None) -> None:
+        """Hold the link open when the delay is None, otherwise connect on demand."""
+        self._idle_disconnect_delay = idle_disconnect_delay
+        self._idle_task: asyncio.Task[None] | None = None
+
+    @property
+    def keep_connection(self) -> bool:
+        """Return whether the link is held open rather than opened on demand."""
+        return self._idle_disconnect_delay is None
+
+    @property
+    def idle_disconnect_delay(self) -> float | None:
+        """Return the on-demand idle delay in seconds, or None when kept open."""
+        return self._idle_disconnect_delay
+
+    def _note_activity(self) -> None:
+        """Restart the on-demand idle timer, so a burst of commands shares a link."""
+        delay = self._idle_disconnect_delay
+        if delay is None or self._expected_disconnect:
+            return
+        if self._idle_task is not None and not self._idle_task.done():
+            self._idle_task.cancel()
+        self._idle_task = self._spawn_background_task(
+            self._idle_disconnect(delay), "idle disconnect task"
+        )
+
+    def _is_busy(self) -> bool:
+        """Return whether a connect, write or awaited response is in progress."""
+        return (
+            self._connect_lock.locked()
+            or self._operation_lock.locked()
+            or bool(self._input_expected_responses)
+        )
+
+    async def _idle_disconnect(self, delay: float) -> None:
+        """Close an idle on-demand link without scheduling a reconnect.
+
+        The link goes through the cleanup barrier, so a command arriving while
+        it closes waits for the teardown before it connects again. A new
+        session that started meanwhile keeps its sequence numbers.
+        """
+        await asyncio.sleep(delay)
+        while self._is_busy():
+            await asyncio.sleep(delay)
+        client = self._client
+        if client is None or self._expected_disconnect or not self._is_ready():
+            return
+        _LOGGER.debug("%s: Idle for %ss, disconnecting", self.address, delay)
+        self._disconnected(client)
+        await self._discard_client(client)
+        async with self._seq_num_lock:
+            if self._client is None and not self._connect_lock.locked():
+                self._current_seq_num = 1
 
     def _track_send_response_task(self, task: asyncio.Task[None]) -> None:
         """Track a send-response task so outstanding tasks can be cancelled."""

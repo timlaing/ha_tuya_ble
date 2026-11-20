@@ -43,6 +43,19 @@ DEVICE_METADATA_UUIDS: Final = "uuids"
 DEVICE_DEF_MANUFACTURER: Final = "tuya"
 SET_DISCONNECTED_DELAY = 10 * 60
 
+# Connection policy, stored in the config entry options. Keeping the link open
+# is the default, so entries without these options behave as before.
+CONF_KEEP_CONNECTION: Final = "keep_connection"
+CONF_IDLE_DISCONNECT_DELAY: Final = "idle_disconnect_delay"
+CONF_STATUS_POLL_INTERVAL: Final = "status_poll_interval"
+DEFAULT_KEEP_CONNECTION: Final = True
+DEFAULT_IDLE_DISCONNECT_DELAY: Final = 30
+DEFAULT_STATUS_POLL_INTERVAL: Final = 900
+IDLE_DISCONNECT_DELAY_MIN: Final = 5
+IDLE_DISCONNECT_DELAY_MAX: Final = 3600
+STATUS_POLL_INTERVAL_MIN: Final = 60
+STATUS_POLL_INTERVAL_MAX: Final = 86400
+
 CONF_UUID: Final = "uuid"
 CONF_CONNECTION_PROFILE: Final = "connection_profile"
 CONF_CLOUD_UUID: Final = "cloud_uuid"
