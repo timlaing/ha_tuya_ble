@@ -1,0 +1,84 @@
+# Gateway schema only; no direct BLE valve writes or enum order verified.
+# Source: make-all/tuya-local hct626_dual_watertimer.yaml; upstream issue 208.
+category: sfkzq
+product_id: smd9kj1n
+model_name: HCT-626
+device_name: Dual water timer
+entities:
+  binary_sensor:
+    - dp_id: 1
+      name: Valve 1 reported state
+      dp_type: 1
+      force_add: false
+      handlers:
+        read: reported.boolean
+    - dp_id: 2
+      name: Valve 2 reported state
+      dp_type: 1
+      force_add: false
+      handlers:
+        read: reported.boolean
+    - dp_id: 43
+      name: Smart weather delay reported state
+      entity_category: diagnostic
+      dp_type: 1
+      force_add: false
+      handlers:
+        read: reported.boolean
+  sensor:
+    - dp_id: 42
+      name: Weather delay remaining
+      device_class: duration
+      unit: h
+      entity_category: diagnostic
+      dp_type: 2
+      report_type: 2
+      force_add: false
+      handlers:
+        read: reported.numeric
+    - dp_id: 101
+      name: Valve 1 last runtime
+      device_class: duration
+      unit: s
+      entity_category: diagnostic
+      dp_type: 2
+      report_type: 2
+      force_add: false
+      handlers:
+        read: reported.numeric
+    - dp_id: 102
+      name: Valve 2 last runtime
+      device_class: duration
+      unit: s
+      entity_category: diagnostic
+      dp_type: 2
+      report_type: 2
+      force_add: false
+      handlers:
+        read: reported.numeric
+    - dp_id: 103
+      name: Valve 1 spray time
+      device_class: duration
+      unit: s
+      entity_category: diagnostic
+      dp_type: 2
+      report_type: 2
+      force_add: false
+      handlers:
+        read: reported.numeric
+    - dp_id: 104
+      name: Valve 2 spray time
+      device_class: duration
+      unit: s
+      entity_category: diagnostic
+      dp_type: 2
+      report_type: 2
+      force_add: false
+      handlers:
+        read: reported.numeric
+  valve: []
+  switch: []
+  number: []
+  select: []
+  button: []
+  text: []

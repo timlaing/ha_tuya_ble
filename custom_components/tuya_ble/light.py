@@ -108,7 +108,7 @@ def _build_mapping() -> dict[str, TuyaBLECategoryLightMapping]:
     result: dict[str, TuyaBLECategoryLightMapping] = {}
     for device_entities in registry.products.values():
         descriptors = device_entities.get("light")
-        if not descriptors:
+        if not descriptors and "light" not in device_entities.entities:
             continue
         category_mapping = result.setdefault(
             device_entities.category,

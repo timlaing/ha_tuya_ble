@@ -1,0 +1,32 @@
+# Actual preliminary BLE reports, not verified commands or mode meanings.
+# Source: ha-tuya-ble/ha_tuya_ble issue 357 by vrnoleg.
+category: dj
+product_id: e2kdgdsu
+manufacturer: AQUA CREATIV
+model_name: TITAN PRO 300
+device_name: Aquarium light reports
+entities:
+  binary_sensor:
+    - dp_id: 101
+      name: DP101 manual report
+      entity_category: diagnostic
+      dp_type: 1
+      force_add: false
+      handlers:
+        read: reported.boolean
+  sensor:
+    - dp_id: 102
+      name: DP102 raw mode report
+      entity_category: diagnostic
+      enabled_by_default: false
+      dp_type: 4
+      report_type: 4
+      force_add: false
+      handlers:
+        read: reported.numeric
+  # Explicitly suppress unrelated generic dj DP20-24 controls.
+  light: []
+  number: []
+  select: []
+  switch: []
+  button: []
