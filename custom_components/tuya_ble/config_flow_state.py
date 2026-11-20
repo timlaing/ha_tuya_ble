@@ -1,4 +1,4 @@
-"""Shared ownership and diagnostics for configuration-time BLE verification."""
+"""Shared ownership, diagnostics and entry data for configuration-time BLE setup."""
 
 from __future__ import annotations
 
@@ -8,12 +8,34 @@ import time
 from typing import Any
 
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
+from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 
-from .const import CONF_CONNECTION_PROFILE, CONF_SEC_KEY, CONF_SECURITY_MODE, DOMAIN
+from .const import (
+    CONF_ADVERTISED_UUID,
+    CONF_BLE_UNLOCK_CHECK,
+    CONF_CATEGORY,
+    CONF_CLOUD_INFO,
+    CONF_CLOUD_UUID,
+    CONF_CONNECTION_PROFILE,
+    CONF_DEVICE_ID,
+    CONF_DEVICE_NAME,
+    CONF_FUNCTIONS,
+    CONF_LOCAL_KEY,
+    CONF_LOCAL_SCHEMA,
+    CONF_PRODUCT_ID,
+    CONF_PRODUCT_MODEL,
+    CONF_PRODUCT_NAME,
+    CONF_SEC_KEY,
+    CONF_SECURITY_MODE,
+    CONF_STATUS_RANGE,
+    CONF_UUID,
+    DOMAIN,
+)
 from .tuya_ble import (
     MANUFACTURER_DATA_ID,
     SERVICE_UUIDS,
+    TuyaBLEAdvertisementInfo,
     TuyaBLEDeviceCredentials,
     is_valid_sec_key,
 )
@@ -51,6 +73,42 @@ def sec_key_data(
     ):
         return {CONF_SEC_KEY: credentials.sec_key}
     return {}
+
+
+def build_entry_data(
+    discovery_info: BluetoothServiceInfoBleak,
+    advertisement: TuyaBLEAdvertisementInfo,
+    credentials: TuyaBLEDeviceCredentials,
+    pairing_uuid: str | None,
+) -> dict[str, Any]:
+    """Return the config entry data for a verified device.
+
+    Keeps both original identities and the verified BLE pairing UUID, and only
+    the secrets the device actually needs.
+    """
+    entry_data: dict[str, Any] = {
+        CONF_ADDRESS: discovery_info.address,
+        CONF_UUID: pairing_uuid or credentials.uuid,
+        CONF_CLOUD_UUID: credentials.uuid,
+        CONF_ADVERTISED_UUID: advertisement.uuid or None,
+        CONF_LOCAL_KEY: credentials.local_key,
+        CONF_DEVICE_ID: credentials.device_id,
+        CONF_CATEGORY: credentials.category,
+        CONF_PRODUCT_ID: credentials.product_id,
+        CONF_DEVICE_NAME: credentials.device_name,
+        CONF_PRODUCT_MODEL: credentials.product_model,
+        CONF_PRODUCT_NAME: credentials.product_name,
+        CONF_FUNCTIONS: credentials.functions,
+        CONF_STATUS_RANGE: credentials.status_range,
+        CONF_LOCAL_SCHEMA: credentials.local_schema,
+        CONF_CLOUD_INFO: credentials.cloud_info,
+    }
+    entry_data.update(verified_login_data(credentials))
+    entry_data.update(sec_key_data(credentials, advertisement.security_v2))
+    if credentials.ble_unlock_check is not None:
+        # Already validated by the cloud manager; a lock needs it to open.
+        entry_data[CONF_BLE_UNLOCK_CHECK] = credentials.ble_unlock_check
+    return entry_data
 
 
 def _consume_probe_result(task: asyncio.Task[Any]) -> None:

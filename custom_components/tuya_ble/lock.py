@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Coroutine
+from dataclasses import dataclass, field
+from typing import Any
 
 from homeassistant.components.lock import (
     LockEntity,
     LockEntityDescription,
 )
+from homeassistant.components.lock.const import LockEntityFeature
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -29,6 +31,17 @@ TuyaBLELockGetter = Callable[["TuyaBLELock", TuyaBLEProductInfo], bool | None] |
 TuyaBLELockIsAvailable = Callable[["TuyaBLELock", TuyaBLEProductInfo], bool] | None
 
 
+TuyaBLELockSetter = (
+    Callable[["TuyaBLELock", TuyaBLEProductInfo, bool], Coroutine[Any, Any, None]]
+    | None
+)
+
+
+TuyaBLELockOpener = (
+    Callable[["TuyaBLELock", TuyaBLEProductInfo], Coroutine[Any, Any, None]] | None
+)
+
+
 @dataclass
 class TuyaBLELockMapping:
     """Mapping of a Tuya BLE data point to a Home Assistant lock entity."""
@@ -40,6 +53,9 @@ class TuyaBLELockMapping:
     is_available: TuyaBLELockIsAvailable = None
     getter: TuyaBLELockGetter = None
     door_dp_id: int | None = None
+    setter: TuyaBLELockSetter = None
+    opener: TuyaBLELockOpener = None
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -70,6 +86,9 @@ def _build_lock_mapping(desc: EntityDescriptor) -> TuyaBLELockMapping:
         is_available=desc.resolved_handler("when"),
         getter=desc.resolved_handler("read"),
         door_dp_id=desc.door_dp_id,
+        setter=desc.resolved_handler("write"),
+        opener=desc.resolved_handler("open"),
+        extra=dict(desc.extra),
     )
 
 
@@ -128,6 +147,17 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
     ) -> None:
         super().__init__(hass, coordinator, device, product, lock_mapping.description)
         self._mapping = lock_mapping
+        if lock_mapping.opener is not None:
+            self._attr_supported_features = LockEntityFeature.OPEN
+
+    @property
+    def dp_id(self) -> int:
+        """The data point this lock entity is mapped to."""
+        return self._mapping.dp_id
+
+    def descriptor_dp_id(self, key: str) -> int:
+        """Return an auxiliary ``*_dp_id`` the descriptor declares for a handler."""
+        return int(self._mapping.extra[key])
 
     @property
     def is_locked(self) -> bool | None:
@@ -152,6 +182,9 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
 
     async def async_lock(self, **kwargs: object) -> None:
         """Lock the device."""
+        if self._mapping.setter is not None:
+            await self._mapping.setter(self, self._product, True)
+            return
         datapoint = self.device.datapoints.get_or_create(
             self._mapping.dp_id,
             TuyaBLEDataPointType.DT_BOOL,
@@ -161,12 +194,20 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
 
     async def async_unlock(self, **kwargs: object) -> None:
         """Unlock the device."""
+        if self._mapping.setter is not None:
+            await self._mapping.setter(self, self._product, False)
+            return
         datapoint = self.device.datapoints.get_or_create(
             self._mapping.dp_id,
             TuyaBLEDataPointType.DT_BOOL,
             True,
         )
         await datapoint.set_value(True)
+
+    async def async_open(self, **kwargs: object) -> None:
+        """Open (momentarily release) the device, when its descriptor can."""
+        if self._mapping.opener is not None:
+            await self._mapping.opener(self, self._product)
 
     def lock(self, **kwargs: object) -> None:
         """Lock the device."""

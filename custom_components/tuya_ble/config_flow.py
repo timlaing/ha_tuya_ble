@@ -39,10 +39,10 @@ from .config_flow_scan import (
 from .config_flow_state import (
     ProbeClaim,
     _consume_probe_result,
+    build_entry_data,
     claimed_elsewhere,
     probe_task_result,
     reserve_device,
-    sec_key_data,
     verified_login_data,
 )
 from .config_flow_state import advertisement_hex as _advertisement_hex
@@ -53,24 +53,11 @@ from .config_flow_unverified import (
     unverified_error,
 )
 from .const import (
-    CONF_ADVERTISED_UUID,
-    CONF_CATEGORY,
-    CONF_CLOUD_INFO,
-    CONF_CLOUD_UUID,
     CONF_DEVICE_ID,
-    CONF_DEVICE_NAME,
     CONF_ENDPOINT,
-    CONF_FUNCTIONS,
-    CONF_LOCAL_KEY,
-    CONF_LOCAL_SCHEMA,
-    CONF_PRODUCT_ID,
-    CONF_PRODUCT_MODEL,
-    CONF_PRODUCT_NAME,
-    CONF_STATUS_RANGE,
     CONF_TERMINAL_ID,
     CONF_TOKEN_INFO,
     CONF_USER_CODE,
-    CONF_UUID,
     DOMAIN,
     TUYA_RESPONSE_CODE,
     TUYA_RESPONSE_MSG,
@@ -380,25 +367,9 @@ class TuyaBLEConfigFlow(
         pairing_uuid: str | None,
     ) -> ConfigFlowResult:
         """Persist both original identities and the verified BLE pairing UUID."""
-        entry_data: dict[str, Any] = {
-            CONF_ADDRESS: discovery_info.address,
-            CONF_UUID: pairing_uuid or credentials.uuid,
-            CONF_CLOUD_UUID: credentials.uuid,
-            CONF_ADVERTISED_UUID: advertisement.uuid or None,
-            CONF_LOCAL_KEY: credentials.local_key,
-            CONF_DEVICE_ID: credentials.device_id,
-            CONF_CATEGORY: credentials.category,
-            CONF_PRODUCT_ID: credentials.product_id,
-            CONF_DEVICE_NAME: credentials.device_name,
-            CONF_PRODUCT_MODEL: credentials.product_model,
-            CONF_PRODUCT_NAME: credentials.product_name,
-            CONF_FUNCTIONS: credentials.functions,
-            CONF_STATUS_RANGE: credentials.status_range,
-            CONF_LOCAL_SCHEMA: credentials.local_schema,
-            CONF_CLOUD_INFO: credentials.cloud_info,
-        }
-        entry_data.update(verified_login_data(credentials))
-        entry_data.update(sec_key_data(credentials, advertisement.security_v2))
+        entry_data = build_entry_data(
+            discovery_info, advertisement, credentials, pairing_uuid
+        )
         entry_data.update(self._mobile_entry_updates())
         _LOGGER.debug(
             "%s: config entry created (category: %s, product_id: %s, device_name: %s)",

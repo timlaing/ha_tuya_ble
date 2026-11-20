@@ -74,6 +74,13 @@ class TuyaBLEProductInfo:
         return self.entities.dp_id_for(platform, translation_key)
 
     @property
+    def sensitive_dp_ids(self) -> frozenset[int]:
+        """Data points whose values carry credentials, kept out of logs and exports."""
+        if self.entities is None:
+            return frozenset()
+        return self.entities.sensitive_dp_ids
+
+    @property
     def fingerbot_mode_dp_id(self) -> int | None:
         """The mode dp_id, which is also what identifies a Fingerbot."""
         return self.dp_id_for("select", "fingerbot_mode")

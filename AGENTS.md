@@ -70,6 +70,8 @@ If a file falls below the threshold, add tests until it passes before committing
 | `tests/test_registry_init.py`                                              | off-event-loop registry initialisation, caching, concurrency, failure/retry                           |
 | `tests/test_parkside_batteries.py`                                         | PARKSIDE `dcb` battery descriptors: units, scaling, status order, read paths                          |
 | `tests/test_handlers.py`                                                   | YAML descriptor handler callables (`battery`, `measurement`, `raw`, `rssi`, `water_valve`, Fingerbot) |
+| `tests/test_lock_handlers.py`                                              | shared `lock.*` handlers via test-only fixture descriptors (passage, automatic lock, DP71 open)       |
+| `tests/test_lock_unlock_check.py`                                          | `ble_unlock_check` format, cloud capture, entry storage, diagnostics and log redaction                |
 | `tests/test_entity_binary_sensor.py`                                       | binary_sensor entity methods                                                                          |
 | `tests/test_entity_button.py`                                              | button entity methods                                                                                 |
 | `tests/test_entity_climate.py`                                             | climate entity methods                                                                                |
@@ -168,6 +170,7 @@ All public BLE symbols — `TuyaBLEDevice`, `TuyaBLEDataPoint`, `TuyaBLEDataPoin
 | `device_registry.py`                     | `EntityDescriptor`, YAML descriptor loading/validation, `get_registry`, `get_mapped_dp_ids` — the product registry                         |
 | `device_descriptors/`                    | **Source of truth** for product metadata: one `<category>_<product_id>.yaml` per product, plus `_category_*.yaml` defaults and `handlers/` |
 | `device_descriptors/handlers/fingerbot/` | Shared Fingerbot handlers (`in_program_mode`, `get/set_program`, repeat/maintenance helpers, etc.) in `mode.py`/`program.py`               |
+| `device_descriptors/handlers/lock/`      | Shared smart-lock handlers: `state.py` (lock `read`), `command.py` (lock `write`/`open`, lock button `write`)                              |
 | `diagnostics.py`                         | `async_get_config_entry_diagnostics` / `async_get_device_diagnostics`, redaction, cloud-schema refresh                                     |
 | `entity.py`                              | `TuyaBLEEntity` base class, `get_device_info`                                                                                              |
 | `coordinator.py`                         | `TuyaBLECoordinator` (DataUpdateCoordinator subclass)                                                                                      |
@@ -205,6 +208,7 @@ Do not add `tuya-iot-py-sdk` back. The integration migrated away from it in `e5c
 - `tuya_ble/` is a clean abstraction boundary — it knows nothing about cloud auth, only BLE encryption
 - Diivoo timers using the **Homgar app** (not Tuya Smart Life) won't appear in Tuya cloud — no local key extractable
 - `functions` / `status_range` on `TuyaBLEDeviceCredentials` carry the device specs from cloud, under the `CONF_FUNCTIONS` / `CONF_STATUS_RANGE` keys
+- `ble_unlock_check` on `TuyaBLEDeviceCredentials` is a lock credential read from the cloud device status, validated by `tuya_ble/lock_check.py`, persisted under `CONF_BLE_UNLOCK_CHECK` and read by the lock handlers through `device.device_manager.get_device_credentials`, excluded from `repr`, masked in `__str__` and never logged. Descriptors list the DPs carrying commands built from it in `sensitive_dp_ids`, which setup applies to `device.datapoints.sensitive_ids` (log redaction) and diagnostics withhold
 - `sec_key` on `TuyaBLEDeviceCredentials` is the cloud Security V2 key. It is persisted under `CONF_SEC_KEY` only when the FD50 advertisement announces Security V2, is excluded from `repr`, masked in `__str__`, redacted in diagnostics and never logged
 - Mobile login is only offered for eligible missing/unusable-key failures. Never persist or log the mobile password, username, SID, ecode or login tokens; do not reuse the standalone probe's session cache in the integration. Persist sanitized mobile metadata under `CONF_MOBILE_SNAPSHOT`; never persist a raw mobile response for later redaction.
 - `local_schema` on `TuyaBLEDeviceCredentials` carries the captured cloud schema (full local strategy, full status range with `report_type`, and `captured_at`), persisted under `CONF_LOCAL_SCHEMA` in the config entry's `data` by `config_flow.py` and exported by `diagnostics.py`. DP metadata only — never credentials

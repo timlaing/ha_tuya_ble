@@ -30,7 +30,9 @@ from .device_descriptors.handlers import resolve_handler
 _DEVICES_DIR = Path(device_descriptors.__file__).parent
 _SKIPPED_FILES = {"_schema.yaml"}
 _CATEGORY_PREFIX = "_category_"
-_HANDLER_ROLES = {"read", "write", "when", "pulse"}
+_HANDLER_ROLES = {"read", "write", "when", "pulse", "open"}
+# Roles that only make sense on one platform.
+_PLATFORM_HANDLER_ROLES = {"open": "lock"}
 _SINGLE_ENTITY_PLATFORMS = {"climate", "cover", "light"}
 _INIT_LOCK_KEY = f"{DOMAIN}_registry_init_lock"
 # Switch modes with an unambiguous running action, for hvac_action_from_switch.
@@ -92,12 +94,28 @@ class EntityDescriptor:
         if path is None:
             return None
         try:
-            return resolve_handler(path)
+            handler = resolve_handler(path)
         except (ImportError, AttributeError, TypeError, ValueError) as exc:
             raise DeviceRegistryError(
                 f"Failed to resolve {role} handler {path!r} for "
                 f"{self.platform} entity dp_id {self.dp_id}"
             ) from exc
+        missing = [
+            key
+            for key in getattr(handler, "required_dp_ids", ())
+            if not _is_dp_id(self.extra.get(key))
+        ]
+        if missing:
+            raise DeviceRegistryError(
+                f"{role} handler {path!r} for {self.platform} entity dp_id "
+                f"{self.dp_id} needs data point ids for {missing}"
+            )
+        return handler
+
+
+def _is_dp_id(value: Any) -> bool:
+    """Return whether *value* is a usable data point id."""
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
 @dataclass
@@ -111,6 +129,7 @@ class DeviceEntities:
     manufacturer: str | None = None
     entities: dict[str, list[EntityDescriptor]] = field(default_factory=dict)
     category_defaults: dict[str, list[EntityDescriptor]] = field(default_factory=dict)
+    sensitive_dp_ids: frozenset[int] = frozenset()
 
     def get(self, platform: str) -> list[EntityDescriptor]:
         """Return descriptors for a platform, falling back to category defaults."""
@@ -131,16 +150,8 @@ class DeviceEntities:
         return None
 
 
-def _parse_entity(platform: str, raw: dict[str, Any]) -> EntityDescriptor:
-    """Parse a raw entity mapping dict into an EntityDescriptor."""
-    if "dp_id" not in raw and platform not in _SINGLE_ENTITY_PLATFORMS:
-        raise DeviceRegistryError(f"Entity in {platform!r} missing 'dp_id': {raw}")
-    if "kind" in raw:
-        raise DeviceRegistryError(
-            f"Entity {raw.get('dp_id', '?')} uses the removed 'kind' field. It named a "
-            "mapping class whose defaults were always overridden, so it had no effect. "
-            "Describe the entity with its own fields instead."
-        )
+def _parse_handlers(platform: str, raw: dict[str, Any]) -> dict[str, Any]:
+    """Return an entity's ``handlers`` mapping after validating its roles."""
     handlers_raw = raw.get("handlers", {})
     if not isinstance(handlers_raw, dict):
         raise DeviceRegistryError(
@@ -152,6 +163,30 @@ def _parse_entity(platform: str, raw: dict[str, Any]) -> EntityDescriptor:
             f"Entity {raw.get('dp_id', '?')} has unknown handler roles: "
             f"{sorted(unknown_roles)} (expected one of {sorted(_HANDLER_ROLES)})"
         )
+    misplaced_roles = sorted(
+        role
+        for role in handlers_raw
+        if _PLATFORM_HANDLER_ROLES.get(role, platform) != platform
+    )
+    if misplaced_roles:
+        raise DeviceRegistryError(
+            f"Entity {raw.get('dp_id', '?')} on {platform!r} cannot use handler "
+            f"roles {misplaced_roles}"
+        )
+    return handlers_raw
+
+
+def _parse_entity(platform: str, raw: dict[str, Any]) -> EntityDescriptor:
+    """Parse a raw entity mapping dict into an EntityDescriptor."""
+    if "dp_id" not in raw and platform not in _SINGLE_ENTITY_PLATFORMS:
+        raise DeviceRegistryError(f"Entity in {platform!r} missing 'dp_id': {raw}")
+    if "kind" in raw:
+        raise DeviceRegistryError(
+            f"Entity {raw.get('dp_id', '?')} uses the removed 'kind' field. It named a "
+            "mapping class whose defaults were always overridden, so it had no effect. "
+            "Describe the entity with its own fields instead."
+        )
+    handlers_raw = _parse_handlers(platform, raw)
     legacy_keys_raw = raw.get("legacy_keys")
     if legacy_keys_raw is not None:
         if isinstance(legacy_keys_raw, str):
@@ -439,6 +474,7 @@ class DeviceRegistry:
                 for platform, es in entities.items()
             },
             category_defaults=self._category_defaults.get(category, {}),
+            sensitive_dp_ids=frozenset(data.get("sensitive_dp_ids") or ()),
         )
         self._products[(category, product_id)] = device_entities
 
@@ -473,6 +509,15 @@ def _validate_descriptor(data: dict[str, Any]) -> None:
     if not isinstance(data.get("category"), str):
         raise DeviceRegistryError(
             f"Device descriptor for {data.get('product_id')!r} missing 'category'"
+        )
+    sensitive_dp_ids = data.get("sensitive_dp_ids")
+    if sensitive_dp_ids is not None and (
+        not isinstance(sensitive_dp_ids, list)
+        or not all(_is_dp_id(dp_id) for dp_id in sensitive_dp_ids)
+    ):
+        raise DeviceRegistryError(
+            f"Device descriptor for {data.get('product_id')!r} "
+            "'sensitive_dp_ids' must be a list of data point ids"
         )
     for name_field in ("model_name", "device_name", "manufacturer"):
         if data.get(name_field) is not None and not isinstance(

@@ -13,6 +13,23 @@ from typing import cast
 _HANDLER_PREFIX = "custom_components.tuya_ble.device_descriptors.handlers"
 
 
+def requires_dp_ids[HandlerT: Callable[..., object]](
+    *keys: str,
+) -> Callable[[HandlerT], HandlerT]:
+    """Declare the auxiliary ``*_dp_id`` descriptor fields a handler reads.
+
+    The registry rejects a descriptor that references the handler without
+    giving each of them a data point id, so a handler never has to cope with a
+    missing one at runtime.
+    """
+
+    def decorate(handler: HandlerT) -> HandlerT:
+        setattr(handler, "required_dp_ids", keys)  # noqa: B010
+        return handler
+
+    return decorate
+
+
 def resolve_handler(path: str) -> Callable[..., object]:
     """Resolve a dotted handler path to a callable.
 
