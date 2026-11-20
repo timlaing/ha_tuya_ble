@@ -90,21 +90,40 @@ def _connection_schema(values: dict[str, Any]) -> probatio.Schema:
     })
 
 
+def _whole_seconds(value: Any) -> int | None:
+    """Return *value* as whole seconds, or None when it is not integral.
+
+    The number box checks bounds but not its step, so a typed ``0.5`` reaches
+    here; truncating it would silently turn the interval into ``0``.
+    """
+    try:
+        seconds = float(value)
+    except TypeError, ValueError:
+        return None
+    return int(seconds) if seconds.is_integer() else None
+
+
 def _validate_connection(
     user_input: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, str]]:
     """Return the normalised connection policy and any field errors."""
     errors: dict[str, str] = {}
-    idle = int(user_input[CONF_IDLE_DISCONNECT_DELAY])
-    poll = int(user_input[CONF_STATUS_POLL_INTERVAL])
-    if not IDLE_DISCONNECT_DELAY_MIN <= idle <= IDLE_DISCONNECT_DELAY_MAX:
+    idle = _whole_seconds(user_input[CONF_IDLE_DISCONNECT_DELAY])
+    poll = _whole_seconds(user_input[CONF_STATUS_POLL_INTERVAL])
+    if (
+        idle is None
+        or not IDLE_DISCONNECT_DELAY_MIN <= idle <= IDLE_DISCONNECT_DELAY_MAX
+    ):
         errors[CONF_IDLE_DISCONNECT_DELAY] = "invalid_idle_disconnect_delay"
-    if poll and not STATUS_POLL_INTERVAL_MIN <= poll <= STATUS_POLL_INTERVAL_MAX:
+    if poll is None or (
+        poll and not STATUS_POLL_INTERVAL_MIN <= poll <= STATUS_POLL_INTERVAL_MAX
+    ):
         errors[CONF_STATUS_POLL_INTERVAL] = "invalid_status_poll_interval"
     return {
         CONF_KEEP_CONNECTION: bool(user_input[CONF_KEEP_CONNECTION]),
-        CONF_IDLE_DISCONNECT_DELAY: idle,
-        CONF_STATUS_POLL_INTERVAL: poll,
+        # Only used when *errors* is empty, so a rejected value never persists.
+        CONF_IDLE_DISCONNECT_DELAY: idle if idle is not None else 0,
+        CONF_STATUS_POLL_INTERVAL: poll if poll is not None else 0,
     }, errors
 
 

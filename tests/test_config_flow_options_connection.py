@@ -133,6 +133,38 @@ async def test_out_of_range_values_are_rejected(
 
 
 @pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        (CONF_IDLE_DISCONNECT_DELAY, 30.5, "invalid_idle_disconnect_delay"),
+        (CONF_STATUS_POLL_INTERVAL, 0.5, "invalid_status_poll_interval"),
+    ],
+)
+async def test_fractional_seconds_are_rejected(
+    hass: HomeAssistant, field: str, value: float, error: str
+) -> None:
+    """A fractional interval is rejected by validation, not truncated.
+
+    The number selector checks the bounds but not the step, so ``0.5``
+    reaches the validator, where int() would silently turn it into ``0``
+    and disable the interval it was meant to set.
+    """
+    flow = options_flow(hass)
+    result = await submit(
+        flow,
+        {
+            CONF_KEEP_CONNECTION: False,
+            CONF_IDLE_DISCONNECT_DELAY: 30,
+            CONF_STATUS_POLL_INTERVAL: 900,
+            field: value,
+        },
+    )
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"] == {field: error}
+    assert result["step_id"] == "connection"
+    assert flow.config_entry.options == {CONF_USER_CODE: "user1"}
+
+
+@pytest.mark.parametrize(
     ("idle", "poll"), [(5, 60), (3600, 86400), (30, 0)], ids=["min", "max", "off"]
 )
 async def test_boundary_values_are_accepted(
