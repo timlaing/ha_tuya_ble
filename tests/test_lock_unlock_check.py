@@ -42,7 +42,12 @@ from custom_components.tuya_ble.tuya_ble import (
     is_valid_ble_unlock_check,
 )
 from custom_components.tuya_ble.tuya_ble.const import TuyaBLECode
-from tests.conftest import FakeBLEManager, FakeDatapointsOwner, make_credentials
+from tests.conftest import (
+    FakeBLEManager,
+    FakeDatapointsOwner,
+    make_credentials,
+    verified_by,
+)
 from tests.protocol_harness import ProtocolHarness, encrypt_payload, frame_packet0
 from tests.test_cloud import make_device as make_cloud_device
 from tests.test_config_flow import FakeManager, build_flow
@@ -165,7 +170,7 @@ async def test_entry_stores_the_check(hass: HomeAssistant, check: str | None) ->
     )
     with (
         patch.object(flow, "_async_scan_device", return_value=info),
-        patch(DETECT, new=AsyncMock(return_value=ConnectionProfile.V4_20)),
+        patch(DETECT, new=AsyncMock(side_effect=verified_by(ConnectionProfile.V4_20))),
     ):
         await flow.async_step_discovered_device({})
         assert flow._probe_task is not None
