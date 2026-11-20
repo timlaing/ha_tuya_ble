@@ -79,6 +79,21 @@ class _FakeDevice:
     product_id: str
 
 
+class _FakeCoordinator:
+    """Minimal coordinator stub for tests."""
+
+    connected = True
+    last_update_success = True
+
+
+class _FakeProduct:
+    """Minimal product info stub for tests."""
+
+    def __init__(self, product_id: str) -> None:
+        self.product_id = product_id
+        self.category = "test"
+
+
 def _make_entity(
     hass: HomeAssistant,
     mapping: lawn_mower.TuyaBLELawnMowerMapping | None = None,
@@ -143,16 +158,26 @@ def test_unknown_device_has_no_mapping() -> None:
     assert lawn_mower.get_mapping_by_device(_FakeDevice("gcj", "unknown")) == []  # type: ignore[arg-type]
 
 
-def test_build_minimal_descriptor_offers_no_features() -> None:
+def test_build_minimal_descriptor_offers_no_features(hass: HomeAssistant) -> None:
     """A descriptor with no commands builds a read-only mower."""
     built = lawn_mower._build_lawn_mower_mapping(  # pylint: disable=protected-access
         EntityDescriptor(platform="lawn_mower", dp_id=7, translation_key="m")
     )
-    assert not built.commands
-    assert not built.statuses
-    assert built.command_dp_id is None
-    assert built.dp_type is None
-    assert lawn_mower._supported_features(built) == LawnMowerEntityFeature(0)  # pylint: disable=protected-access
+    device, coordinator, _ = build_context(hass)
+    product = get_product_info_by_ids("test", "test")
+    entity = TuyaBLELawnMower(
+        hass=hass,
+        coordinator=coordinator,
+        device=device,
+        product=product,
+        mower_mapping=built,
+    )
+    # pylint: disable=protected-access
+    assert not entity._mapping.commands
+    assert not entity._mapping.statuses
+    assert entity._mapping.command_dp_id is None
+    assert entity._mapping.dp_type is None
+    assert entity.supported_features == LawnMowerEntityFeature(0)
 
 
 def test_build_descriptor_dp_type() -> None:
@@ -195,10 +220,10 @@ def test_build_descriptor_rejects_invalid_fields(
         lawn_mower._build_lawn_mower_mapping(descriptor)  # pylint: disable=protected-access
 
 
-def test_parkside_supported_features() -> None:
+def test_parkside_supported_features(hass: HomeAssistant) -> None:
     """Every declared command is offered, and only those."""
-    entity_features = lawn_mower._supported_features(_parkside_mapping())  # pylint: disable=protected-access
-    assert entity_features == (
+    entity, _ = _make_entity(hass)
+    assert entity.supported_features == (
         LawnMowerEntityFeature.START_MOWING
         | LawnMowerEntityFeature.PAUSE
         | LawnMowerEntityFeature.DOCK
@@ -206,17 +231,25 @@ def test_parkside_supported_features() -> None:
     )
 
 
-def test_features_follow_declared_commands() -> None:
+def test_features_follow_declared_commands(hass: HomeAssistant) -> None:
     """A descriptor declaring only start and dock offers only those."""
-    built = lawn_mower._build_lawn_mower_mapping(  # pylint: disable=protected-access
-        _descriptor(
-            commands=["Go", "Home"],
-            command_dp_id=2,
-            start_command="Go",
-            dock_commands=["Home"],
-        )
+    descriptor = _descriptor(
+        commands=["Go", "Home"],
+        command_dp_id=2,
+        start_command="Go",
+        dock_commands=["Home"],
     )
-    assert lawn_mower._supported_features(built) == (  # pylint: disable=protected-access
+    mapping = lawn_mower._build_lawn_mower_mapping(descriptor)  # pylint: disable=protected-access
+    device, coordinator, _ = build_context(hass)
+    product = get_product_info_by_ids("gcj", "test")
+    entity = TuyaBLELawnMower(
+        hass=hass,
+        coordinator=coordinator,
+        device=device,
+        product=product,
+        mower_mapping=mapping,
+    )
+    assert entity.supported_features == (
         LawnMowerEntityFeature.START_MOWING | LawnMowerEntityFeature.DOCK
     )
 
