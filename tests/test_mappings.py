@@ -22,6 +22,7 @@ from custom_components.tuya_ble import (
     button,
     climate,
     cover,
+    lawn_mower,
     light,
     lock,
     number,
@@ -53,6 +54,7 @@ PLATFORMS = {
     "binary_sensor": binary_sensor,
     "button": button,
     "climate": climate,
+    "lawn_mower": lawn_mower,
     "number": number,
     "select": select,
     "sensor": sensor,
@@ -603,6 +605,7 @@ def test_plain_product_has_no_fingerbot_dp_ids() -> None:
         ("light", light._build_light_mapping),
         ("climate", climate._build_climate_mapping),
         ("lock", lock._build_lock_mapping),
+        ("lawn_mower", lawn_mower._build_lawn_mower_mapping),
     ],
 )
 def test_build_mapping_entity_name(platform_name: str, builder: Any) -> None:
@@ -634,6 +637,7 @@ def test_build_mapping_entity_name(platform_name: str, builder: Any) -> None:
         ("light", light._build_light_mapping),
         ("climate", climate._build_climate_mapping),
         ("lock", lock._build_lock_mapping),
+        ("lawn_mower", lawn_mower._build_lawn_mower_mapping),
     ],
 )
 def test_build_mapping_entity_name_none(platform_name: str, builder: Any) -> None:
@@ -662,6 +666,7 @@ def test_build_mapping_entity_name_none(platform_name: str, builder: Any) -> Non
         ("valve", "ggq"),
         ("vacuum", "ccjqr"),
         ("climate", "wk"),
+        ("lawn_mower", "gcj"),
     ],
 )
 def test_get_mapping_by_device_no_default_mapping(name: str, category: str) -> None:

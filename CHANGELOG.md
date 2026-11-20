@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning].
 - **SS302 Temperature Humidity Sensor (`wsdcg` / `6lbesej0`)** (#173): experimental temperature, humidity and battery sensors. Thanks to @Sathen and @CloCkWeRX.
 - **TH05 / TH05F Temperature Humidity Sensors (`wsdcg` / `vyfoip9h`, `1jvidcsf`)** (#173): experimental temperature, humidity and battery sensors, plus a °C/°F select and temperature and humidity calibration, all disabled by default. Thanks to @CloCkWeRX.
 - **SGS01B-JR temperature unit (`zwjcy` / `gpkyrocn`)** (#173): a disabled-by-default °C/°F select on DP 9, which the soil temperature follows. Thanks to @pluusla for the device schema.
+- **Robot lawn mowers** (#177): a new `lawn_mower` platform, driven by the device descriptors, that shows the mower's activity and offers only the start, pause, stop and dock commands the mower supports.
+- **PARKSIDE Robot Mower PAMRC 250 A1 (BT) City (`gcj` / `9hdajpiw`)** (#177), experimental: start, pause, stop and dock, battery, activity, warning, problem and cover sensors, error and work logs, firmware version, and rain delay, rain mode, hedgehog protection, backward blade stop and running time settings. Starting a paused mower resumes the job. Ported from ha-tuya-ble/ha_tuya_ble#291; thanks to @jsimonetti for the original work.
 
 ### Fixed
 

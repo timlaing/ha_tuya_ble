@@ -185,3 +185,7 @@ reference, including every category this integration does not use, is in
 ## Generators (category_id `qt`)
 
 - **MaXpeedingRods MXR4000GT** (product_id `jlblyn8z`): engine start/stop, eco mode, output voltage, frequency and power, fuel level, current and total run time.
+
+## Robot mowers (category_id `gcj`)
+
+- **PARKSIDE Robot Mower PAMRC 250 A1 (BT) City** (product_id `9hdajpiw`), experimental: lawn mower entity (start, pause, stop and dock, from the machine status on DP 101 and the command DP 115), battery, activity, warning, problem and (disabled by default) cover sensors, error and work logs, firmware version, rain delay switch and time, rain mode, hedgehog protection, backward blade stop and running time. Start resumes with ContinueWork while the mower is paused, because the mower rejects StartMowing in that state; dock cancels the job before returning. Ported from ha-tuya-ble/ha_tuya_ble#291 and verified by its contributor on one mower; not yet tested with this integration. The schedule (DP 110/140) and zone (DP 113) data points, the schedule/zone clear and refresh triggers, and the generic vacuum DPs 2 and 3 are not exposed: their layouts are unverified or superseded by DP 115. Edge mowing (command EDGE) is not exposed yet.

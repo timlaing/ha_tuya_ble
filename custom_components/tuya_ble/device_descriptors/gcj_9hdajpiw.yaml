@@ -1,0 +1,192 @@
+# Parkside robot mower PAMRC 250 A1 (BT) City. Ported from
+# ha-tuya-ble/ha_tuya_ble#291 (@jsimonetti). Experimental: verified by the
+# contributor on one mower; the schedule (DP 110/140) and zone (DP 113) data
+# points are not mapped because their layouts are unverified, and edge mowing
+# (command EDGE) has no entity yet: button press values are boolean only.
+category: gcj
+product_id: 9hdajpiw
+device_name: PARKSIDE Robot Mower PAMRC 250 A1 (BT) City
+model_name: PAMRC 250 A1 (BT) City
+manufacturer: PARKSIDE
+entities:
+  lawn_mower:
+    - dp_id: 101 # MachineStatus
+      translation_key: lawn_mower
+      # Status enum in the order declared by the product model. The
+      # misspelling UPDATA is the manufacturer's own.
+      values:
+        - STANDBY
+        - CHARGING
+        - MOWING
+        - PAUSED
+        - PARK
+        - UPDATA
+        - FIXED_MOWING
+        - ERROR
+        - SELF_TEST
+        - CHARGING_WITH_TASK_SUSPEND
+        - EMERGENCY
+        - LOCKED
+        - EDGE
+      activities:
+        STANDBY: idle
+        CHARGING: docked
+        MOWING: mowing
+        PAUSED: paused
+        PARK: returning
+        UPDATA: idle
+        FIXED_MOWING: mowing
+        ERROR: error
+        SELF_TEST: idle
+        CHARGING_WITH_TASK_SUSPEND: docked
+        EMERGENCY: error
+        LOCKED: idle
+        EDGE: mowing
+      command_dp_id: 115 # MachineControlCmd
+      commands:
+        - PauseWork
+        - CancelWork
+        - ContinueWork
+        - StartMowing
+        - StartFixedMowing
+        - StartReturnStation
+        - EDGE
+      start_command: StartMowing
+      # StartMowing is rejected while paused; the mower resumes on ContinueWork.
+      resume_command: ContinueWork
+      pause_command: PauseWork
+      stop_command: CancelWork
+      # The return command is only accepted from standby, so cancel first.
+      dock_commands:
+        - CancelWork
+        - StartReturnStation
+  binary_sensor:
+    - dp_id: 102 # MachineError bitmap
+      translation_key: machine_problem
+      device_class: problem
+      entity_category: diagnostic
+    - dp_id: 116 # MachineCover
+      translation_key: machine_cover
+      device_class: opening
+      entity_category: diagnostic
+      enabled_by_default: false
+  sensor:
+    - dp_id: 13
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+    - dp_id: 101 # MachineStatus
+      translation_key: activity
+      device_class: enum
+      options:
+        - standby
+        - charging
+        - mowing
+        - paused
+        - park
+        - updata
+        - fixed_mowing
+        - error
+        - self_test
+        - charging_with_task_suspend
+        - emergency
+        - locked
+        - edge
+    - dp_id: 103 # MachineWarning
+      translation_key: machine_warning
+      device_class: enum
+      entity_category: diagnostic
+      # Misspellings such as fixed_mowing_interupt, timeset_unlegal and
+      # chargr_current_low are the manufacturer's own.
+      options:
+        - mower_lean
+        - mower_steep
+        - rain_park
+        - battery_not_enough
+        - no_loop_signal
+        - close_topcover
+        - mower_in_station
+        - mower_out_station
+        - place_inside
+        - fixed_end
+        - charging_disconnect
+        - charging_pause
+        - work_interrupt
+        - fixed_mowing_interupt
+        - turn_on_button
+        - press_start_key
+        - timeset_30min
+        - timeset_unlegal
+        - chargr_current_low
+        - rain_out_station
+        - updata_fail
+        - continue_tooltip
+        - mower_emergency
+        - mower_ui_locked
+        - discharge_error
+        - charge_temp_error
+        - hedgehog
+        - ntc
+    - dp_id: 111 # MachineErrorLog
+      translation_key: error_log
+      icon: mdi:alert-box-outline
+      entity_category: diagnostic
+      handlers:
+        read: parkside_mower.error_log
+    - dp_id: 112 # MachineWorkLog
+      translation_key: work_log
+      icon: mdi:history
+      entity_category: diagnostic
+      handlers:
+        read: parkside_mower.work_log
+    - dp_id: 134 # VersionEeportMCU
+      translation_key: firmware_version
+      icon: mdi:chip
+      entity_category: diagnostic
+  switch:
+    - dp_id: 139 # RainTimedelay, the switch in its first byte
+      translation_key: rain_delay
+      icon: mdi:weather-rainy
+      entity_category: config
+      handlers:
+        read: parkside_mower.get_rain_delay
+        write: parkside_mower.set_rain_delay
+        when: parkside_mower.rain_delay_reported
+    - dp_id: 104 # MachineRainMode
+      translation_key: rain_mode
+      icon: mdi:weather-pouring
+      entity_category: config
+    - dp_id: 118 # HedgehogPROT
+      translation_key: hedgehog_protection
+      icon: mdi:paw
+      entity_category: config
+    - dp_id: 121 # backwardbladestop
+      translation_key: backward_blade_stop
+      icon: mdi:saw-blade
+      entity_category: config
+  number:
+    - dp_id: 139 # RainTimedelay, the delay in minutes in its second byte
+      translation_key: rain_delay_time
+      icon: mdi:weather-rainy
+      device_class: duration
+      unit: min
+      min_value: 10
+      max_value: 120
+      step: 5
+      entity_category: config
+      handlers:
+        read: parkside_mower.get_rain_delay_time
+        write: parkside_mower.set_rain_delay_time
+        when: parkside_mower.rain_delay_reported
+    - dp_id: 105 # MachineWorktime
+      translation_key: work_time
+      icon: mdi:timer
+      device_class: duration
+      unit: h
+      # The product model declares 1-99 but documents 1-24 as usable.
+      min_value: 1
+      max_value: 24
+      step: 1
+      entity_category: config

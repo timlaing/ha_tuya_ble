@@ -344,6 +344,10 @@ class TuyaBLESensor(TuyaBLERestoreEntity, SensorEntity):
         """Set the native value of the sensor."""
         self._attr_native_value = value
 
+    def set_extra_state_attributes(self, attributes: dict[str, Any]) -> None:
+        """Set the extra state attributes a read handler decoded."""
+        self._attr_extra_state_attributes = attributes
+
 
 async def async_setup_entry(  # noqa: S7503
     hass: HomeAssistant,
