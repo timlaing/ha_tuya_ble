@@ -39,6 +39,7 @@ class TuyaBLECoverMapping:
     position_dp_id: int = 0
     tilt_dp_id: int = 0
     state_dp_type: TuyaBLEDataPointType = TuyaBLEDataPointType.DT_VALUE
+    inverted: bool = False
 
 
 @dataclass
@@ -74,6 +75,7 @@ def _build_cover_mapping(desc: EntityDescriptor) -> TuyaBLECoverMapping:
         "position_set_dp_id",
         "position_dp_id",
         "tilt_dp_id",
+        "inverted",
     ):
         if field_name in extra:
             kwargs[field_name] = extra[field_name]
@@ -178,6 +180,16 @@ class TuyaBLECover(TuyaBLEEntity, CoverEntity):
             return (False, True)
         return (False, False)
 
+    def _convert_state(self, state: int) -> int:
+        """Swap command/report polarity together, leaving stop/unknown unchanged."""
+        if self._mapping.inverted and state in (0, 2):
+            return 2 - state
+        return state
+
+    def _convert_position(self, position: int) -> int:
+        """Convert positions in either direction using the same convention."""
+        return position if self._mapping.inverted else 100 - position
+
     def _update_state_from_datapoints(self) -> None:
         """Read current datapoint values and update entity attributes."""
         if self._mapping.state_dp_id != 0:
@@ -187,7 +199,7 @@ class TuyaBLECover(TuyaBLEEntity, CoverEntity):
                 or datapoint.report_revision != self._control_report_revision
             ):
                 self._attr_is_opening, self._attr_is_closing = self._state_from_value(
-                    int(datapoint.value)
+                    self._convert_state(int(datapoint.value))
                 )
 
         if self._mapping.position_dp_id != 0:
@@ -205,7 +217,7 @@ class TuyaBLECover(TuyaBLEEntity, CoverEntity):
         datapoint = self.device.datapoints[self._mapping.position_dp_id]
         if datapoint is None:
             return
-        self._attr_current_cover_position = 100 - int(datapoint.value)
+        self._attr_current_cover_position = self._convert_position(int(datapoint.value))
         self._attr_is_closed = self._attr_current_cover_position == 0
         if self._attr_is_closed:
             self._attr_is_closing = False
@@ -235,7 +247,7 @@ class TuyaBLECover(TuyaBLEEntity, CoverEntity):
 
     async def async_set_cover_position(self, **kwargs: Any) -> None:
         """Set cover position."""
-        position = 100 - kwargs[ATTR_POSITION]
+        position = self._convert_position(kwargs[ATTR_POSITION])
         if self._mapping.position_set_dp_id != 0:
             datapoint = self.device.datapoints.get_or_create(
                 self._mapping.position_set_dp_id,
@@ -288,7 +300,7 @@ class TuyaBLECover(TuyaBLEEntity, CoverEntity):
                 self._control_report_revision = datapoint.report_revision
                 self._control_command_pending = True
                 try:
-                    await datapoint.set_value(state)
+                    await datapoint.set_value(self._convert_state(state))
                 finally:
                     self._control_command_pending = False
                 if datapoint.report_revision != self._control_report_revision:

@@ -1,0 +1,22 @@
+# Mapping from ha-tuya-ble/ha_tuya_ble#126 by @CloCkWeRX.
+# Experimental: no explicit hardware test accompanies the source PR.
+# Work state DP7 and reset DP102 omitted pending verified types/enum order.
+category: cl
+product_id: v3fzfd2y
+device_name: AOK AM25 Roller Blinds Motor
+model_name: AM25
+entities:
+  cover:
+    - translation_key: ble_blind_controller
+      legacy_keys: [ble_cover]
+      name: Blind
+      state_dp_id: 1
+      position_set_dp_id: 2
+      position_dp_id: 3
+  sensor:
+    - dp_id: 13
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
