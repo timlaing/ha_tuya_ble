@@ -206,13 +206,14 @@ def _command(member: bytes, code: bytes) -> bytes:
 async def test_passage_lock_state_follows_passage_and_bolt(
     hass: HomeAssistant,
 ) -> None:
-    """Unknown until reported, then unlocked while passage or the bolt is on."""
+    """Unknown until reported, then unlocked while either report is on."""
     entity, device = _lock(hass, "testpass")
     assert entity.is_locked is None
     add_dp(device, 33, TuyaBLEDataPointType.DT_BOOL, True)
     assert entity.is_locked is False
     add_dp(device, 33, TuyaBLEDataPointType.DT_BOOL, False)
-    assert entity.is_locked is True
+    # The bolt has not reported, so a closed passage is not enough to lock.
+    assert entity.is_locked is None
     add_dp(device, 47, TuyaBLEDataPointType.DT_BOOL, True)
     assert entity.is_locked is False
     add_dp(device, 47, TuyaBLEDataPointType.DT_BOOL, False)
@@ -221,10 +222,11 @@ async def test_passage_lock_state_follows_passage_and_bolt(
 
 @pytest.mark.usefixtures("registry")
 async def test_passage_lock_bolt_report_alone(hass: HomeAssistant) -> None:
-    """Without a passage report the bolt report alone decides."""
+    """Without a passage report the bolt report alone decides, but not alone."""
     entity, device = _lock(hass, "testpass")
     add_dp(device, 47, TuyaBLEDataPointType.DT_BOOL, False)
-    assert entity.is_locked is True
+    # The bolt closed but passage has never reported: state stays unknown.
+    assert entity.is_locked is None
     add_dp(device, 47, TuyaBLEDataPointType.DT_BOOL, True)
     assert entity.is_locked is False
 
@@ -237,6 +239,10 @@ async def test_lock_state_ignores_unconfirmed_writes(hass: HomeAssistant) -> Non
     assert _value(passage_device, 33) is True
     assert passage.is_locked is None
     add_dp(passage_device, 47, TuyaBLEDataPointType.DT_BOOL, False)
+    # The unlock write was never confirmed, so passage is still unreported
+    # and one negative report cannot call the lock closed.
+    assert passage.is_locked is None
+    add_dp(passage_device, 33, TuyaBLEDataPointType.DT_BOOL, False)
     assert passage.is_locked is True
 
     automatic, automatic_device = _lock(hass, "testauto")

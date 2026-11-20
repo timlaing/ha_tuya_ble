@@ -41,10 +41,13 @@ def passage_or_bolt(lock: TuyaBLELock, _product: TuyaBLEProductInfo) -> bool | N
 
     The bolt report is only sent when it changes, while passage mode is
     re-reported on every connection, so either alone is enough to know the
-    lock is open (ha-tuya-ble/ha_tuya_ble#327).
+    lock is open (ha-tuya-ble/ha_tuya_ble#327). One negative report is not
+    enough to call it locked: the unreported value could be open.
     """
     passage = _reported(lock, lock.descriptor_dp_id("passage_dp_id"))
     bolt = _reported(lock, lock.dp_id)
-    if passage is None and bolt is None:
-        return None
-    return not (passage or bolt)
+    if passage is True or bolt is True:
+        return False
+    if passage is False and bolt is False:
+        return True
+    return None
