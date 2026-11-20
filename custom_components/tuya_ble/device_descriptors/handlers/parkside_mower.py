@@ -115,7 +115,10 @@ async def set_rain_delay(
         payload = dp.value
         yield datapoint, bytes([int(value)]) + payload[1:]
 
-    async with datapoint._owner.apply_with_rollback(_updates()):  # pylint: disable=protected-access
+    updates = list(_updates())
+    if not updates:
+        return
+    async with datapoint._owner.apply_with_rollback(updates):  # pylint: disable=protected-access
         await datapoint._owner.update_from_user(dp_id)  # pylint: disable=protected-access
 
 
@@ -150,7 +153,10 @@ async def set_rain_delay_time(
         minutes = max(0, min(int(value), 0xFF))
         yield datapoint, payload[:1] + bytes([minutes]) + payload[2:]
 
-    async with datapoint._owner.apply_with_rollback(_updates()):  # pylint: disable=protected-access
+    updates = list(_updates())
+    if not updates:
+        return
+    async with datapoint._owner.apply_with_rollback(updates):  # pylint: disable=protected-access
         await datapoint._owner.update_from_user(dp_id)  # pylint: disable=protected-access
 
 
