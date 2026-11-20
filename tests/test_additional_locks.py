@@ -373,6 +373,9 @@ async def test_lock_setup_requires_report_when_not_forced(
     add_entities.reset_mock()
     await lock.async_setup_entry(hass, entry, add_entities)
     (entity,) = add_entities.call_args.args[0]
+    # The bolt alone cannot call the lock closed; passage still unreported.
+    assert entity.is_locked is None
+    add_dp(device, 33, TuyaBLEDataPointType.DT_BOOL, False)
     assert entity.is_locked is True
 
 
