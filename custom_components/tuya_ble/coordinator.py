@@ -44,12 +44,16 @@ class TuyaBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._status_task: asyncio.Task[None] | None = None
         self._dp_classification: tuple[bool, frozenset[int]] | None = None
         self._reported_unmapped: dict[int, tuple[str, bytes]] = {}
+        # Reports are visible only during their synchronous listener dispatch.
+        self.last_updates: tuple[TuyaBLEDataPoint, ...] = ()
+        self.report_generation = 0
         device.register_connected_callback(self._async_handle_connect)
         device.register_callback(self._async_handle_update)
         device.register_disconnected_callback(self._async_handle_disconnect)
 
     async def async_shutdown(self) -> None:
         """Cancel any pending disconnect timer or status request on teardown."""
+        self.last_updates = ()
         if self._unsub_disconnect is not None:
             self._unsub_disconnect()
             self._unsub_disconnect = None
@@ -113,7 +117,11 @@ class TuyaBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _async_handle_update(self, updates: list[TuyaBLEDataPoint]) -> None:
         """Broadcast coordinator listeners and fire fingerbot button events."""
         self._async_handle_connect()
-        self.async_set_updated_data({})
+        self.last_updates = tuple(updates)
+        try:
+            self.async_set_updated_data({})
+        finally:
+            self.last_updates = ()
         _LOGGER.debug(
             "%s: Received update with %d data point(s): %s",
             self.device.address,
@@ -213,6 +221,9 @@ class TuyaBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
     @callback
     def _async_handle_disconnect(self) -> None:
         """Schedule a delayed transition to disconnected state."""
+        # Availability is delayed, but event baselines belong to the BLE session.
+        self.report_generation += 1
+        self.last_updates = ()
         if self._unsub_disconnect is None:
             delay: float = SET_DISCONNECTED_DELAY
             _LOGGER.debug(

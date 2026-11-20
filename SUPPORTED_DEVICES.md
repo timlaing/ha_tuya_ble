@@ -31,6 +31,27 @@ Programming (series of actions) is implemented for Fingerbot Plus. Exposed entit
 - CO2 Detector (product_id `59s19z5m`): bitmap alarm switches.
 - **XZ-JCO01 CO2 Detector** (product_id `wmb2xzj6`) — experimental: the `59s19z5m` layout, which the reporter of ha-tuya-ble/ha_tuya_ble#317 uses unchanged. No cloud schema has been captured.
 
+## Wireless buttons (category_id `wxkg`)
+
+- **Arlec Smart Button SG022HA** (product_id `kpzc6pm8`, experimental).
+- **Arlec Smart Button ZG101Z** (product_id `ja5osu5g`, experimental).
+
+Battery percentage (DP 10) and single/double-click/long-press events (DP 1).
+The descriptors accept only the verified gateway strings `single_click`,
+`double_click` and `long_press`; no BLE enum order is inferred from those names.
+Based on ha-tuya-ble/ha_tuya_ble#228 and make-all/tuya-local#1828/#3153.
+Direct BLE pairing, click values and wake/reconnect behaviour have not been
+tested on this integration. Please provide diagnostics and a debug capture for
+each press type before integer enum mappings are added.
+
+The first DP 1 report after setup or a physical disconnect is a silent baseline,
+preventing an initial status from triggering automations. Subsequent identical
+click reports each emit. A device that sends a click instead of an initial status
+can lose that first click, especially if it disconnects between presses.
+The wire protocol does not label status snapshots separately from live presses.
+Existing Fingerbot bus events are unaffected. Lock doorbell mappings await #166;
+no new lock event entity is enabled by this change.
+
 ## Smart Locks (category_id `ms`)
 
 - Smart Lock (product_ids `ludzroix`, `isk2p555`, `gumrixyt`, `uamrw6h3`, `sidhzylo`, `mqc2hevy`, `a6nttc41`, `okkyfgfs`, `k53ok3u9`). Supports lock/unlock, alarm events, door status, and per-device unlock tracking (BLE, fingerprint, password, card, phone remote, dynamic code).
