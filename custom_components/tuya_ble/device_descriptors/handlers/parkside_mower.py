@@ -11,8 +11,6 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.util import dt as dt_util
 
-from ...tuya_ble import TuyaBLEDataPointType
-
 if TYPE_CHECKING:
     from ...entity import TuyaBLEEntity, TuyaBLEProductInfo
     from ...sensor import TuyaBLESensor
@@ -94,16 +92,29 @@ def get_rain_delay(entity: TuyaBLEEntity, product: TuyaBLEProductInfo) -> bool |
     return state[1][0] != 0
 
 
-def set_rain_delay(
+async def set_rain_delay(
     entity: TuyaBLEEntity, product: TuyaBLEProductInfo, value: bool
 ) -> None:
-    """Write the rain delay switch, keeping the delay held in the second byte."""
+    """Write the rain delay switch, keeping the delay held in the second byte.
+
+    The payload is built inside the owner's write lock, so overlapping calls
+    each read the latest payload rather than a stale snapshot.
+    """
     if (state := _rain_delay(entity, product)) is None:
         return
-    dp_id, payload = state
-    entity.send_dp_value(
-        dp_id, TuyaBLEDataPointType.DT_RAW, bytes([int(value)]) + payload[1:]
-    )
+    dp_id, _ = state
+    datapoint = entity.device.datapoints[dp_id]
+    assert datapoint is not None
+
+    def _build_payload() -> bytes:
+        dp = entity.device.datapoints[dp_id]
+        if dp is None or not isinstance(dp.value, bytes) or len(dp.value) < 2:
+            return b""
+        payload = dp.value
+        return bytes([int(value)]) + payload[1:]
+
+    async with datapoint._owner.apply_with_rollback([(datapoint, _build_payload())]):  # pylint: disable=protected-access
+        await datapoint._owner.update_from_user(dp_id)  # pylint: disable=protected-access
 
 
 def get_rain_delay_time(
@@ -115,19 +126,30 @@ def get_rain_delay_time(
     return float(state[1][1])
 
 
-def set_rain_delay_time(
+async def set_rain_delay_time(
     entity: TuyaBLEEntity, product: TuyaBLEProductInfo, value: float
 ) -> None:
-    """Write the rain delay, keeping the switch held in the first byte."""
+    """Write the rain delay, keeping the switch held in the first byte.
+
+    The payload is built inside the owner's write lock, so overlapping calls
+    each read the latest payload rather than a stale snapshot.
+    """
     if (state := _rain_delay(entity, product)) is None:
         return
-    dp_id, payload = state
-    minutes = max(0, min(int(value), 0xFF))
-    entity.send_dp_value(
-        dp_id,
-        TuyaBLEDataPointType.DT_RAW,
-        payload[:1] + bytes([minutes]) + payload[2:],
-    )
+    dp_id, _ = state
+    datapoint = entity.device.datapoints[dp_id]
+    assert datapoint is not None
+
+    def _build_payload() -> bytes:
+        dp = entity.device.datapoints[dp_id]
+        if dp is None or not isinstance(dp.value, bytes) or len(dp.value) < 2:
+            return b""
+        payload = dp.value
+        minutes = max(0, min(int(value), 0xFF))
+        return payload[:1] + bytes([minutes]) + payload[2:]
+
+    async with datapoint._owner.apply_with_rollback([(datapoint, _build_payload())]):  # pylint: disable=protected-access
+        await datapoint._owner.update_from_user(dp_id)  # pylint: disable=protected-access
 
 
 # --- Logs (raw DPs of fixed-size entries) -----------------------------------

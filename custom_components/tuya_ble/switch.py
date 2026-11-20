@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+import inspect
 import logging
 from typing import Any
 
@@ -227,7 +228,9 @@ class TuyaBLESwitch(TuyaBLEEntity, SwitchEntity):
     def turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on."""
         if self._mapping.setter:
-            self._mapping.setter(self, self._product, True)
+            result = self._mapping.setter(self, self._product, True)
+            if inspect.iscoroutine(result):
+                self.hass.create_task(result)
             return
 
         if self._mapping.bitmap_mask:
@@ -243,7 +246,45 @@ class TuyaBLESwitch(TuyaBLEEntity, SwitchEntity):
     def turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off."""
         if self._mapping.setter:
-            self._mapping.setter(self, self._product, False)
+            result = self._mapping.setter(self, self._product, False)
+            if inspect.iscoroutine(result):
+                self.hass.create_task(result)
+            return
+
+        if self._mapping.bitmap_mask:
+            self._write_bitmap(lambda v, m: v & ~m)
+            return
+        datapoint = self.device.datapoints.get_or_create(
+            self._mapping.dp_id,
+            TuyaBLEDataPointType.DT_BOOL,
+            False,
+        )
+        self.hass.create_task(datapoint.set_value(False))
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn the switch on (async)."""
+        if self._mapping.setter:
+            result = self._mapping.setter(self, self._product, True)
+            if inspect.iscoroutine(result):
+                await result
+            return
+
+        if self._mapping.bitmap_mask:
+            self._write_bitmap(lambda v, m: v | m)
+            return
+        datapoint = self.device.datapoints.get_or_create(
+            self._mapping.dp_id,
+            TuyaBLEDataPointType.DT_BOOL,
+            True,
+        )
+        self.hass.create_task(datapoint.set_value(True))
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn the switch off (async)."""
+        if self._mapping.setter:
+            result = self._mapping.setter(self, self._product, False)
+            if inspect.iscoroutine(result):
+                await result
             return
 
         if self._mapping.bitmap_mask:

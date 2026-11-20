@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+import inspect
 from typing import Any, TypedDict
 
 from homeassistant.components.number import (
@@ -191,7 +192,25 @@ class TuyaBLENumber(TuyaBLEEntity, NumberEntity):  # pylint: disable=abstract-me
     def set_native_value(self, value: float) -> None:
         """Send the new value to the device, applying the coefficient."""
         if self._mapping.setter:
-            self._mapping.setter(self, self._product, value)
+            result = self._mapping.setter(self, self._product, value)
+            if inspect.iscoroutine(result):
+                self.hass.create_task(result)
+            # Synchronous setter was already called above
+            return
+        int_value = round(value * self._mapping.coefficient)
+        datapoint = self.device.datapoints.get_or_create(
+            self._mapping.dp_id,
+            TuyaBLEDataPointType.DT_VALUE,
+            int_value,
+        )
+        self.hass.create_task(datapoint.set_value(int_value))
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set the number value (async)."""
+        if self._mapping.setter:
+            result = self._mapping.setter(self, self._product, value)
+            if inspect.iscoroutine(result):
+                await result
             return
         int_value = round(value * self._mapping.coefficient)
         datapoint = self.device.datapoints.get_or_create(

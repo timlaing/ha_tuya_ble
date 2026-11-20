@@ -275,7 +275,7 @@ async def test_rain_delay_handlers_without_a_rain_delay_entity(
     other = make_product_info()
     assert not parkside_mower.rain_delay_reported(entity, other)
     assert parkside_mower.get_rain_delay_time(entity, other) is None
-    parkside_mower.set_rain_delay(entity, other, False)
-    parkside_mower.set_rain_delay_time(entity, other, 20)
+    await parkside_mower.set_rain_delay(entity, other, False)
+    await parkside_mower.set_rain_delay_time(entity, other, 20)
     await hass.async_block_till_done()
     assert entity.device.sent == []
