@@ -215,6 +215,57 @@ pair handler compares only the leading 16-byte UUID. Framing, reports and writes
 are unchanged. A reply with any other security flag is logged at debug level
 with the flag it carried, so an unsupported scheme (for example activation key 11) is identifiable.
 
+### Supported and enabled
+
+TuyaOS BLE firmware announces two separate Security V2 states in FD50
+frame-control byte 1
+([`tuya_ble_main.c`](https://github.com/electron-01/TLSR8250/blob/8af57b976243995ae1bbdf58f77c8766e9c659a4/software/TuyaOS/components/tal_ble_protocol/src/tuya_ble_main.c#L768-L775)),
+and mirrors them in byte 54 of a long device-info reply
+([`tuya_ble_data_handler.c`](https://github.com/electron-01/TLSR8250/blob/8af57b976243995ae1bbdf58f77c8766e9c659a4/software/TuyaOS/components/tal_ble_protocol/src/tuya_ble_data_handler.c#L1395-L1400)):
+
+| State     | FD50 byte 1 | Device-info byte 54 | Meaning                                                        |
+| --------- | ----------- | ------------------- | -------------------------------------------------------------- |
+| Supported | `0x04`      | `0x02`              | Firmware implements Security V2; set by every protocol ≥ 4.7   |
+| Enabled   | `0x08`      | `0x04`              | V2 keys are provisioned; only flags 14, 15 and 16 are accepted |
+
+Device-info byte 54 bit `0x01` reports link-layer encryption. Replies shorter
+than 55 bytes stay valid and report no state. Observed advertisements:
+
+| Device                   | FD50 bytes 0–1 | State                              |
+| ------------------------ | -------------- | ---------------------------------- |
+| SRB-PM01 `jabotj1z`      | `41 00`        | No Security V2 (classic flags 4/5) |
+| Battery BLE Roller (#39) | `41 04`        | Supported, not enabled             |
+| Parkside KC8B105 (#181)  | `49 0c`        | Bound, supported and enabled       |
+
+The firmware maps the V2 key modes onto the classic ones
+([`tuya_ble_secure.h`](https://github.com/electron-01/TLSR8250/blob/8af57b976243995ae1bbdf58f77c8766e9c659a4/software/TuyaOS/include/components/tal_ble_secure/include/tuya_ble_secure.h#L25-L73),
+[`tuya_ble_cryption_v2_command_check`](https://github.com/electron-01/TLSR8250/blob/8af57b976243995ae1bbdf58f77c8766e9c659a4/software/TuyaOS/components/tal_ble_protocol/src/tuya_ble_data_handler.c#L330-L410)):
+
+| Flag | Role                                        | Accepted when  | Status here   |
+| ---- | ------------------------------------------- | -------------- | ------------- |
+| 11   | Provisioning device info (needs `auth_key`) | V2 not enabled | Not supported |
+| 12   | Provisioning pair, writes V2 keys           | V2 not enabled | Not supported |
+| 14   | Device info, steady state                   | V2 enabled     | Supported     |
+| 15   | Session, steady state                       | V2 enabled     | Supported     |
+| 16   | Anomaly unbind                              | V2 enabled     | Not supported |
+
+Flags 11 and 12 are the handshake that provisions the V2 keys, which the Smart
+Life app performs. They need the 32-byte factory `auth_key`, which the cloud
+record does not carry.
+
+The advertised bits choose the login as described in
+[Choosing the login](#choosing-the-login); the device-info byte 54 is only
+reported. Diagnostics export both under `device.security_v2_state`:
+`advertisement` holds the raw frame-control bytes of the last stored FD50
+identity record with its bound, shared, supported and enabled flags, and
+`device_info` the byte-54 value of the latest device-info reply with its
+supported and enabled flags. `advertisement` is `null` without a stored FD50
+identity record; `device_info` is `null` when no reply was received or the
+latest reply is too short to contain byte 54. The probe outcome debug line
+names the advertised supported and enabled state. A device that advertises V2
+enabled while the classic login is in use, or supported but not enabled while
+the Security V2 login is in use, is logged once at debug level.
+
 ### Choosing the login
 
 The FD50 advertisement carries two Security V2 bits in frame-control byte 1

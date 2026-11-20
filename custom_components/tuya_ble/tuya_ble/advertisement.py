@@ -7,7 +7,7 @@ and unsupported formats. Unknown versions are deliberately not guessed.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
 
 from bleak.backends.scanner import AdvertisementData
@@ -15,11 +15,15 @@ from Crypto.Cipher import AES
 
 from .const import MANUFACTURER_DATA_ID, SERVICE_UUID, SERVICE_UUID_V4
 
-# FD50 frame control is big-endian; bit 2 of its low byte (service byte 1)
-# announces the "Security V2" channel, keyed with the cloud sec_key.
+# FD50 frame control is big-endian. In its high byte (service byte 0) bit 3
+# marks a bound device and bit 2 a shared one. In its low byte (service byte 1)
+# bit 2 announces that the firmware supports the "Security V2" channel, keyed
+# with the cloud sec_key, and bit 3 that its V2 keys are provisioned, so it
+# accepts no flag below 14 (TuyaOS ``tuya_ble_main.c``). See
+# docs/BLE_ADVERTISEMENT_DECODING.md.
+FD50_BOUND = 0x08
+FD50_SHARED = 0x04
 FD50_SECURITY_V2 = 0x04
-# Bit 3 of the same byte: Security V2 is switched on, and the firmware then
-# accepts no flag below 14 (TuyaOS ``tuya_ble_main.c``).
 FD50_SECURITY_V2_ENABLED = 0x08
 
 
@@ -31,18 +35,28 @@ class TuyaBLEAdvertisementInfo:
     uuid: str
     is_bound: bool
     protocol_version: int
+    # Firmware supports Security V2 (FD50 byte 1 bit 2).
     security_v2: bool = False
+    # Security V2 keys are provisioned (FD50 byte 1 bit 3).
     security_v2_enabled: bool = False
+    shared: bool = False
 
 
 @dataclass(frozen=True)
 class TuyaBLEIdentityRecord:
-    """Connection parameters read from an FD50 identity record alone."""
+    """Connection parameters read from an FD50 identity record alone.
+
+    ``shared`` and ``frame_control`` are for diagnostics only.
+    """
 
     is_bound: bool
     protocol_version: int
     security_v2: bool = False
     security_v2_enabled: bool = False
+    shared: bool = False
+    # The raw frame-control bytes. Every flag above is derived from them, so
+    # they do not take part in comparisons.
+    frame_control: bytes = field(default=b"", compare=False)
 
 
 def _decode_uuid(key_material: bytes, encrypted_uuid: bytes) -> str | None:
@@ -115,7 +129,7 @@ def _decode_v4(service: bytes, manufacturer: bytes) -> TuyaBLEAdvertisementInfo 
     uuid = _decode_uuid(service, manufacturer[4:])
     if uuid is None:
         return None
-    bound = bool(service[0] & 0x08)
+    bound = bool(service[0] & FD50_BOUND)
     return TuyaBLEAdvertisementInfo(
         product_id=_product_id(service[4:])
         if product_type == 0 and not bound
@@ -125,6 +139,7 @@ def _decode_v4(service: bytes, manufacturer: bytes) -> TuyaBLEAdvertisementInfo 
         protocol_version=4,
         security_v2=bool(service[1] & FD50_SECURITY_V2),
         security_v2_enabled=bool(service[1] & FD50_SECURITY_V2_ENABLED),
+        shared=bool(service[0] & FD50_SHARED),
     )
 
 
@@ -164,10 +179,12 @@ def decode_fd50_identity_record(
     if service is None or not _is_v4_identity_record(service):
         return None
     return TuyaBLEIdentityRecord(
-        is_bound=bool(service[0] & 0x08),
+        is_bound=bool(service[0] & FD50_BOUND),
         protocol_version=4,
         security_v2=bool(service[1] & FD50_SECURITY_V2),
         security_v2_enabled=bool(service[1] & FD50_SECURITY_V2_ENABLED),
+        shared=bool(service[0] & FD50_SHARED),
+        frame_control=bytes(service[:2]),
     )
 
 
@@ -178,9 +195,10 @@ class TuyaBLEClassicRecord:
     product_id: str | None
     is_bound: bool
     protocol_version: int
-    # Security V2 is only announced by FD50 records.
+    # Security V2 and the shared flag are only announced by FD50 records.
     security_v2: bool = False
     security_v2_enabled: bool = False
+    shared: bool = False
 
 
 def decode_classic_record(

@@ -14,6 +14,20 @@ mode.
 | AES key and IV      | MD5 of service bytes after product type | MD5 of the complete service record                                           |
 | Identity            | AES-CBC decrypted UTF-8 text            | AES-CBC decrypted UTF-8 text                                                 |
 
+FD50 frame control (service bytes 0–1) also carries flags that do not change
+the identity. The Security V2 bits choose the login; the shared bit is only
+reported in diagnostics:
+
+| Byte | Bit    | Meaning                                                       |
+| ---- | ------ | ------------------------------------------------------------- |
+| 0    | `0x08` | Bound                                                         |
+| 0    | `0x04` | Shared device                                                 |
+| 1    | `0x04` | Security V2 supported (`security_v2`)                         |
+| 1    | `0x08` | Security V2 enabled, keys provisioned (`security_v2_enabled`) |
+
+See [PROTOCOL_4.md](PROTOCOL_4.md#supported-and-enabled) for their source and
+effect. Classic A201 records carry none of them.
+
 FD50 service byte 0, bit 0 must indicate an identity record. Beacon/data packets
 must not be interpreted as identity advertisements. Bound advertisements contain
 obfuscated product bytes; those bytes are still part of the MD5 input, but are
@@ -88,6 +102,9 @@ Strict identity decoding is unchanged and never guesses alternate keys.
 - [SDK mirror, pinned revision: protocol-4 advertisement construction](https://github.com/hjytry/tuya-ble-sdk/blob/815c07120e96372e8746e9d01a21381a8fdd8655/sdk/src/tuya_ble_main.c#L395-L550):
   the four-byte manufacturer header, frame-control flags and the complete
   service-record encryption input.
+- [TuyaOS BLE frame-control flags, pinned revision](https://github.com/electron-01/TLSR8250/blob/8af57b976243995ae1bbdf58f77c8766e9c659a4/software/TuyaOS/components/tal_ble_protocol/src/tuya_ble_main.c#L736-L775):
+  shared (byte 0 `0x04`), Security V2 supported and enabled (byte 1 `0x04`,
+  `0x08`). A third-party mirror of Tuya-copyright code.
 - [Official TuyaOpen advertisement construction](https://github.com/tuya/TuyaOpen/blob/master/src/tuya_cloud_service/ble/ble_mgr.c#L132-L205).
 - [Official TuyaOpen encryption](https://github.com/tuya/TuyaOpen/blob/master/src/tuya_cloud_service/ble/ble_cryption.c):
   `tuya_ble_rsp_id_encrypt` uses MD5 as both AES-CBC key and IV.

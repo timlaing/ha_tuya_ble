@@ -22,7 +22,11 @@ from bleak_retry_connector import (
     establish_connection,
 )
 
-from .advertisement import decode_classic_record, decode_tuya_ble_advertisement
+from .advertisement import (
+    decode_classic_record,
+    decode_fd50_identity_record,
+    decode_tuya_ble_advertisement,
+)
 from .base import TuyaBLEDevice, global_connect_lock
 from .connection_cleanup import set_probe_cleanup_waiter
 from .const import (
@@ -750,7 +754,7 @@ async def _async_probe(
         outcome = await _async_close_probe(device, outcome)
     if outcome == ProbeOutcome.MATCHED and device.status_refused:
         outcome = ProbeOutcome.INCONCLUSIVE
-    _log_probe_outcome(device, outcome)
+    _log_probe_outcome(device, advertisement, outcome)
     return outcome, device.stage
 
 
@@ -785,15 +789,21 @@ def _probe_credentials(
     return credentials
 
 
-def _log_probe_outcome(device: _ProbeDevice, outcome: ProbeOutcome) -> None:
+def _log_probe_outcome(
+    device: _ProbeDevice, advertisement: AdvertisementData, outcome: ProbeOutcome
+) -> None:
     """Log the outcome with the stage reached, never exception text or keys."""
+    record = decode_fd50_identity_record(advertisement)
     _LOGGER.debug(
-        "%s: Authenticated probe %s at stage %s (security %s, protocol %s)",
+        "%s: Authenticated probe %s at stage %s (security %s, protocol %s),"
+        " advertised V2 supported %s, enabled %s",
         device.address,
         outcome,
         device.stage,
         "v2" if device.security_v2 else "classic",
         device.protocol_version or "unknown",
+        record is not None and record.security_v2,
+        record is not None and record.security_v2_enabled,
     )
 
 

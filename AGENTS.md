@@ -104,6 +104,7 @@ If a file falls below the threshold, add tests until it passes before committing
 | `tests/test_config_flow_mobile.py`                                         | conditional app-key recovery, numeric country validation, cancellation and reconfiguration            |
 | `tests/test_reconnect_absent_device.py`                                    | absent at startup: advertising, duplicate connects, failed handshakes, unload, drops                  |
 | `tests/test_security_key_selection.py`                                     | classic vs Security V2 login order from the FD50 bits, fallback, saved `security_mode`                |
+| `tests/test_security_v2_state.py`                                          | announced FD50 Security V2 supported/enabled state, mismatch log, diagnostics                         |
 
 ### prek
 
