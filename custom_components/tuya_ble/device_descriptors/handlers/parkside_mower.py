@@ -7,6 +7,7 @@ multi-byte integers in network byte order.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.util import dt as dt_util
@@ -14,6 +15,7 @@ from homeassistant.util import dt as dt_util
 if TYPE_CHECKING:
     from ...entity import TuyaBLEEntity, TuyaBLEProductInfo
     from ...sensor import TuyaBLESensor
+    from ...tuya_ble.datapoints import TuyaBLEDataPoint
 
 # Bit labels of the machine error bitmap, used to name the error log entries.
 # Misspellings such as UNEXCEPECT_LOW and LIFTE are the manufacturer's own.
@@ -106,14 +108,14 @@ async def set_rain_delay(
     datapoint = entity.device.datapoints[dp_id]
     assert datapoint is not None
 
-    def _build_payload() -> bytes:
+    def _updates() -> Iterator[tuple[TuyaBLEDataPoint, bytes]]:
         dp = entity.device.datapoints[dp_id]
         if dp is None or not isinstance(dp.value, bytes) or len(dp.value) < 2:
-            return b""
+            return
         payload = dp.value
-        return bytes([int(value)]) + payload[1:]
+        yield datapoint, bytes([int(value)]) + payload[1:]
 
-    async with datapoint._owner.apply_with_rollback([(datapoint, _build_payload())]):  # pylint: disable=protected-access
+    async with datapoint._owner.apply_with_rollback(_updates()):  # pylint: disable=protected-access
         await datapoint._owner.update_from_user(dp_id)  # pylint: disable=protected-access
 
 
@@ -140,15 +142,15 @@ async def set_rain_delay_time(
     datapoint = entity.device.datapoints[dp_id]
     assert datapoint is not None
 
-    def _build_payload() -> bytes:
+    def _updates() -> Iterator[tuple[TuyaBLEDataPoint, bytes]]:
         dp = entity.device.datapoints[dp_id]
         if dp is None or not isinstance(dp.value, bytes) or len(dp.value) < 2:
-            return b""
+            return
         payload = dp.value
         minutes = max(0, min(int(value), 0xFF))
-        return payload[:1] + bytes([minutes]) + payload[2:]
+        yield datapoint, payload[:1] + bytes([minutes]) + payload[2:]
 
-    async with datapoint._owner.apply_with_rollback([(datapoint, _build_payload())]):  # pylint: disable=protected-access
+    async with datapoint._owner.apply_with_rollback(_updates()):  # pylint: disable=protected-access
         await datapoint._owner.update_from_user(dp_id)  # pylint: disable=protected-access
 
 
