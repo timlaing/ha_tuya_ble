@@ -42,6 +42,7 @@ class TuyaBLESelectMapping:
     # Options the device accepts; the others are reported but read-only.
     # None means every option can be set.
     settable_options: list[str] | None = None
+    enum_values: list[int] | None = None
 
 
 @dataclass(frozen=True)
@@ -104,6 +105,7 @@ def _build_select_mapping(desc: EntityDescriptor) -> TuyaBLESelectMapping:
         ),
         values=desc.values,
         settable_options=desc.extra.get("settable_options"),
+        enum_values=desc.extra.get("enum_values"),
     )
 
 
@@ -188,6 +190,12 @@ class TuyaBLESelect(TuyaBLERestoreEntity, SelectEntity):
         if datapoint is None:
             return self._attr_current_option
         value = str(datapoint.value)
+        if self._mapping.enum_values:
+            if datapoint.value in self._mapping.enum_values:
+                return self._attr_options[
+                    self._mapping.enum_values.index(datapoint.value)
+                ]
+            return value
         if self._mapping.values:
             for index, mapped_value in enumerate(self._mapping.values):
                 if mapped_value == value and index < len(self._attr_options):
@@ -212,6 +220,8 @@ class TuyaBLESelect(TuyaBLERestoreEntity, SelectEntity):
             )
         if option in self._attr_options:
             int_value = self._attr_options.index(option)
+            if self._mapping.enum_values:
+                int_value = self._mapping.enum_values[int_value]
             if self._mapping.values:
                 if int_value >= len(self._mapping.values):
                     return
