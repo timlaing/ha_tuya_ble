@@ -17,7 +17,7 @@ from homeassistant.helpers import selector
 import probatio
 from tuya_sharing import LoginControl
 
-from .cloud import HASSTuyaBLEDeviceManager
+from .cloud import HASSTuyaBLEDeviceManager, install_unlock_check_redaction
 from .config_flow_manual import PASSWORD_SELECTOR, validate_key_pair
 from .config_flow_qr import UNKNOWN_ERROR, _QRCodeLoginMixin
 from .const import (
@@ -214,6 +214,8 @@ class TuyaBLEOptionsFlow(OptionsFlowWithConfigEntry, _QRCodeLoginMixin):
             # The SDK may mutate token data; keep it isolated from the entry.
             cloud_data = dict(entry.options)
             cloud_data[CONF_TOKEN_INFO] = dict(cloud_data[CONF_TOKEN_INFO])
+            # Idempotent: SDK records must never carry the decrypted check.
+            install_unlock_check_redaction()
             manager = HASSTuyaBLEDeviceManager(self.hass, cloud_data)
             device = await manager.get_cloud_device_by_uuid(
                 entry.data.get(CONF_CLOUD_UUID) or entry.data[CONF_UUID],

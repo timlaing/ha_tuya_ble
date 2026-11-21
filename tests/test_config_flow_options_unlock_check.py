@@ -10,16 +10,13 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import entity_registry as er
 import pytest
 
-from custom_components.tuya_ble import (
-    _build_credentials_from_entry,
-    async_setup_entry,
-    async_unload_entry,
-)
+from custom_components.tuya_ble import async_setup_entry, async_unload_entry
 from custom_components.tuya_ble.const import (
     CONF_ADVERTISED_UUID,
     CONF_BLE_UNLOCK_CHECK,
@@ -35,6 +32,7 @@ from custom_components.tuya_ble.const import (
 )
 from custom_components.tuya_ble.diagnostics import async_get_config_entry_diagnostics
 from custom_components.tuya_ble.mobile_snapshot import capture_mobile_snapshot
+from custom_components.tuya_ble.tuya_ble import TuyaBLEDeviceCredentials
 from tests.test_config_flow import FakeLogin
 from tests.test_config_flow_options_credentials import options_flow
 from tests.test_init import _patch_deps
@@ -50,6 +48,33 @@ from tests.test_lock_handlers import (
 )
 
 CLOUD = "custom_components.tuya_ble.config_flow_options.HASSTuyaBLEDeviceManager"
+
+
+async def _stored_check(hass: HomeAssistant, entry: ConfigEntry) -> str | None:
+    """Read the stored check back through the public setup path, then unload."""
+    credentials: TuyaBLEDeviceCredentials | None = None
+    deps = _patch_deps(hass, product_info=MagicMock())
+    try:
+        with ExitStack() as stack:
+            for patcher in deps["patches"]:
+                stack.enter_context(patcher)
+            stack.enter_context(
+                patch.object(
+                    hass.config_entries,
+                    "async_unload_platforms",
+                    new=AsyncMock(return_value=True),
+                )
+            )
+            assert await async_setup_entry(hass, entry)
+            credentials = await hass.data[DOMAIN][
+                entry.entry_id
+            ].manager.get_device_credentials("")
+            assert await async_unload_entry(hass, entry)
+    finally:
+        for task in deps["background_tasks"]:
+            task["target"].close()
+    assert credentials is not None
+    return credentials.ble_unlock_check
 
 
 @pytest.fixture(name="registry")
@@ -168,7 +193,7 @@ async def test_valid_refresh_is_atomic_and_preserves_identity(
     )
     assert entry.unique_id == entry.data["address"]
     assert registry.async_get(entity.entity_id) is entity
-    assert _build_credentials_from_entry(entry).ble_unlock_check == MEMBER3_CHECK
+    assert await _stored_check(hass, entry) == MEMBER3_CHECK
     assert MEMBER1_CHECK not in repr(entry.data[CONF_MOBILE_SNAPSHOT])
     assert MEMBER3_CHECK not in repr(entry.data[CONF_MOBILE_SNAPSHOT])
     for secret in (MEMBER1_CHECK, MEMBER3_CHECK, "87654321"):
@@ -456,7 +481,7 @@ async def test_reloaded_lock_and_button_use_refreshed_command(
     ):
         await flow.async_step_refresh_unlock_check({})
     reload.assert_called_once_with(entry.entry_id)
-    check = _build_credentials_from_entry(entry).ble_unlock_check
+    check = await _stored_check(hass, entry)
     new_lock, new_device = _lock(hass, "testauto", check)
     new_button, button_device = _button(hass, "testbutton", check)
     await new_lock.async_open()

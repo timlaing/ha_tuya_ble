@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import logging
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
@@ -12,16 +13,22 @@ from homeassistant.exceptions import ConfigEntryNotReady
 import pytest
 
 from custom_components.tuya_ble.cloud import (
+    _REDACTED_UNLOCK_CHECK,
+    TUYA_SHARING_LOGGER,
     HASSTuyaBLEDeviceManager,
     TokenRefreshListener,
     _build_credentials,
     _extract_functions,
     _extract_status_range,
+    _redact_unlock_check,
+    _UnlockCheckRedactionFilter,
     capture_cloud_fields,
     capture_cloud_info,
     capture_local_schema,
     filter_cloud_info,
+    install_unlock_check_redaction,
 )
+from tests.test_lock_handlers import MEMBER1_CHECK
 
 
 class FakeHass:
@@ -622,3 +629,114 @@ def test_filter_cloud_info_rechecks_stored_field_map() -> None:
 def test_filter_cloud_info_drops_malformed_field_map() -> None:
     """A field map that is not a mapping is not exported."""
     assert "fields" not in filter_cloud_info({"fields": ["sec_key"]})
+
+
+# --- tuya_sharing log redaction (ble_unlock_check) -------------------------
+
+
+def _check_record(message: str, *args: Any) -> logging.LogRecord:
+    """Build a LogRecord the way the SDK's own logger would."""
+    return logging.LogRecord(
+        "tuya_sharing", logging.DEBUG, "customerapi.py", 1, message, args, None
+    )
+
+
+def test_redact_unlock_check_replaces_field_and_keeps_rest() -> None:
+    """The check under its key is masked while the rest of the record stays."""
+    check = MEMBER1_CHECK
+    message = (
+        "response ret = {'code': 0, 'success': True, "
+        f"'result': {{'ble_unlock_check': '{check}', 'id': 'device123'}}}}"
+    )
+    redacted = _redact_unlock_check(message)
+    assert _REDACTED_UNLOCK_CHECK in redacted
+    assert check not in redacted
+    assert "'code': 0" in redacted
+    assert "'id': 'device123'" in redacted
+
+
+def test_redact_unlock_check_masks_only_valid_bare_tokens() -> None:
+    """A bare token is masked only when it decodes as a real unlock check."""
+    assert _redact_unlock_check(f"payload {MEMBER1_CHECK} end") == (
+        f"payload {_REDACTED_UNLOCK_CHECK} end"
+    )
+    # Too short to be a check, and a plausible-but-invalid base64 blob.
+    assert _redact_unlock_check("token abcdefghij") == "token abcdefghij"
+    invalid = "A" * 24
+    assert _redact_unlock_check(invalid) == invalid
+
+
+def test_unlock_check_filter_redacts_record_in_place() -> None:
+    """The record keeps its level and logger but carries the masked message."""
+    record = _check_record(
+        "response ret = %s", f"{{'ble_unlock_check': '{MEMBER1_CHECK}'}}"
+    )
+    filter_ = _UnlockCheckRedactionFilter()
+    assert filter_.filter(record) is True
+    assert record.levelno == logging.DEBUG
+    assert record.name == "tuya_sharing"
+    assert MEMBER1_CHECK not in record.getMessage()
+    assert _REDACTED_UNLOCK_CHECK in record.getMessage()
+    # Args are folded into the message so no handler can re-expand them.
+    assert record.args == ()
+
+
+def test_unlock_check_filter_keeps_clean_records_untouched() -> None:
+    """A record without a check is returned untouched, args included."""
+    record = _check_record("found %d devices", 3)
+    assert _UnlockCheckRedactionFilter().filter(record) is True
+    assert record.msg == "found %d devices"
+    assert record.args == (3,)
+    assert record.getMessage() == "found 3 devices"
+
+
+def test_unlock_check_filter_never_drops_records_that_cannot_format() -> None:
+    """A record no handler could format is still passed through."""
+    record = _check_record("%(missing)s")
+    record.args = ({"other": 1},)
+    assert _UnlockCheckRedactionFilter().filter(record) is True
+    assert record.msg == "%(missing)s"
+
+
+def test_install_unlock_check_redaction_is_idempotent() -> None:
+    """Installing twice leaves exactly one filter on the shared SDK logger."""
+    sdk_logger = logging.getLogger(TUYA_SHARING_LOGGER)
+    original = list(sdk_logger.filters)
+    try:
+        sdk_logger.filters.clear()
+        install_unlock_check_redaction()
+        install_unlock_check_redaction()
+        assert (
+            sum(
+                isinstance(item, _UnlockCheckRedactionFilter)
+                for item in sdk_logger.filters
+            )
+            == 1
+        )
+    finally:
+        sdk_logger.filters[:] = original
+
+
+def test_tuya_sharing_debug_output_is_redacted_for_every_handler() -> None:
+    """The SDK's own handler sees the masked message, not the raw check."""
+    sdk_logger = logging.getLogger(TUYA_SHARING_LOGGER)
+    captured: list[str] = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            """Record the formatted output of this handler."""
+            captured.append(self.format(record))
+
+    handler = _Capture()
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    sdk_logger.addHandler(handler)
+    sdk_logger.setLevel(logging.DEBUG)
+    original_filters = list(sdk_logger.filters)
+    try:
+        sdk_logger.debug("response ret = %s", {"ble_unlock_check": MEMBER1_CHECK})
+    finally:
+        sdk_logger.removeHandler(handler)
+        sdk_logger.filters[:] = original_filters
+    assert len(captured) == 1
+    assert MEMBER1_CHECK not in captured[0]
+    assert _REDACTED_UNLOCK_CHECK in captured[0]

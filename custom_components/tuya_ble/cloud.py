@@ -26,6 +26,75 @@ from .tuya_ble import TuyaBLEDeviceCredentials, is_valid_ble_unlock_check
 
 _LOGGER = logging.getLogger(__name__)
 
+TUYA_SHARING_LOGGER = "tuya_sharing"
+_REDACTED_UNLOCK_CHECK = "<redacted>"
+# The decrypted cloud response is logged as a dict, so the check is caught both
+# under its key and as a bare token.
+_UNLOCK_CHECK_FIELD_RE = re.compile(
+    r"(?P<prefix>[\"']?ble_unlock_check[\"']?\s*:\s*)(?P<quote>[\"']?)"
+    r"(?P<value>[^\"'\s,}\]]+)"
+)
+_UNLOCK_CHECK_TOKEN_RE = re.compile(r"[A-Za-z0-9+/]{20,}={0,2}")
+
+
+def _redact_unlock_check(message: str) -> str:
+    """Return *message* with any cloud unlock check replaced.
+
+    The rest of the record is left untouched, so the SDK's own debug output
+    stays readable.
+    """
+    message = _UNLOCK_CHECK_FIELD_RE.sub(
+        lambda match: (
+            f"{match.group('prefix')}{match.group('quote')}{_REDACTED_UNLOCK_CHECK}"
+        ),
+        message,
+    )
+    return _UNLOCK_CHECK_TOKEN_RE.sub(
+        lambda match: (
+            _REDACTED_UNLOCK_CHECK
+            if is_valid_ble_unlock_check(match.group(0))
+            else match.group(0)
+        ),
+        message,
+    )
+
+
+class _UnlockCheckRedactionFilter(logging.Filter):
+    """Keep cloud unlock checks out of every handler's output."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Redact the record's message in place, never dropping the record."""
+        try:
+            message = record.getMessage()
+        except KeyError, TypeError, ValueError:
+            # A record no handler could format either is left as it is.
+            return True
+        redacted = _redact_unlock_check(message)
+        if redacted == message:
+            return True
+        record.msg = redacted
+        record.args = ()
+        return True
+
+
+def install_unlock_check_redaction() -> None:
+    """Attach the redaction filter to the Tuya Sharing SDK logger once.
+
+    Every SDK module logs through that single shared logger, so the filter
+    runs before each of its handlers, including the SDK's own stream handler.
+    Repeated calls are no-ops, so callers may install it right before they
+    hand control to the SDK.
+    """
+    sdk_logger = logging.getLogger(TUYA_SHARING_LOGGER)
+    installed = any(
+        isinstance(item, _UnlockCheckRedactionFilter) for item in sdk_logger.filters
+    )
+    if not installed:
+        sdk_logger.addFilter(_UnlockCheckRedactionFilter())
+
+
+install_unlock_check_redaction()
+
 
 def _is_probe_candidate(
     device: CustomerDevice, advertised_uuid: str, configured: set[str | None]
