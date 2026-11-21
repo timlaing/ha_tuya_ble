@@ -49,20 +49,17 @@ async def write_mode(
     extra = descriptor.extra
 
     def build_updates() -> dict[int, bytes | bool | int | str]:
-        """Build the update dict based on the current confirmed state.
+        """Build the update dict based on the current local state.
 
-        Uses `reported_value` (the last device-confirmed value) to avoid
-        observing optimistic values from pending writes. A missing
-        `reported_value` means the device hasn't reported this DP yet.
+        This runs inside the device write lock, so any pending write has
+        already completed (success or rollback) and ``value`` reflects the
+        confirmed state. Using ``value`` (not ``reported_value``) preserves
+        the no-op optimisation for an already-completed On write while still
+        serialising against concurrent writes.
         """
         updates: dict[int, bytes | bool | int | str] = {}
         datapoint = device.datapoints[extra["mode_dp_id"]]
-        # Check the confirmed state, not the optimistic value.
-        is_on = (
-            datapoint is not None
-            and datapoint.reported_value is not None
-            and datapoint.reported_value == extra["on_value"]
-        )
+        is_on = datapoint is not None and datapoint.value == extra["on_value"]
         if not on or not is_on:
             updates[extra["mode_dp_id"]] = (
                 extra["on_value"] if on else extra["off_value"]
@@ -74,9 +71,8 @@ async def write_mode(
             )
         return updates
 
-    # Validate types against the *current* datapoints (which may be None if
-    # never created). Create any missing datapoints with no optimistic value
-    # (value=None) so their reported_value stays None until the device reports.
+    # First pass: validate types against existing datapoints only.
+    # Do NOT create new datapoints yet - we only do that after validation passes.
     update_dict = build_updates()
     for dp_id in update_dict:
         dp_type = (
@@ -87,8 +83,23 @@ async def write_mode(
         datapoint = device.datapoints[dp_id]
         if datapoint is not None and datapoint.dp_type != dp_type:
             raise ServiceValidationError("Light datapoint has an unexpected wire type")
-        if datapoint is None:
-            device.datapoints.get_or_create(dp_id, dp_type, value=None)
+
+    # Second pass: create missing datapoints with safe rollback values.
+    # - enum: off_value (so rollback restores the safe default)
+    # - value: brightness_min (so rollback restores the safe default)
+    for dp_id in update_dict:
+        dp_type = (
+            TuyaBLEDataPointType.DT_VALUE
+            if dp_id == mapping.brightness_dp_id
+            else TuyaBLEDataPointType.DT_ENUM
+        )
+        if device.datapoints[dp_id] is None:
+            default_value = (
+                extra["off_value"]
+                if dp_type is TuyaBLEDataPointType.DT_ENUM
+                else mapping.brightness_min
+            )
+            device.datapoints.get_or_create(dp_id, dp_type, value=default_value)
 
     # Pass a callable so the final update dict is evaluated inside the
     # rollback transaction, seeing the confirmed state.

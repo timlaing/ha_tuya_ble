@@ -194,18 +194,17 @@ class TuyaBLEProtocolSendMixin:
         if self._protocol_version not in SUPPORTED_PROTOCOL_VERSIONS:
             raise TuyaBLEDeviceError(0)
 
-        async with self._datapoints.apply_with_rollback(
-            lambda: self._build_updates_list(dp_updates)
-        ):
-            # Resolve the datapoint ids for sending (only those that exist)
-            if callable(dp_updates):
-                dp_updates_resolved = dp_updates()
-            else:
-                dp_updates_resolved = dp_updates
+        resolved: dict[int, bytes | bool | int | str] = {}
+
+        def _build_updates() -> list[tuple[TuyaBLEDataPoint, bytes | bool | int | str]]:
+            nonlocal resolved
+            resolved = dp_updates() if callable(dp_updates) else dp_updates
+            return self._build_updates_list(resolved)
+
+        async with self._datapoints.apply_with_rollback(_build_updates):
+            # Select the datapoint ids for sending (only those that exist)
             dp_ids = [
-                dp_id
-                for dp_id in dp_updates_resolved
-                if self._datapoints[dp_id] is not None
+                dp_id for dp_id in resolved if self._datapoints[dp_id] is not None
             ]
             if not dp_ids:
                 return
@@ -218,20 +217,11 @@ class TuyaBLEProtocolSendMixin:
 
     def _build_updates_list(
         self,
-        dp_updates: dict[int, bytes | bool | int | str]
-        | Callable[[], dict[int, bytes | bool | int | str]],
+        dp_updates: dict[int, bytes | bool | int | str],
     ) -> list[tuple[TuyaBLEDataPoint, bytes | bool | int | str]]:
-        """Build the list of (datapoint, value) tuples for the rollback context.
-
-        If *dp_updates* is a callable, it is invoked first.
-        """
-        if callable(dp_updates):
-            dp_updates_resolved = dp_updates()
-        else:
-            dp_updates_resolved = dp_updates
-
+        """Build the list of (datapoint, value) tuples for the rollback context."""
         updates: list[tuple[TuyaBLEDataPoint, bytes | bool | int | str]] = []
-        for dp_id, value in dp_updates_resolved.items():
+        for dp_id, value in dp_updates.items():
             dp = self._datapoints[dp_id]
             if dp is None:
                 _LOGGER.warning(
