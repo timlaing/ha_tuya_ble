@@ -148,6 +148,9 @@
       "push": {
         "name": "Push"
       },
+      "bluetooth_unlock": {
+        "name": "Bluetooth unlock"
+      },
       "invert_switch_status": {
         "name": "Invert switch status"
       }

@@ -53,7 +53,10 @@ Setup applies this list to the protocol logger; diagnostics withhold values and
 raw bytes. Timestamped commands use the stored check's member ID and the current
 time, fail before writing when the check is missing/invalid, and await the write.
 The cloud check is fetched on initial setup by the inherited #195 implementation;
-an older entry may need removal and re-addition. Do not post it in diagnostics.
+an older entry can refresh it through **Refresh the lock unlock check** in the
+integration options, without removing the device. If no cloud login is stored,
+choose **Log in again with the QR code** there first to link your Smart Life or
+Tuya account. Do not post the check in diagnostics.
 
 ## Identity and limitations
 

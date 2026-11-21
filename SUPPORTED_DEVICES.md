@@ -57,7 +57,11 @@ New **experimental** descriptors (see [DP evidence and physical-verification che
 - **Smart Lock C-014S** (`djrqe0q6`, also sold as LOOCK A04 TUYA): DP46 lock / empty-RAW DP71 unlock, DP47 state, battery, alarm, last-used user IDs, automatic-lock switch, auto-lock delay (3–600 s), volume and verification mode. DP24 doorbell is pending #172.
 - **Drawer Lock CTL20** (`tkbdvrzr`): timestamped DP71 unlock button only; no reliable lock-state DP. Other CTL20H-like mappings need this product's redacted schema before they can be added.
 
-Source contributors tested these on hardware, but this integration's descriptors and handshake selection still need device verification. Timestamped unlock needs the cloud `ble_unlock_check` captured during initial setup; an older entry may need removal and re-addition. Never share that check or DP71 values.
+Source contributors tested these on hardware, but this integration's descriptors and handshake selection still need device verification. Timestamped unlock needs the cloud `ble_unlock_check` captured during initial setup;
+an older entry can refresh it through **Refresh the lock unlock check** in the
+integration options (link your Smart Life or Tuya account with **Log in again with
+the QR code** there first if no cloud login is stored), without removing the device.
+Never share that check or DP71 values.
 
 ## Climate (category_id `wk`)
 
