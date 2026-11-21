@@ -28,11 +28,22 @@ _LOGGER = logging.getLogger(__name__)
 
 TUYA_SHARING_LOGGER = "tuya_sharing"
 _REDACTED_UNLOCK_CHECK = "<redacted>"
-# The decrypted cloud response is logged as a dict, so the check is caught both
-# under its key and as a bare token.
+# The decrypted cloud response can carry the check in two shapes: as a field
+# ("ble_unlock_check": "<check>") and as a status item ({"code": "ble_unlock_check",
+# "value": "<check>"}). The latter is masked regardless of the check's validity.
 _UNLOCK_CHECK_FIELD_RE = re.compile(
     r"(?P<prefix>[\"']?ble_unlock_check[\"']?\s*:\s*)(?P<quote>[\"']?)"
     r"(?P<value>[^\"'\s,}\]]+)"
+)
+_UNLOCK_CHECK_CODE_VALUE_RE = re.compile(
+    r"(?P<prefix>[\"']?code[\"']?\s*:\s*[\"']?ble_unlock_check[\"']?\s*,"
+    r"\s*[\"']?value[\"']?\s*:\s*)"
+    r"(?P<quote>[\"']?)(?P<value>[^\"'\s,}\]]+)"
+)
+_UNLOCK_CHECK_VALUE_CODE_RE = re.compile(
+    r"(?P<prefix>[\"']?value[\"']?\s*:\s*)(?P<quote>[\"']?)(?P<value>[^\"'\s,}\]]+)"
+    r"(?P<closing>[\"']?)(?P<suffix>\s*,\s*[\"']?code[\"']?\s*:\s*[\"']?"
+    r"ble_unlock_check[\"']?)"
 )
 _UNLOCK_CHECK_TOKEN_RE = re.compile(r"[A-Za-z0-9+/]{20,}={0,2}")
 
@@ -49,6 +60,15 @@ def _redact_unlock_check(message: str) -> str:
         ),
         message,
     )
+    for regex in (_UNLOCK_CHECK_CODE_VALUE_RE, _UNLOCK_CHECK_VALUE_CODE_RE):
+        message = regex.sub(
+            lambda match: (
+                f"{match.group('prefix')}{match.group('quote')}{_REDACTED_UNLOCK_CHECK}"
+                f"{match.groupdict().get('closing', '')}"
+                f"{match.groupdict().get('suffix', '')}"
+            ),
+            message,
+        )
     return _UNLOCK_CHECK_TOKEN_RE.sub(
         lambda match: (
             _REDACTED_UNLOCK_CHECK

@@ -655,6 +655,19 @@ def test_redact_unlock_check_replaces_field_and_keeps_rest() -> None:
     assert "'id': 'device123'" in redacted
 
 
+def test_redact_unlock_check_masks_code_value_items_regardless_of_validity() -> None:
+    """Status items carrying the check are masked even when the check is damaged."""
+    damaged = "DAMAGEDTRAILER1234567890ABCD=="
+    code_first = f"response ret = {{'code': 'ble_unlock_check', 'value': '{damaged}'}}"
+    value_first = f"response ret = {{'value': '{damaged}', 'code': 'ble_unlock_check'}}"
+    for message in (code_first, value_first):
+        redacted = _redact_unlock_check(message)
+        assert damaged not in redacted
+        assert _REDACTED_UNLOCK_CHECK in redacted
+        # The code marker itself survives so the item stays recognisable.
+        assert "ble_unlock_check" in redacted
+
+
 def test_redact_unlock_check_masks_only_valid_bare_tokens() -> None:
     """A bare token is masked only when it decodes as a real unlock check."""
     assert _redact_unlock_check(f"payload {MEMBER1_CHECK} end") == (
