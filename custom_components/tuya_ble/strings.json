@@ -660,7 +660,7 @@
         "menu_options": {
           "user": "Log in again with the QR code",
           "credentials": "Replace the device keys",
-          "connection": "Connection settings"
+          "connection": "Connection settings",
           "refresh_unlock_check": "Refresh the lock unlock check"
         }
       },

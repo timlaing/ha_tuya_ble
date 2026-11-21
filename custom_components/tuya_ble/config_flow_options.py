@@ -1,4 +1,4 @@
-"""Options flow for Tuya BLE: re-authentication, key replacement, connection, lock checks."""
+"""Options flow for Tuya BLE: re-auth, key replacement, connection, lock checks."""
 
 from __future__ import annotations
 
@@ -147,7 +147,7 @@ class TuyaBLEOptionsFlow(OptionsFlowWithConfigEntry, _QRCodeLoginMixin):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Offer re-authentication, key replacement, connection policy, or lock check refresh."""
+        """Offer re-auth, key replacement, connection, or lock check refresh."""
         return self.async_show_menu(
             step_id="init",
             menu_options=["user", "credentials", "connection", "refresh_unlock_check"],
