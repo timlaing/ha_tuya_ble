@@ -1,0 +1,7 @@
+# PR185 extends borrowed groups; product-specific BLE schema still needed.
+category: ms
+product_id: 7a4xvbtt
+device_name: Lock P1
+model_name: P1
+entities:
+  lock: []

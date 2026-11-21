@@ -38,6 +38,12 @@ Programming (series of actions) is implemented for Fingerbot Plus. Exposed entit
 - TenixLox KB150A (product_id `0binhnjg`). Lock/unlock on DP 47, plus battery, alarm events and the lock motor-state switch.
 - Pulido P13 (product_id `kdq0tdbz`). Lock/unlock on DP 47, plus alarm events and the lock motor-state switch.
 
+Additional experimental products ([evidence and limitations](docs/lock-product-audit.md)):
+
+- Pulido PLD_P130 (`0qxp5u7s`): lock, held-open passage unlock, momentary Open/button, passage switch, battery and fingerprint/Bluetooth diagnostics. Uses shared lock handlers; state remains unknown until reported.
+- Pirnar Securosmart (`uyf1ewof`): read-only battery, fingerprint/Bluetooth user numbers, motor, hijack and automatic-lock diagnostics. No commands: supplied DP6 is RAW, not the BOOL used by the source patch.
+- Lock P1 (`7a4xvbtt`), Primebras Athenas (`6fibxtph`), Foxgard (`99gv5nmz`), BSTUOKEY Invisible Lock (`kpn4zaf7`) and Guard Dog BS_PLD01 (`wgv4haro`): metadata only, no mapped control or state until product-specific BLE evidence is available.
+
 ## Smart Locks (category_id `jtmspro`)
 
 - Raycube K7 Pro+ (product_id `xicdxood`).
@@ -62,6 +68,11 @@ an older entry can refresh it through **Refresh the lock unlock check** in the
 integration options (link your Smart Life or Tuya account with **Log in again with
 the QR code** there first if no cloud login is stored), without removing the device.
 Never share that check or DP71 values.
+Additional experimental products ([evidence and limitations](docs/lock-product-audit.md)):
+
+- Smart Lock H13 (`kholoaew`): battery, password user number, motor diagnostic, volume/language and automatic-lock settings, and a lock-only button. Unlock explicitly failed in source testing; no lock entity.
+- Drawer Lock CTL20H (`y2yaegze`): read-only battery, card/Bluetooth/remote user-number and automatic-lock diagnostics. CTL20H_8018 (`qcrilcpr`): battery only; source handshake quirks are not ported here, so connection can still fail. Neither has a verified unlock command or truthful bolt state.
+- A1 Ultra-JM (`hc7n0urm`), CS-9 (`pyawczjj`), Gainsborough Liberty GGC01HA (`yfqp0shy`) and XCase NX-4964 (`qicggi0m`): metadata only, no mapped control or state. The preceding lock/unlock summary applies to the existing products, not these experimental entries.
 
 ## Climate (category_id `wk`)
 

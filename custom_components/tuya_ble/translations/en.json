@@ -159,6 +159,15 @@
       },
       "machine_cover": {
         "name": "Cover"
+      },
+      "lock_motor_state": {
+        "name": "Lock motor state"
+      },
+      "automatic_lock": {
+        "name": "Automatic lock"
+      },
+      "hijack": {
+        "name": "Hijack alarm"
       }
     },
     "button": {
@@ -170,6 +179,9 @@
       },
       "push": {
         "name": "Push"
+      },
+      "manual_lock": {
+        "name": "Lock"
       }
     },
     "lock": {
@@ -319,6 +331,13 @@
         "state": {
           "auto": "Auto",
           "smart": "Smart"
+        }
+      },
+      "language": {
+        "name": "Language",
+        "state": {
+          "chinese_simplified": "Chinese (simplified)",
+          "english": "English"
         }
       }
     },
@@ -644,6 +663,9 @@
       },
       "backward_blade_stop": {
         "name": "Backward blade stop"
+      },
+      "free_passage_mode": {
+        "name": "Free passage mode"
       }
     },
     "text": {

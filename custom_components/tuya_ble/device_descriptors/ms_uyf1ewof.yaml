@@ -1,0 +1,35 @@
+# PRs 274/280: corrected category and manufacturer; RAW DP6 is not BOOL.
+category: ms
+product_id: uyf1ewof
+device_name: Pirnar Securosmart Lock
+model_name: Securosmart
+manufacturer: Pirnar
+entities:
+  lock: []
+  binary_sensor:
+    - dp_id: 22
+      translation_key: hijack
+      device_class: tamper
+      entity_category: diagnostic
+    - dp_id: 47
+      translation_key: lock_motor_state
+      entity_category: diagnostic
+    - dp_id: 33
+      translation_key: automatic_lock
+      name: Automatic lock
+      entity_category: diagnostic
+  sensor:
+    - dp_id: 8
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+    - dp_id: 12
+      translation_key: unlock_fingerprint
+      icon: mdi:fingerprint
+      entity_category: diagnostic
+    - dp_id: 19
+      translation_key: unlock_ble
+      icon: mdi:bluetooth
+      entity_category: diagnostic

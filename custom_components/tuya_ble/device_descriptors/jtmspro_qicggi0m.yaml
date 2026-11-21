@@ -1,0 +1,8 @@
+# PR246 copies tuya-local; BLE DP identities and commands need verification.
+category: jtmspro
+product_id: qicggi0m
+device_name: XCase NX-4964 Lock Box
+model_name: NX-4964
+manufacturer: XCase
+entities:
+  lock: []

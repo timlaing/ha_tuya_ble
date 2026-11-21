@@ -1,0 +1,7 @@
+# PR189 adds this ID to borrowed groups; no product-specific wire evidence.
+category: jtmspro
+product_id: pyawczjj
+device_name: CS-9 Smart Fingerprint Lock
+model_name: CS-9
+entities:
+  lock: []

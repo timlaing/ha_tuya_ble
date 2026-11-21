@@ -98,7 +98,9 @@ def _build_mapping() -> dict[str, TuyaBLECategoryLockMapping]:
     result: dict[str, TuyaBLECategoryLockMapping] = {}
     for device_entities in registry.products.values():
         descriptors = device_entities.get("lock")
-        if not descriptors:
+        # Keep an explicit empty override: absence may use category defaults,
+        # but lock: [] deliberately disables unverified actuator commands.
+        if not descriptors and "lock" not in device_entities.entities:
             continue
         category_mapping = result.setdefault(
             device_entities.category,

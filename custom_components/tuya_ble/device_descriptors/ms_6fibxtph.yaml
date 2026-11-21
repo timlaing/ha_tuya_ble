@@ -1,0 +1,8 @@
+# PR226 copies tuya-local; BLE commands/enum indices remain unverified.
+category: ms
+product_id: 6fibxtph
+device_name: Primebras Athenas Lock
+model_name: Athenas
+manufacturer: Primebras
+entities:
+  lock: []
