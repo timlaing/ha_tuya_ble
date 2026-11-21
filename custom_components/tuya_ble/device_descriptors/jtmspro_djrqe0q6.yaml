@@ -1,0 +1,113 @@
+category: jtmspro
+product_id: djrqe0q6
+device_name: Smart Lock C-014S
+model_name: C-014S
+sensitive_dp_ids: [71]
+# DP24 doorbell is pending event-platform support (#172).
+entities:
+  lock:
+    - dp_id: 47
+      translation_key: lock
+      dp_type: 1
+      manual_lock_dp_id: 46
+      unlock_dp_id: 71
+      handlers:
+        read: lock.state.reported_bolt
+        write: lock.command.manual_lock_or_raw_unlock
+  binary_sensor:
+    - dp_id: 47
+      translation_key: lock_motor_state
+      device_class: lock
+      entity_category: diagnostic
+      dp_type: 1
+  switch:
+    - dp_id: 33
+      translation_key: automatic_lock
+      icon: mdi:lock-clock
+      entity_category: config
+      dp_type: 1
+  number:
+    - dp_id: 36
+      translation_key: auto_lock_time
+      icon: mdi:lock-clock
+      unit: s
+      min_value: 3
+      max_value: 600
+      step: 1
+      entity_category: config
+      dp_type: 2
+  select:
+    - dp_id: 31
+      translation_key: beep_volume
+      icon: mdi:volume-high
+      options: [mute, low, normal, high]
+      entity_category: config
+      dp_type: 4
+    - dp_id: 34
+      translation_key: unlock_switch
+      icon: mdi:shield-lock-outline
+      options: [single_unlock, combination]
+      entity_category: config
+      dp_type: 4
+  sensor:
+    - dp_id: 8
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+    - dp_id: 21
+      translation_key: alarm_lock
+      icon: mdi:alert
+      device_class: enum
+      options:
+        - wrong_finger
+        - wrong_password
+        - wrong_card
+        - wrong_face
+        - tongue_bad
+        - too_hot
+        - unclosed_time
+        - tongue_not_out
+        - pry
+        - key_in
+        - low_battery
+        - power_off
+        - shock
+        - defense
+        - wrong_unlock
+    - dp_id: 12
+      translation_key: unlock_fingerprint
+      icon: mdi:fingerprint
+      suggested_display_precision: 0
+      entity_category: diagnostic
+    - dp_id: 13
+      translation_key: unlock_password
+      icon: mdi:numeric-0-box-multiple-outline
+      suggested_display_precision: 0
+      entity_category: diagnostic
+    - dp_id: 15
+      translation_key: unlock_card
+      icon: mdi:nfc-variant
+      suggested_display_precision: 0
+      entity_category: diagnostic
+    - dp_id: 19
+      translation_key: unlock_ble
+      icon: mdi:bluetooth
+      suggested_display_precision: 0
+      entity_category: diagnostic
+    - dp_id: 55
+      translation_key: unlock_temporary
+      icon: mdi:lock-clock
+      suggested_display_precision: 0
+      entity_category: diagnostic
+    - dp_id: 62
+      translation_key: unlock_phone_remote
+      icon: mdi:cellphone-lock
+      suggested_display_precision: 0
+      entity_category: diagnostic
+    - dp_id: 63
+      translation_key: unlock_voice_remote
+      icon: mdi:microphone
+      suggested_display_precision: 0
+      entity_category: diagnostic
