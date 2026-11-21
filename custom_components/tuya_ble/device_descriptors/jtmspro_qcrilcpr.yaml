@@ -1,0 +1,17 @@
+# PRs 305/318, issue 304: battery works; unlock remains unresolved.
+# Do not copy other CTL20H DP IDs from matching cloud codes alone.
+# Protect candidate DP71 conservatively; it is not a control mapping.
+category: jtmspro
+product_id: qcrilcpr
+device_name: Drawer Lock CTL20H_8018
+model_name: CTL20H_8018
+sensitive_dp_ids: [71]
+entities:
+  lock: []
+  sensor:
+    - dp_id: 8
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic

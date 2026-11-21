@@ -145,6 +145,8 @@
   },
   "entity": {
     "button": {
+      "bluetooth_unlock": { "name": "Momentary unlock" },
+      "manual_lock": { "name": "Lock" },
       "push": {
         "name": "Push"
       },
@@ -212,6 +214,13 @@
       }
     },
     "select": {
+      "language": {
+        "name": "Language",
+        "state": {
+          "chinese_simplified": "Chinese (simplified)",
+          "english": "English"
+        }
+      },
       "fingerbot_mode": {
         "name": "Mode",
         "state": {
@@ -270,6 +279,9 @@
       }
     },
     "binary_sensor": {
+      "lock_motor_state": { "name": "Lock motor state" },
+      "automatic_lock": { "name": "Automatic lock" },
+      "hijack": { "name": "Hijack alarm" },
       "battery": {
         "name": "[%key:component::sensor::entity_component::battery::name%]"
       },
@@ -287,6 +299,11 @@
       }
     },
     "sensor": {
+      "unlock_fingerprint": { "name": "Last used fingerprint" },
+      "unlock_password": { "name": "Last used password" },
+      "unlock_card": { "name": "Last used card" },
+      "unlock_ble": { "name": "Last used Bluetooth" },
+      "unlock_phone_remote": { "name": "Last used remote phone" },
       "generator_voltage": {
         "name": "Voltage"
       },
@@ -493,6 +510,8 @@
       }
     },
     "switch": {
+      "free_passage_mode": { "name": "Free passage mode" },
+      "automatic_lock": { "name": "Automatic lock" },
       "generator_engine": {
         "name": "Engine"
       },

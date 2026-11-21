@@ -1,0 +1,43 @@
+# PR 155: tested lock-only DP46; DP71 unlock explicitly failed.
+category: jtmspro
+product_id: kholoaew
+device_name: Smart Lock H13
+model_name: H13
+sensitive_dp_ids: [71]
+entities:
+  lock: []
+  button:
+    - dp_id: 46
+      translation_key: manual_lock
+      dp_type: 1
+      press_value: true
+  binary_sensor:
+    - dp_id: 47
+      translation_key: lock_motor_state
+      entity_category: diagnostic
+  switch:
+    - dp_id: 33
+      translation_key: automatic_lock
+      entity_category: config
+  select:
+    - dp_id: 31
+      translation_key: beep_volume
+      dp_type: 4
+      entity_category: config
+      options: [mute, low, normal, high]
+    - dp_id: 28
+      translation_key: language
+      dp_type: 4
+      entity_category: config
+      options: [chinese_simplified, english]
+  sensor:
+    - dp_id: 8
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+    - dp_id: 13
+      translation_key: unlock_password
+      icon: mdi:keyboard-outline
+      entity_category: diagnostic

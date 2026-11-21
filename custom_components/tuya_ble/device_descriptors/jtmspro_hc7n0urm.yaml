@@ -1,0 +1,7 @@
+# PR190 does not verify a DP71 command or BLE alarm/volume enum indices.
+category: jtmspro
+product_id: hc7n0urm
+device_name: A1 Ultra-JM
+model_name: A1 Ultra-JM
+entities:
+  lock: []
