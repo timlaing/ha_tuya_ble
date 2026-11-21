@@ -355,7 +355,16 @@ def _is_number(value: Any) -> bool:
 
 def _validate_light_mode(raw: dict[str, Any]) -> None:
     """Validate optional mode-controlled light parameters before handler use."""
+    handlers = raw.get("handlers", {})
+    has_mode_handlers = (
+        handlers.get("read") == "light.mode_is_on"
+        and handlers.get("write") == "light.write_mode"
+    )
     if "mode_dp_id" not in raw:
+        if has_mode_handlers:
+            raise DeviceRegistryError(
+                "Light entity with mode_is_on/write_mode handlers requires 'mode_dp_id'"
+            )
         return
     for key in ("mode_dp_id", "color_mode_dp_id", "brightness_dp_id"):
         _validate_light_index(raw, key, 1)
