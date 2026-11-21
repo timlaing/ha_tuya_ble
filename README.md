@@ -60,6 +60,33 @@ open the integration's **Configure** menu and choose **Replace the device keys**
 are replaced together; leave the security key empty to remove it. The device ID, UUID and
 entities are kept. The new keys are not checked over Bluetooth before they are saved.
 
+### Refresh a lock's unlock check
+
+Locks using the timestamped Bluetooth open command need a cloud-issued unlock check.
+If it is missing or was re-issued to another app member, open the integration's
+**Configure** menu and choose **Refresh the lock unlock check**. Submit to fetch the
+current check from the Tuya Sharing SDK cloud status. The lock need not be connected
+over Bluetooth. A valid check is saved and the integration reloads; entity unique
+IDs, device identity, BLE keys and all other entry data stay unchanged.
+
+If no cloud login is stored, first choose **Log in again with the QR code**, scan
+with the account containing that device, then open Configure again to refresh.
+This also links manually added entries, but their stored device ID and cloud UUID
+must match the cloud record. No check can be fetched for a manual-only device not
+in a Tuya account; entering an unlock check by hand is not supported.
+
+Network failures, missing checks, malformed checks and unmatched devices keep the
+existing check. For a missing check, open the lock once in Smart Life or Tuya Smart
+and retry. For expired login, use the QR login again. Neither the check nor member
+credentials or commands containing them are shown in errors, logs or diagnostics;
+diagnostics expose only `ble_unlock_check_stored`.
+
+Hardware acceptance (not yet performed here): safely test **Open** on a supported
+timestamped-command lock, refresh after its app check changes, and confirm **Open**
+uses the new member's authorization without changing entity IDs. Test refresh while
+the lock is unavailable, reload/reconnect, and a cloud failure retaining the previous
+check. Download diagnostics and confirm DP 71/check values remain redacted.
+
 For Tuya BLE protocol v4 devices, setup checks that Home Assistant can connect
 over Bluetooth and remembers how, so the device reconnects after restarts
 without the cloud. Keep the device nearby and close the Smart Life app after
