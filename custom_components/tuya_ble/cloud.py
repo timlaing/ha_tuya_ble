@@ -88,12 +88,11 @@ class _UnlockCheckRedactionFilter(logging.Filter):
             message = record.getMessage()
         except KeyError, TypeError, ValueError:
             # A record no handler could format either is left as it is.
-            return True
+            message = ""
         redacted = _redact_unlock_check(message)
-        if redacted == message:
-            return True
-        record.msg = redacted
-        record.args = ()
+        if redacted != message:
+            record.msg = redacted
+            record.args = ()
         return True
 
 
