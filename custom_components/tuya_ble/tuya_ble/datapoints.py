@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Iterable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterable, Iterator
 from contextlib import asynccontextmanager
 import logging
 from struct import error as struct_error
@@ -387,7 +387,9 @@ class TuyaBLEDataPoints:
 
     @asynccontextmanager
     async def apply_with_rollback(
-        self, updates: Iterable[tuple[TuyaBLEDataPoint, TuyaBLEDataPointValue]]
+        self,
+        updates: Iterable[tuple[TuyaBLEDataPoint, TuyaBLEDataPointValue]]
+        | Callable[[], Iterable[tuple[TuyaBLEDataPoint, TuyaBLEDataPointValue]]],
     ) -> AsyncIterator[None]:
         """Apply `updates` locally and undo them if the block fails.
 
@@ -416,8 +418,15 @@ class TuyaBLEDataPoints:
         completed, so the optimistic value is unconfirmed, and leaving it in
         place would let the next write snapshot it — the same stale value
         this lock exists to prevent.
+
+        If *updates* is a callable, it is invoked inside the lock and must
+        return the iterable of updates. This allows the caller to build the
+        update list based on the confirmed device state (``reported_value``)
+        without a lock gap.
         """
         async with self._write_lock:
+            if callable(updates):
+                updates = updates()
             applied: list[tuple[TuyaBLEDataPoint, bytes | bool | int | str, int]] = []
             try:
                 for dp, value in updates:
