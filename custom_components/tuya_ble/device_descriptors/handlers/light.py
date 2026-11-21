@@ -31,6 +31,53 @@ def mode_is_on(device: TuyaBLEDevice, mapping: TuyaBLELightMapping) -> bool:
     )
 
 
+def _expected_type(mapping: TuyaBLELightMapping, dp_id: int) -> TuyaBLEDataPointType:
+    """Return the wire type the descriptor requires for a datapoint."""
+    if dp_id == mapping.brightness_dp_id:
+        return TuyaBLEDataPointType.DT_VALUE
+    return TuyaBLEDataPointType.DT_ENUM
+
+
+def _validate_wire_types(
+    device: TuyaBLEDevice,
+    mapping: TuyaBLELightMapping,
+    updates: dict[int, bytes | bool | int | str],
+) -> None:
+    """Reject an update whose datapoint wire type drifted from the descriptor.
+
+    Called under the write lock against the final update dict: a device
+    report received while the request waited for the lock can change a
+    datapoint's type. The raise happens before any value is applied, so no
+    rollback runs.
+    """
+    for dp_id in updates:
+        current = device.datapoints[dp_id]
+        if current is not None and current.dp_type != _expected_type(mapping, dp_id):
+            raise ServiceValidationError("Light datapoint has an unexpected wire type")
+
+
+def _ensure_datapoints(
+    device: TuyaBLEDevice,
+    mapping: TuyaBLELightMapping,
+    extra: dict[str, Any],
+    update_dict: dict[int, bytes | bool | int | str],
+) -> None:
+    """Create missing datapoints with safe rollback defaults.
+
+    - enum: off_value (so rollback restores the safe default)
+    - value: brightness_min (so rollback restores the safe default)
+    """
+    for dp_id in update_dict:
+        dp_type = _expected_type(mapping, dp_id)
+        if device.datapoints[dp_id] is None:
+            default_value = (
+                extra["off_value"]
+                if dp_type is TuyaBLEDataPointType.DT_ENUM
+                else mapping.brightness_min
+            )
+            device.datapoints.get_or_create(dp_id, dp_type, value=default_value)
+
+
 async def write_mode(
     device: TuyaBLEDevice,
     mapping: TuyaBLELightMapping,
@@ -61,8 +108,8 @@ async def write_mode(
         datapoint = device.datapoints[extra["mode_dp_id"]]
         # Validate the mode datapoint before using its value: a report could
         # have retyped it (e.g. DT_BOOL True == on_value 1) and, if the mode
-        # update is then omitted as a no-op, it would never reach the
-        # per-update type loop below.
+        # update is then omitted as a no-op, it would never reach
+        # _validate_wire_types below.
         if datapoint is not None and datapoint.dp_type != TuyaBLEDataPointType.DT_ENUM:
             raise ServiceValidationError("Light datapoint has an unexpected wire type")
         is_on = datapoint is not None and datapoint.value == extra["on_value"]
@@ -75,43 +122,13 @@ async def write_mode(
             updates[mapping.brightness_dp_id] = _brightness_value(
                 mapping, attributes["brightness"]
             )
-        # Recheck the wire types here so the validation runs under the write
-        # lock against the final update dict: a device report received while
-        # this request waited for the lock can change a datapoint's type.
-        # The raise happens before any value is applied, so no rollback runs.
-        for dp_id in updates:
-            dp_type = (
-                TuyaBLEDataPointType.DT_VALUE
-                if dp_id == mapping.brightness_dp_id
-                else TuyaBLEDataPointType.DT_ENUM
-            )
-            current = device.datapoints[dp_id]
-            if current is not None and current.dp_type != dp_type:
-                raise ServiceValidationError(
-                    "Light datapoint has an unexpected wire type"
-                )
+        _validate_wire_types(device, mapping, updates)
         return updates
 
     # First pass: validate types against existing datapoints only, before any
     # datapoint is created for a request that may still fail validation.
     update_dict = build_updates()
-
-    # Second pass: create missing datapoints with safe rollback values.
-    # - enum: off_value (so rollback restores the safe default)
-    # - value: brightness_min (so rollback restores the safe default)
-    for dp_id in update_dict:
-        dp_type = (
-            TuyaBLEDataPointType.DT_VALUE
-            if dp_id == mapping.brightness_dp_id
-            else TuyaBLEDataPointType.DT_ENUM
-        )
-        if device.datapoints[dp_id] is None:
-            default_value = (
-                extra["off_value"]
-                if dp_type is TuyaBLEDataPointType.DT_ENUM
-                else mapping.brightness_min
-            )
-            device.datapoints.get_or_create(dp_id, dp_type, value=default_value)
+    _ensure_datapoints(device, mapping, extra, update_dict)
 
     # Pass a callable so the final update dict is evaluated inside the
     # rollback transaction, seeing the confirmed state.
