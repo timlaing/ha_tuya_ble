@@ -680,15 +680,15 @@ def test_fingerbot_touch_exposes_channels_settings_and_battery() -> None:
         for desc in sorted(config_entities, key=lambda desc: desc.name or "")
     ] == [
         f"{key}_{channel}"
-        for channel in (1, 2)
         for key in (
-            "fingerbot_mode",
             "double_tap_interval",
             "switch_invert",
-            "touch_duration",
+            "fingerbot_mode",
             "touch_off_duration",
+            "touch_duration",
             "touch_switch",
         )
+        for channel in (1, 2)
     ]
     for duration in numbers[:4]:
         assert duration.unit == "s"

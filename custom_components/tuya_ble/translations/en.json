@@ -247,7 +247,7 @@
         }
       },
       "beep_volume": {
-        "name": "Lock Volume"
+        "name": "Lock volume"
       },
       "fingerbot_mode": {
         "name": "Mode",
@@ -371,7 +371,7 @@
         "name": "Last use time 2"
       },
       "low_battery": {
-        "name": "Low Battery"
+        "name": "Low battery"
       },
       "moisture": {
         "name": "Moisture"
@@ -434,10 +434,10 @@
         }
       },
       "wrong_finger": {
-        "name": "Wrong Fingerprint"
+        "name": "Wrong fingerprint"
       },
       "wrong_password": {
-        "name": "Wrong Password"
+        "name": "Wrong password"
       },
       "heat_exchanger_temperature": {
         "name": "Heat exchanger temperature"
@@ -526,10 +526,10 @@
         "name": "Severely exceed alarm"
       },
       "child_lock": {
-        "name": "Child Lock"
+        "name": "Child lock"
       },
       "lock_motor_state": {
-        "name": "Motor State"
+        "name": "Motor state"
       },
       "low_battery_alarm": {
         "name": "Low battery alarm"
@@ -544,10 +544,10 @@
         "name": "Repeat forever"
       },
       "programming_mode": {
-        "name": "Programming Mode"
+        "name": "Programming mode"
       },
       "programming_switch": {
-        "name": "Programming Switch"
+        "name": "Programming switch"
       },
       "reverse_positions": {
         "name": "Reverse positions"
@@ -568,7 +568,7 @@
         "name": "Valve 2"
       },
       "window_check": {
-        "name": "Window Check"
+        "name": "Window check"
       },
       "rain_delay": {
         "name": "Rain delay"
