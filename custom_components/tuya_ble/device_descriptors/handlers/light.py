@@ -59,6 +59,12 @@ async def write_mode(
         """
         updates: dict[int, bytes | bool | int | str] = {}
         datapoint = device.datapoints[extra["mode_dp_id"]]
+        # Validate the mode datapoint before using its value: a report could
+        # have retyped it (e.g. DT_BOOL True == on_value 1) and, if the mode
+        # update is then omitted as a no-op, it would never reach the
+        # per-update type loop below.
+        if datapoint is not None and datapoint.dp_type != TuyaBLEDataPointType.DT_ENUM:
+            raise ServiceValidationError("Light datapoint has an unexpected wire type")
         is_on = datapoint is not None and datapoint.value == extra["on_value"]
         if not on or not is_on:
             updates[extra["mode_dp_id"]] = (

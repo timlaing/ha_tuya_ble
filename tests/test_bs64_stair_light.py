@@ -265,6 +265,17 @@ async def test_wrong_wire_type_rejected(hass: HomeAssistant) -> None:
     assert device.datapoints[114] is None
 
 
+async def test_mode_bool_report_rejected(hass: HomeAssistant) -> None:
+    """A DT_BOOL mode report matching on_value is still rejected as On."""
+    device, _coordinator, _product, entity = _context(hass)
+    # DT_BOOL True compares equal to on_value 1, so the no-op path would
+    # omit DP114 from the update and never reach the per-update type loop.
+    add_dp(device, 114, TuyaBLEDataPointType.DT_BOOL, True)
+    with pytest.raises(ServiceValidationError):
+        await entity.async_turn_on(brightness=255)
+    _send(device).assert_not_called()
+
+
 async def test_wire_type_recheck_inside_write_lock(hass: HomeAssistant) -> None:
     """A report changing a wire type while the write waits still raises."""
     device, _coordinator, _product, entity = _context(hass)
