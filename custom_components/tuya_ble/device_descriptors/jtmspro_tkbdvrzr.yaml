@@ -1,0 +1,14 @@
+category: jtmspro
+product_id: tkbdvrzr
+device_name: Drawer Lock CTL20
+model_name: CTL20
+sensitive_dp_ids: [71]
+# No reliable state DP. Other CTL20H mappings await this product's schema.
+entities:
+  button:
+    - dp_id: 71
+      translation_key: bluetooth_unlock
+      icon: mdi:lock-open-variant-outline
+      dp_type: 0
+      handlers:
+        write: lock.command.press_timestamped_unlock

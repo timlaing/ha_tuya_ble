@@ -162,6 +162,9 @@
       }
     },
     "button": {
+      "bluetooth_unlock": {
+        "name": "Bluetooth unlock"
+      },
       "invert_switch_status": {
         "name": "Invert switch status"
       },
@@ -185,6 +188,9 @@
       }
     },
     "number": {
+      "auto_lock_time": {
+        "name": "Auto lock delay"
+      },
       "brightness": {
         "name": "Brightness"
       },
@@ -246,8 +252,21 @@
           "flowing": "Flowing"
         }
       },
+      "unlock_switch": {
+        "name": "Double verification",
+        "state": {
+          "single_unlock": "Single unlock",
+          "combination": "Combination"
+        }
+      },
       "beep_volume": {
-        "name": "Lock Volume"
+        "name": "Lock Volume",
+        "state": {
+          "mute": "Mute",
+          "low": "Low",
+          "normal": "Normal",
+          "high": "High"
+        }
       },
       "fingerbot_mode": {
         "name": "Mode",
@@ -304,6 +323,30 @@
       }
     },
     "sensor": {
+      "unlock_fingerprint": {
+        "name": "Last used fingerprint"
+      },
+      "unlock_password": {
+        "name": "Last used password"
+      },
+      "unlock_dynamic": {
+        "name": "Last used dynamic password"
+      },
+      "unlock_card": {
+        "name": "Last used card"
+      },
+      "unlock_ble": {
+        "name": "Last used Bluetooth member"
+      },
+      "unlock_temporary": {
+        "name": "Last used temporary password"
+      },
+      "unlock_phone_remote": {
+        "name": "Last used remote phone"
+      },
+      "unlock_voice_remote": {
+        "name": "Last used remote voice"
+      },
       "generator_voltage": {
         "name": "Voltage"
       },
@@ -323,7 +366,24 @@
         "name": "Total run time"
       },
       "alarm_lock": {
-        "name": "Alarm"
+        "name": "Alarm",
+        "state": {
+          "wrong_finger": "Wrong fingerprint",
+          "wrong_password": "Wrong password",
+          "wrong_card": "Wrong card",
+          "wrong_face": "Wrong face",
+          "tongue_bad": "Bolt jammed",
+          "too_hot": "High temperature",
+          "unclosed_time": "Door left open",
+          "tongue_not_out": "Bolt not extended",
+          "pry": "Tamper",
+          "key_in": "Key inserted",
+          "low_battery": "Low battery",
+          "power_off": "Power off",
+          "shock": "Vibration",
+          "defense": "Armed alarm",
+          "wrong_unlock": "Wrong unlock"
+        }
       },
       "battery": {
         "name": "Battery"
@@ -510,6 +570,9 @@
       }
     },
     "switch": {
+      "automatic_lock": {
+        "name": "Automatic locking"
+      },
       "generator_engine": {
         "name": "Engine"
       },

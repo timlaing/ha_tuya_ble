@@ -50,6 +50,19 @@ Programming (series of actions) is implemented for Fingerbot Plus. Exposed entit
 
 Supports lock/unlock, alarm events, fingerprint/card/password unlock tracking, and battery status.
 
+New **experimental** descriptors (see [DP evidence and physical-verification checklist](docs/PRIMARY_LOCKS.md)):
+
+- **EL605A Knob Lock** (`2hmqh0ty`): battery and empty-RAW DP71 unlock button. Lock state is deferred until this model's redacted schema confirms its numeric state DP.
+- **8052F66 Smart Lock** (`dappsdq4`): DP33 automatic-lock mode (Lock/Unlock), timestamped DP71 **Open**, battery, alarm, last-used user IDs, automatic-lock switch, auto-lock delay (5–20 s), volume and verification mode. The lock state is the automatic-lock mode, not a temporary physical handle release.
+- **Smart Lock C-014S** (`djrqe0q6`, also sold as LOOCK A04 TUYA): DP46 lock / empty-RAW DP71 unlock, DP47 state, battery, alarm, last-used user IDs, automatic-lock switch, auto-lock delay (3–600 s), volume and verification mode. DP24 doorbell is pending #172.
+- **Drawer Lock CTL20** (`tkbdvrzr`): timestamped DP71 unlock button only; no reliable lock-state DP. Other CTL20H-like mappings need this product's redacted schema before they can be added.
+
+Source contributors tested these on hardware, but this integration's descriptors and handshake selection still need device verification. Timestamped unlock needs the cloud `ble_unlock_check` captured during initial setup;
+an older entry can refresh it through **Refresh the lock unlock check** in the
+integration options (link your Smart Life or Tuya account with **Log in again with
+the QR code** there first if no cloud login is stored), without removing the device.
+Never share that check or DP71 values.
+
 ## Climate (category_id `wk`)
 
 - Thermostatic Radiator Valve (product_ids `drlajpqc`, `nhj2j7su`, `zmachryv`). Supports temperature set, modes, and calibration. Additional switches: window check, antifreeze, child lock, water scale proof, programming mode.

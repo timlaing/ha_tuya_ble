@@ -35,6 +35,12 @@ def automatic_lock(lock: TuyaBLELock, _product: TuyaBLEProductInfo) -> bool | No
     return _reported(lock, lock.dp_id)
 
 
+def reported_bolt(lock: TuyaBLELock, _product: TuyaBLEProductInfo) -> bool | None:
+    """Report locked only from a confirmed motor/bolt report (on is released)."""
+    reported = _reported(lock, lock.dp_id)
+    return None if reported is None else not reported
+
+
 @requires_dp_ids("passage_dp_id")
 def passage_or_bolt(lock: TuyaBLELock, _product: TuyaBLEProductInfo) -> bool | None:
     """Report unlocked while passage mode or the bolt report (entity DP) is on.
