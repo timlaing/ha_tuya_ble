@@ -173,23 +173,65 @@ class TuyaBLEProtocolSendMixin:
             raise TuyaBLEDeviceError(0)
 
     async def set_multiple_values(
-        self, dp_updates: dict[int, bytes | bool | int | str]
+        self,
+        dp_updates: dict[int, bytes | bool | int | str]
+        | Callable[[], dict[int, bytes | bool | int | str]],
     ) -> None:
         """Set multiple datapoint values in a single atomic BLE payload.
 
         The BLE payload is atomic, the state transition is not: the device may
-        reject it. The values are therefore applied inside
-        `TuyaBLEDataPoints.apply_with_rollback`, which snapshots them first and
-        restores them if anything in the update fails, so an entity never keeps
-        reporting a value the device did not accept. That helper also holds the
-        per-device write lock, so this batch cannot interleave with another
-        write and snapshot its unconfirmed values.
+        reject it. The values are therefore applied inside the per-device
+        rollback logic, which snapshots them first and restores them if anything
+        in the update fails, so an entity never keeps reporting a value the
+        device did not accept. The whole apply → send → rollback sequence runs
+        under the per-device write lock, so writes never overlap.
+
+        If *dp_updates* is a callable, it is invoked inside the rollback lock
+        and must return the update dict. This allows the caller to build the
+        update dict based on the confirmed device state (``reported_value``)
+        without a lock gap between the check and the send.
         """
         if self._protocol_version not in SUPPORTED_PROTOCOL_VERSIONS:
             raise TuyaBLEDeviceError(0)
 
+        async with self._datapoints.apply_with_rollback(
+            lambda: self._build_updates_list(dp_updates)
+        ):
+            # Resolve the datapoint ids for sending (only those that exist)
+            if callable(dp_updates):
+                dp_updates_resolved = dp_updates()
+            else:
+                dp_updates_resolved = dp_updates
+            dp_ids = [
+                dp_id
+                for dp_id in dp_updates_resolved
+                if self._datapoints[dp_id] is not None
+            ]
+            if not dp_ids:
+                return
+            _LOGGER.debug(
+                "%s: set_multiple_values calling send_datapoints with %s",
+                self.address,
+                dp_ids,
+            )
+            await self.send_datapoints(dp_ids)
+
+    def _build_updates_list(
+        self,
+        dp_updates: dict[int, bytes | bool | int | str]
+        | Callable[[], dict[int, bytes | bool | int | str]],
+    ) -> list[tuple[TuyaBLEDataPoint, bytes | bool | int | str]]:
+        """Build the list of (datapoint, value) tuples for the rollback context.
+
+        If *dp_updates* is a callable, it is invoked first.
+        """
+        if callable(dp_updates):
+            dp_updates_resolved = dp_updates()
+        else:
+            dp_updates_resolved = dp_updates
+
         updates: list[tuple[TuyaBLEDataPoint, bytes | bool | int | str]] = []
-        for dp_id, value in dp_updates.items():
+        for dp_id, value in dp_updates_resolved.items():
             dp = self._datapoints[dp_id]
             if dp is None:
                 _LOGGER.warning(
@@ -199,12 +241,7 @@ class TuyaBLEProtocolSendMixin:
                 )
                 continue
             updates.append((dp, value))
-
-        if not updates:
-            return
-
-        async with self._datapoints.apply_with_rollback(updates):
-            await self.send_datapoints([dp.dp_id for dp, _ in updates])
+        return updates
 
     async def _send_datapoints_v3(self, datapoint_ids: list[int]) -> None:
         """Serialize and send datapoint updates using the v3 protocol envelope.

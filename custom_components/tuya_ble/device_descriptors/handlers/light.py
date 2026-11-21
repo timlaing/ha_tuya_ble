@@ -31,30 +31,39 @@ def mode_is_on(device: TuyaBLEDevice, mapping: TuyaBLELightMapping) -> bool:
     )
 
 
-async def _atomic_check_and_write(
+async def write_mode(
     device: TuyaBLEDevice,
     mapping: TuyaBLELightMapping,
     on: bool,
     attributes: dict[str, Any],
 ) -> None:
-    """Atomically check mode state and write updates under the device lock.
+    """Write mode and optional brightness together; never replay failed writes.
 
-    This serialises the no-op decision with the batch write so that a
-    concurrent request cannot observe an optimistic value and return success
-    without waiting for the pending write's outcome.
+    The update dict is built inside the device's rollback lock so it always
+    reflects the confirmed state at send time. This avoids a race where a
+    concurrent Off write could cause a subsequent On+brightness to omit the
+    mode DP because it observed the optimistic Off value.
     """
     descriptor = mapping.descriptor
     assert descriptor is not None
     extra = descriptor.extra
-    updates: dict[int, bytes | bool | int | str] = {}
 
-    # Serially acquire the per-device write lock. Any concurrent write will
-    # complete (success or rollback) before we proceed, so we see the
-    # confirmed state.
-    # pylint: disable=protected-access
-    async with device._datapoints._write_lock:
+    def build_updates() -> dict[int, bytes | bool | int | str]:
+        """Build the update dict based on the current confirmed state.
+
+        Uses `reported_value` (the last device-confirmed value) to avoid
+        observing optimistic values from pending writes. A missing
+        `reported_value` means the device hasn't reported this DP yet.
+        """
+        updates: dict[int, bytes | bool | int | str] = {}
         datapoint = device.datapoints[extra["mode_dp_id"]]
-        if not on or datapoint is None or datapoint.value != extra["on_value"]:
+        # Check the confirmed state, not the optimistic value.
+        is_on = (
+            datapoint is not None
+            and datapoint.reported_value is not None
+            and datapoint.reported_value == extra["on_value"]
+        )
+        if not on or not is_on:
             updates[extra["mode_dp_id"]] = (
                 extra["on_value"] if on else extra["off_value"]
             )
@@ -63,12 +72,13 @@ async def _atomic_check_and_write(
             updates[mapping.brightness_dp_id] = _brightness_value(
                 mapping, attributes["brightness"]
             )
+        return updates
 
-    if not updates:
-        return
-
-    types = {}
-    for dp_id in updates:
+    # Validate types against the *current* datapoints (which may be None if
+    # never created). Create any missing datapoints with no optimistic value
+    # (value=None) so their reported_value stays None until the device reports.
+    update_dict = build_updates()
+    for dp_id in update_dict:
         dp_type = (
             TuyaBLEDataPointType.DT_VALUE
             if dp_id == mapping.brightness_dp_id
@@ -77,25 +87,12 @@ async def _atomic_check_and_write(
         datapoint = device.datapoints[dp_id]
         if datapoint is not None and datapoint.dp_type != dp_type:
             raise ServiceValidationError("Light datapoint has an unexpected wire type")
-        types[dp_id] = dp_type
-    initial_values = {
-        extra["mode_dp_id"]: extra["off_value"],
-        mapping.color_mode_dp_id: extra["white_value"],
-        mapping.brightness_dp_id: mapping.brightness_min,
-    }
-    for dp_id, dp_type in types.items():
-        device.datapoints.get_or_create(dp_id, dp_type, initial_values[dp_id])
-    await device.set_multiple_values(updates)
+        if datapoint is None:
+            device.datapoints.get_or_create(dp_id, dp_type, value=None)
 
-
-async def write_mode(
-    device: TuyaBLEDevice,
-    mapping: TuyaBLELightMapping,
-    on: bool,
-    attributes: dict[str, Any],
-) -> None:
-    """Write mode and optional brightness together; never replay failed writes."""
-    await _atomic_check_and_write(device, mapping, on, attributes)
+    # Pass a callable so the final update dict is evaluated inside the
+    # rollback transaction, seeing the confirmed state.
+    await device.set_multiple_values(build_updates)
 
 
 def _brightness_value(mapping: TuyaBLELightMapping, brightness: Any) -> int:
