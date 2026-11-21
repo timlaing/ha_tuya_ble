@@ -265,6 +265,35 @@ async def test_wrong_wire_type_rejected(hass: HomeAssistant) -> None:
     assert device.datapoints[114] is None
 
 
+async def test_wire_type_recheck_inside_write_lock(hass: HomeAssistant) -> None:
+    """A report changing a wire type while the write waits still raises."""
+    device, _coordinator, _product, entity = _context(hass)
+    for dp_id, dp_type, value in (
+        (114, TuyaBLEDataPointType.DT_ENUM, 0),
+        (2, TuyaBLEDataPointType.DT_ENUM, 1),
+        (3, TuyaBLEDataPointType.DT_VALUE, 400),
+    ):
+        add_dp(device, dp_id, dp_type, value)
+
+    lock = device.datapoints._write_lock  # pylint: disable=protected-access
+    async with device.datapoints.apply_with_rollback([]):
+        task = asyncio.create_task(entity.async_turn_on(brightness=255))
+        for _ in range(50):
+            # pylint: disable-next=protected-access
+            if lock._waiters:
+                break
+            await asyncio.sleep(0)
+        else:
+            pytest.fail("write request never reached the lock")
+        # A device report changes the brightness wire type while queued.
+        add_dp(device, 3, TuyaBLEDataPointType.DT_STRING, "400")
+
+    with pytest.raises(ServiceValidationError):
+        await task
+    _send(device).assert_not_called()
+    assert _dp(device, 3).value == "400"
+
+
 async def test_existing_light_async_defaults(hass: HomeAssistant) -> None:
     """Generic async hooks still delegate to existing light write behavior."""
     device, coordinator, product = build_context(hass)

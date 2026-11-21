@@ -69,20 +69,26 @@ async def write_mode(
             updates[mapping.brightness_dp_id] = _brightness_value(
                 mapping, attributes["brightness"]
             )
+        # Recheck the wire types here so the validation runs under the write
+        # lock against the final update dict: a device report received while
+        # this request waited for the lock can change a datapoint's type.
+        # The raise happens before any value is applied, so no rollback runs.
+        for dp_id in updates:
+            dp_type = (
+                TuyaBLEDataPointType.DT_VALUE
+                if dp_id == mapping.brightness_dp_id
+                else TuyaBLEDataPointType.DT_ENUM
+            )
+            current = device.datapoints[dp_id]
+            if current is not None and current.dp_type != dp_type:
+                raise ServiceValidationError(
+                    "Light datapoint has an unexpected wire type"
+                )
         return updates
 
-    # First pass: validate types against existing datapoints only.
-    # Do NOT create new datapoints yet - we only do that after validation passes.
+    # First pass: validate types against existing datapoints only, before any
+    # datapoint is created for a request that may still fail validation.
     update_dict = build_updates()
-    for dp_id in update_dict:
-        dp_type = (
-            TuyaBLEDataPointType.DT_VALUE
-            if dp_id == mapping.brightness_dp_id
-            else TuyaBLEDataPointType.DT_ENUM
-        )
-        datapoint = device.datapoints[dp_id]
-        if datapoint is not None and datapoint.dp_type != dp_type:
-            raise ServiceValidationError("Light datapoint has an unexpected wire type")
 
     # Second pass: create missing datapoints with safe rollback values.
     # - enum: off_value (so rollback restores the safe default)
