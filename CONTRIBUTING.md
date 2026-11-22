@@ -106,8 +106,9 @@ HVAC mode rather than being silently mapped to heating. `hvac_action_dp_id`
 reads a closed/opened enum (`0` idle, `1` heating), reporting off when the HVAC
 mode is off. ENUM presets use `preset_enum_dp_id` plus `preset_enum_values`
 (preset name → unique byte index), separately from existing Boolean
-`preset_mode_dp_ids`. Climate mode, target and ENUM preset writes are awaited
-so failures reach the caller.
+`preset_mode_dp_ids`. Mode-data-point, temperature-target and ENUM-preset
+writes are awaited, so failures reach the caller. Switch-backed HVAC modes and
+humidity targets use background writes, whose failures do not propagate.
 
 Select `enum_values` similarly supplies unique byte indices matching `options`,
 for non-contiguous ENUM choices such as up/down = 0/2. Do not combine it with
