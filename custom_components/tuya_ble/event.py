@@ -131,23 +131,26 @@ class TuyaBLEEvent(TuyaBLEEntity, EventEntity):
         for dp in self._coordinator.last_updates:
             if dp.dp_id != self._mapping.dp_id:
                 continue
-            if dp.report_revision == self._report_revision:
-                continue
-            self._report_revision = dp.report_revision
-            if self._baseline_pending:
-                self._baseline_pending = False
-                continue
-            if dp.dp_type != self._mapping.dp_type:
-                continue
-            # Another listener may apply an optimistic write during dispatch.
-            # Events describe the received report, never that local value.
-            value = dp.reported_value
-            # Only decoded scalar wire values can be dictionary keys.
-            if not isinstance(value, bool | int | str):
-                continue
-            event_type = self._mapping.event_values.get(value)
-            if event_type is not None:
-                self._trigger_event(event_type)
+            # A packet may carry several reports for this data point; each has
+            # its own immutable snapshot, so none is lost to a later overwrite.
+            for report in dp.reports:
+                if report.report_revision <= self._report_revision:
+                    continue
+                self._report_revision = report.report_revision
+                if self._baseline_pending:
+                    self._baseline_pending = False
+                    continue
+                if report.dp_type != self._mapping.dp_type:
+                    continue
+                # Another listener may apply an optimistic write during
+                # dispatch. Events describe the received report, not that value.
+                value = report.reported_value
+                # Only decoded scalar wire values can be dictionary keys.
+                if not isinstance(value, bool | int | str):
+                    continue
+                event_type = self._mapping.event_values.get(value)
+                if event_type is not None:
+                    self._trigger_event(event_type)
         self.async_write_ha_state()
 
 

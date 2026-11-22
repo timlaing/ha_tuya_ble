@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 from collections.abc import AsyncIterator, Callable, Iterable, Iterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 import logging
 from struct import error as struct_error
 from struct import pack
@@ -27,6 +29,20 @@ TuyaBLEDataPointValue = bytes | bytearray | memoryview | bool | int | str
 
 # Logged in place of the value of a data point that carries a credential.
 REDACTED_VALUE = "<redacted>"
+
+# Enough reports for a single BLE packet of repeated events. Keeping the log
+# bounded stops long-running devices from growing it without limit.
+_REPORT_LOG_LIMIT = 64
+
+
+@dataclass(frozen=True)
+class TuyaBLEReport:
+    """Immutable snapshot of one device report, taken before the next arrives."""
+
+    dp_id: int
+    dp_type: TuyaBLEDataPointType
+    report_revision: int
+    reported_value: bytes | bool | int | str | None
 
 
 class TuyaBLEDataPoint:
@@ -52,11 +68,13 @@ class TuyaBLEDataPoint:
         self._revision = 0
         self._report_revision = 0
         self._reported_value: bytes | bool | int | str | None = None
+        self._reports: deque[TuyaBLEReport] = deque(maxlen=_REPORT_LOG_LIMIT)
         self.update_from_device(timestamp, flags, dp_type, value, raw_value)
         if not reported:
             # Created locally, e.g. to send a write: no report has arrived yet.
             self._report_revision = 0
             self._reported_value = None
+            self._reports.clear()
 
     def update_from_device(
         self,
@@ -91,6 +109,16 @@ class TuyaBLEDataPoint:
         self._raw_value = raw_value
         self._revision += 1
         self._report_revision += 1
+        # Snapshot the immutable facts of this report before any later report
+        # in the same packet overwrites the shared datapoint object.
+        self._reports.append(
+            TuyaBLEReport(
+                dp_id=self._id,
+                dp_type=dp_type,
+                report_revision=self._report_revision,
+                reported_value=value,
+            )
+        )
 
     @staticmethod
     def _pack_enum(value: int) -> bytes:
@@ -204,6 +232,15 @@ class TuyaBLEDataPoint:
         point was created locally and the device has not reported it yet.
         """
         return self._reported_value
+
+    @property
+    def reports(self) -> tuple[TuyaBLEReport, ...]:
+        """Return immutable snapshots of the most recent device reports.
+
+        Each entry keeps its own revision, type and value, so multiple reports
+        for one data point in a single packet are all visible to consumers.
+        """
+        return tuple(self._reports)
 
     def set_value_no_notify(self, value: TuyaBLEDataPointValue) -> None:
         """Set the value without sending an update to the device."""

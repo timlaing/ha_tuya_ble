@@ -385,3 +385,33 @@ def test_valid_doorbell_category_default(tmp_path: Any) -> None:
     with patch.object(event, "get_registry", return_value=registry):
         mappings = event._build_mapping()  # pylint: disable=protected-access
     assert mappings["test"].products["test"][0].event_values == {True: "ring"}
+
+
+async def test_two_reports_in_one_packet_emit_both_clicks(hass: HomeAssistant) -> None:
+    """Two matching reports in one packet are not collapsed to the last one."""
+    entity = await _entity(hass)
+    device = entity.device
+    dp_id = 1
+
+    # Baseline the first report so the next two are both real clicks.
+    add_dp(device, dp_id, DPType.DT_STRING, "single_click")
+    dp = device.datapoints[dp_id]
+    assert dp is not None
+    device._fire_callbacks([dp])  # pylint: disable=protected-access
+    assert entity.state is None
+
+    # Deliver two reports in one dispatch, both referencing the same datapoint.
+    add_dp(device, dp_id, DPType.DT_STRING, "single_click")
+    add_dp(device, dp_id, DPType.DT_STRING, "double_click")
+    emitted: list[str] = []
+    original = entity._trigger_event  # pylint: disable=protected-access
+
+    def _capture(event_type: str) -> None:
+        emitted.append(event_type)
+        original(event_type)
+
+    with patch.object(entity, "_trigger_event", side_effect=_capture):
+        device._fire_callbacks([dp, dp])  # pylint: disable=protected-access
+
+    assert emitted == ["single_click", "double_click"]
+    assert entity.state_attributes["event_type"] == "double_click"
