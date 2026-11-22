@@ -21,7 +21,7 @@ from .coordinator import TuyaBLECoordinator
 from .device_registry import EntityDescriptor, get_registry
 from .devices import TuyaBLEData
 from .entity import TuyaBLEEntity, TuyaBLEProductInfo
-from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
+from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice, TuyaBLEReport
 
 
 @dataclass
@@ -117,14 +117,31 @@ class TuyaBLEEvent(TuyaBLEEntity, EventEntity):
         self._baseline_pending = True
         await super().async_added_to_hass()
 
+    def _mapped_event_type(self, report: TuyaBLEReport) -> str | None:
+        """Return the event type for a fresh report, consuming the baseline.
+
+        The protocol cannot distinguish an initial status from a press, so the
+        first report per session is silently baselined. Later equal-valued
+        reports are real events and use the snapshot taken at ingestion, never
+        an optimistic local write applied during dispatch.
+        """
+        if report.report_revision <= self._report_revision:
+            return None
+        self._report_revision = report.report_revision
+        if self._baseline_pending:
+            self._baseline_pending = False
+            return None
+        if report.dp_type != self._mapping.dp_type:
+            return None
+        value = report.reported_value
+        # Only decoded scalar wire values can be dictionary keys.
+        if not isinstance(value, bool | int | str):
+            return None
+        return self._mapping.event_values.get(value)
+
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Consume only fresh reports in the current dispatch batch.
-
-        The protocol does not distinguish the initial status from a click.
-        Conservatively baseline the first report per session, never inventing
-        an event on reconnect. Equal-valued subsequent reports are real events.
-        """
+        """Consume only fresh reports in the current dispatch batch."""
         if self._generation != self._coordinator.report_generation:
             self._generation = self._coordinator.report_generation
             self._baseline_pending = True
@@ -134,22 +151,7 @@ class TuyaBLEEvent(TuyaBLEEntity, EventEntity):
             # A packet may carry several reports for this data point; each has
             # its own immutable snapshot, so none is lost to a later overwrite.
             for report in dp.reports:
-                if report.report_revision <= self._report_revision:
-                    continue
-                self._report_revision = report.report_revision
-                if self._baseline_pending:
-                    self._baseline_pending = False
-                    continue
-                if report.dp_type != self._mapping.dp_type:
-                    continue
-                # Another listener may apply an optimistic write during
-                # dispatch. Events describe the received report, not that value.
-                value = report.reported_value
-                # Only decoded scalar wire values can be dictionary keys.
-                if not isinstance(value, bool | int | str):
-                    continue
-                event_type = self._mapping.event_values.get(value)
-                if event_type is not None:
+                if event_type := self._mapped_event_type(report):
                     self._trigger_event(event_type)
                     # HA only records the last-event fields in _trigger_event;
                     # publish each one so automations see every click.
