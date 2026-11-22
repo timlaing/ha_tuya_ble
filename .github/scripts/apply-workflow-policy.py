@@ -99,24 +99,46 @@ def main_ruleset() -> dict[str, Any]:
     )
 
 
-def notifier_status_passed(statuses: list[dict[str, Any]], revision: str) -> bool:
-    """Require the notifier status to come from the trusted workflow run.
+# Context -> trusted producing workflow and its run display title prefix.
+TRUSTED_STATUS_RUNS: dict[str, tuple[str, str]] = {
+    "Review notifier policy": (
+        "review-notifier-policy.yml",
+        "Review notifier policy / {revision}",
+    ),
+    "Review passed": (
+        "coderabbit-after-checks.yml",
+        "CodeRabbit after checks / {revision}",
+    ),
+    "Analysis passed": (
+        "sonarqube.yml",
+        "SonarQube / {revision}",
+    ),
+}
 
-    The Actions bot identity and status name alone prove nothing: any workflow
-    can publish a same-named status. The coordinator validates the run identity,
-    conclusion, revision and trigger; activation applies the same checks.
+
+def trusted_status_passed(
+    statuses: list[dict[str, Any]], name: str, revision: str
+) -> bool:
+    """Require that a privileged status came from its trusted workflow run.
+
+    The Actions bot identity and a status name alone prove nothing: any workflow
+    can publish a same-named status. The coordinator validates run identity,
+    conclusion, revision and trigger; activation applies the same checks so the
+    status cannot be spoofed. Genuine statuses carry a run target_url. Legacy
+    statuses without one are only accepted through the documented manual path.
     """
     status = next(
         (
             item
             for item in sorted(statuses, key=lambda item: item["id"], reverse=True)
-            if item.get("context") == "Review notifier policy"
+            if item.get("context") == name
             and item.get("creator", {}).get("login") == "github-actions[bot]"
         ),
         None,
     )
     if status is None or status.get("state") != "success":
         return False
+    workflow_file, title = TRUSTED_STATUS_RUNS[name]
     target = status.get("target_url") or ""
     match = re.fullmatch(
         r"(?:https?://[^/]+)?/[^/]+/[^/]+/actions/runs/([1-9][0-9]*)", target
@@ -124,27 +146,31 @@ def notifier_status_passed(statuses: list[dict[str, Any]], revision: str) -> boo
     if match is None:
         return False
     run = api(f"actions/runs/{match.group(1)}")
-    workflow = api("actions/workflows/review-notifier-policy.yml")
+    workflow = api(f"actions/workflows/{workflow_file}")
     repository = api("")
     if (
         run.get("workflow_id") != workflow.get("id")
-        or workflow.get("path") != ".github/workflows/review-notifier-policy.yml"
+        or workflow.get("path") != f".github/workflows/{workflow_file}"
         or run.get("status") != "completed"
         or run.get("conclusion") != "success"
-        or run.get("display_title") != f"Review notifier policy / {revision}"
+        or run.get("display_title") != title.format(revision=revision)
     ):
         return False
     event = run.get("event")
     if event == "pull_request_target":
         return True
-    return event == "workflow_dispatch" and (
+    if event == "workflow_dispatch" and (
         run.get("head_branch") == repository.get("default_branch")
         or (
             run.get("actor", {}).get("login")
             == repository.get("owner", {}).get("login")
             and run.get("head_sha") == revision
         )
-    )
+    ):
+        return True
+    # workflow_run scanners (SonarQube) execute on the producing run's head,
+    # which equals the evidence revision for a PR analysis.
+    return event == "workflow_run" and run.get("head_sha") == revision
 
 
 def reported_checks(
@@ -166,8 +192,10 @@ def reported_checks(
         if item.get("creator", {}).get("login") == "github-actions[bot]" and item[
             "context"
         ] in {"Review passed", "Review notifier policy", "Quality", "Analysis passed"}:
-            if item["context"] == "Review notifier policy":
-                checks[item["context"]] = notifier_status_passed(statuses, revision)
+            if item["context"] in TRUSTED_STATUS_RUNS:
+                checks[item["context"]] = trusted_status_passed(
+                    statuses, item["context"], revision
+                )
             else:
                 checks[item["context"]] = item["state"] == "success"
     return checks

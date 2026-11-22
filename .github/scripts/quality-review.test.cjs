@@ -310,6 +310,19 @@ function fixture() {
   process.env.REQUIRED_CHECKS = '["Validate ci"]';
   return { data, options };
 }
+test("a SonarQube workflow_run completion can resume coordination at the PR head", async () => {
+  const { data, options } = fixture();
+  data.reviews = [
+    { user: { login: "coderabbitai[bot]" }, commit_id: sha, state: "APPROVED" },
+  ];
+  options.context.eventName = "workflow_run";
+  options.context.payload = {
+    workflow_run: { event: "workflow_run", head_sha: sha },
+  };
+  await run(options);
+  assert.deepEqual(data.states, ["pending", "success"]);
+});
+
 test("non-PR events and stale, draft or foreign PRs cannot publish success", async () => {
   const { data, options } = fixture();
   options.context.payload.workflow_run.event = "workflow_dispatch";

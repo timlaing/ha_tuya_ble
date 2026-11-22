@@ -61,7 +61,10 @@ function requiredPassed(name, checks, statuses) {
           item.creator?.login === "github-actions[bot]",
       )
       .sort((left, right) => right.id - left.id)[0]?.state === "success";
-  if (name === "Review notifier policy") return statusPassed();
+  // SonarQube publishes Analysis passed as a commit status on the head. A
+  // CheckRun with the same name is not equivalent and must not satisfy it.
+  if (name === "Review notifier policy" || name === "Analysis passed")
+    return statusPassed();
   const check = checks
     .filter((item) => item.name === name && item.app?.slug === "github-actions")
     .sort((left, right) => right.id - left.id)[0];
@@ -167,7 +170,9 @@ async function currentPull(github, context) {
   const upstream = context.payload.workflow_run;
   if (
     upstream &&
-    !["push", "pull_request", "pull_request_review"].includes(upstream.event)
+    !["push", "pull_request", "pull_request_review", "workflow_run"].includes(
+      upstream.event,
+    )
   )
     return;
   const sha = upstream?.head_sha || process.env.REVISION;

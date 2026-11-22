@@ -1,4 +1,5 @@
 """Regression checks for the guarded repository-settings migration."""
+# pylint: disable=too-many-return-statements,too-many-branches,too-many-locals
 
 from __future__ import annotations
 
@@ -160,16 +161,53 @@ class ApplyTests(unittest.TestCase):
                             }
                         ],
                     }
-                return [
-                    {
+                statuses = []
+                for index, name in enumerate(policy["required_checks"]):
+                    if name not in {
+                        "Review passed",
+                        "Review notifier policy",
+                        "Quality",
+                    }:
+                        continue
+                    statuses.append({
                         "id": index,
                         "context": name,
                         "creator": {"login": "github-actions[bot]"},
                         "state": "success",
+                        "target_url": (
+                            f"https://github.com/o/r/actions/runs/{10 + index}"
+                        ),
+                    })
+                return statuses
+            titles = {
+                "Review notifier policy": "Review notifier policy / ",
+                "Review passed": "CodeRabbit after checks / ",
+                "Analysis passed": "SonarQube / ",
+            }
+            files = {
+                "Review notifier policy": "review-notifier-policy.yml",
+                "Review passed": "coderabbit-after-checks.yml",
+                "Analysis passed": "sonarqube.yml",
+            }
+            for name, run_id in [
+                ("Review notifier policy", 10),
+                ("Review passed", 11),
+                ("Analysis passed", 12),
+            ]:
+                if path == f"actions/runs/{run_id}":
+                    return {
+                        "workflow_id": run_id,
+                        "status": "completed",
+                        "conclusion": "success",
+                        "display_title": titles[name] + "a" * 40,
+                        "event": "pull_request_target",
+                        "head_sha": "a" * 40,
+                        "actor": {"login": "o"},
                     }
-                    for index, name in enumerate(policy["required_checks"])
-                    if name in {"Review passed", "Review notifier policy", "Quality"}
-                ]
+                if path == f"actions/workflows/{files[name]}":
+                    return {"id": run_id, "path": f".github/workflows/{files[name]}"}
+            if path == "":
+                return {"default_branch": "main", "owner": {"login": "o"}}
             if mismatch == "enable" and path.endswith("/enable"):
                 raise SystemExit("Workflow enablement failed")
             if path.startswith("rulesets?"):
@@ -382,27 +420,40 @@ class EvidenceTests(unittest.TestCase):
                     "context": name,
                     "creator": {"login": "github-actions[bot]"},
                     "state": "success",
-                    "target_url": "https://github.com/o/r/actions/runs/7",
+                    "target_url": f"https://github.com/o/r/actions/runs/{7 + index}",
                 }
                 for index, name in enumerate(policy["required_checks"][1:])
             ],
         }
+        titles = {
+            "Review notifier policy": "Review notifier policy / ",
+            "Review passed": "CodeRabbit after checks / ",
+            "Analysis passed": "SonarQube / ",
+        }
+        files = {
+            "Review notifier policy": "review-notifier-policy.yml",
+            "Review passed": "coderabbit-after-checks.yml",
+            "Analysis passed": "sonarqube.yml",
+        }
         trusted = {
             "": {"default_branch": "main", "owner": {"login": "o"}},
-            "actions/runs/7": {
-                "workflow_id": 9,
+        }
+        for index, name in enumerate(policy["required_checks"][1:]):
+            run_id = 7 + index
+            workflow_id = 9 + index
+            trusted[f"actions/runs/{run_id}"] = {
+                "workflow_id": workflow_id,
                 "status": "completed",
                 "conclusion": "success",
-                "display_title": "Review notifier policy / " + "a" * 40,
+                "display_title": titles[name] + "a" * 40,
                 "event": "pull_request_target",
                 "head_sha": "a" * 40,
                 "actor": {"login": "o"},
-            },
-            "actions/workflows/review-notifier-policy.yml": {
-                "id": 9,
-                "path": ".github/workflows/review-notifier-policy.yml",
-            },
-        }
+            }
+            trusted[f"actions/workflows/{files[name]}"] = {
+                "id": workflow_id,
+                "path": f".github/workflows/{files[name]}",
+            }
         cases: list[tuple[str, str | None, Callable[[dict[str, Any]], object]]] = [
             ("valid", "a" * 40, lambda _data: None),
             ("missing revision", None, lambda _data: None),
@@ -442,7 +493,7 @@ class EvidenceTests(unittest.TestCase):
                 "spoofed notifier",
                 "a" * 40,
                 lambda data: data["statuses"][1].update(
-                    target_url="https://github.com/o/r/actions/runs/8"
+                    target_url="https://github.com/o/r/actions/runs/99"
                 ),
             ),
             (
