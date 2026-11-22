@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.core import HomeAssistant
 import pytest
@@ -31,12 +31,16 @@ PRODUCTS = [
 ]
 
 
-def _device(category: str, product_id: str) -> TuyaBLEDevice:
+def _device(category: str, product_id: str) -> tuple[TuyaBLEDevice, AsyncMock]:
     device = make_device()
     device.initialize_with_credentials(
         make_credentials(category=category, product_id=product_id)
     )
-    return device
+    # Read-only devices must never write; stub the BLE write path so any
+    # accidental command is both harmless and observable via assert_not_awaited.
+    send_datapoints = AsyncMock()
+    device.send_datapoints = send_datapoints  # type: ignore[method-assign]
+    return device, send_datapoints
 
 
 async def _setup(
@@ -61,7 +65,7 @@ async def test_only_verified_report_ids_and_no_write_entities(
     hass: HomeAssistant, category: str, product_id: str, expected: set[int]
 ) -> None:
     """Even unrelated live DPs cannot expose guessed writes or category defaults."""
-    device = _device(category, product_id)
+    device, _ = _device(category, product_id)
     assert get_mapped_dp_ids(category, product_id) == expected
     descriptor = get_registry().get(category, product_id)
     assert descriptor is not None
@@ -80,7 +84,7 @@ async def test_no_phantom_report_entities(
     hass: HomeAssistant, category: str, product_id: str, _expected: set[int]
 ) -> None:
     """Absent/wrong-type reports add no product sensors (RSSI is independent)."""
-    device = _device(category, product_id)
+    device, _ = _device(category, product_id)
     for platform in (sensor, binary_sensor):
         entities, _ = await _setup(hass, device, platform)
         assert all(e.entity_description.key == "signal_strength" for e in entities)
@@ -121,7 +125,7 @@ async def test_numeric_report_read_paths(
     unit: str | None,
 ) -> None:
     """Known scales are applied; unknown enum values remain unlabeled numbers."""
-    device = _device(category, product_id)
+    device, send_datapoints = _device(category, product_id)
     add_dp(device, dp_id, wire_type, raw)
     entities, coordinator = await _setup(hass, device, sensor)
     entity = next(e for e in entities if e.entity_description.key == str(dp_id))
@@ -143,6 +147,8 @@ async def test_numeric_report_read_paths(
         coordinator.async_set_updated_data({})
         assert entity.native_value == pytest.approx(expected)
 
+    send_datapoints.assert_not_awaited()
+
 
 @pytest.mark.parametrize(
     ("category", "product_id", "dp_id"),
@@ -157,7 +163,7 @@ async def test_boolean_report_read_paths(
     hass: HomeAssistant, category: str, product_id: str, dp_id: int
 ) -> None:
     """BOOL reports have unknown state on type/value mismatch, never writes."""
-    device = _device(category, product_id)
+    device, send_datapoints = _device(category, product_id)
     add_dp(device, dp_id, Type.DT_BOOL, True)
     entities, coordinator = await _setup(hass, device, binary_sensor)
     entity = next(e for e in entities if e.entity_description.key == str(dp_id))
@@ -173,11 +179,12 @@ async def test_boolean_report_read_paths(
             add_dp(device, dp_id, dp_type, value)
             coordinator.async_set_updated_data({})
             assert entity.is_on is expected
+    send_datapoints.assert_not_awaited()
 
 
 async def test_absent_reports_stay_unknown(hass: HomeAssistant) -> None:
     """Forced direct construction also rejects absent or locally created values."""
-    device = _device("dj", "e2kdgdsu")
+    device, _ = _device("dj", "e2kdgdsu")
     coordinator = TuyaBLECoordinator(hass, device)
     product = get_device_product_info(device)
     numeric = sensor.TuyaBLESensor(
@@ -208,16 +215,16 @@ async def test_absent_reports_stay_unknown(hass: HomeAssistant) -> None:
 
 def test_unrelated_light_defaults_and_deferred_mower_unchanged() -> None:
     """The empty override affects only the aquarium, not existing generic lights."""
-    assert light.get_mapping_by_device(_device("dj", "unknown"))
-    assert not light.get_mapping_by_device(_device("dj", "e2kdgdsu"))
-    assert not light.get_mapping_by_device(_device("xdd", "unknown"))
+    assert light.get_mapping_by_device(_device("dj", "unknown")[0])
+    assert not light.get_mapping_by_device(_device("dj", "e2kdgdsu")[0])
+    assert not light.get_mapping_by_device(_device("xdd", "unknown")[0])
     assert get_registry().get("gcj", "7yr5iwga") is None
     assert not get_mapped_dp_ids("gcj", "7yr5iwga")
 
 
 async def test_generic_light_reports_still_update(hass: HomeAssistant) -> None:
     """Empty product overrides do not alter unrelated generic report handling."""
-    device = _device("dj", "unknown")
+    device, _ = _device("dj", "unknown")
     coordinator = TuyaBLECoordinator(hass, device)
     entity = light.TuyaBLELight(
         hass,
