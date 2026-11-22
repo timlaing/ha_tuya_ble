@@ -164,8 +164,9 @@ Entities: battery, temperature, charge/discharge current and voltage, tool diagn
 - Magiacous Floor Lamp (product_id `umzu0c2y`).
 - Comfamoli Sunset Lamp (product_id `6jxcdae1`).
 - RGB Strip Light (product_id `0qgrjxum`).
+- RGBWIC Strip Light-3M (product_id `erx2ivxa`, experimental): brightness stays on DP3 (10–1000) even in colour mode; colour data DP5 carries only colour, so brightness and colour commands now work. No colour-temperature DP is reported. Hardware behaviour still needs confirmation.
 
-Entities: on/off, brightness, color temperature, RGB color.
+Entities: on/off, brightness, RGB color; color temperature on products that report a color-temperature DP.
 
 ## Ceiling lights (category_id `xdd`)
 

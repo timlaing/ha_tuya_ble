@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning].
 
 ### Fixed
 
+- **RGBWIC Strip Light-3M** (`dd` / `erx2ivxa`, #215): brightness is read from and written to the separate brightness data point even in colour mode, instead of the colour string's value field, which this strip reports as zero. Brightness and colour commands now work and the reported brightness matches the device. Other strip lights keep their existing colour-value behaviour. Experimental; hardware behaviour still needs confirmation.
 - **Primary lock state confirmation** (#166): 8052F66 and C-014S keep their last device-reported lock state while a command is pending, and stay unknown until the first report. A successful local write alone no longer implies the lock confirmed a physical state change.
 - **Unlock-check privacy for the additional locks** (#179): H13 and both CTL20H drawer-lock variants withhold DP71 reports from logs and live diagnostics even though unlocking is not exposed. This does not enable an unlock command.
 - **Explicitly unsupported lock controls** (#179): an empty product lock descriptor now overrides the category's generic lock, rather than silently enabling unverified lock/unlock commands. Existing product mappings are unchanged.

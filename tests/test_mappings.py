@@ -525,6 +525,7 @@ def test_build_light_mapping() -> None:
             "brightness_max": 1000,
             "color_temp_min": 10,
             "color_temp_max": 90,
+            "brightness_dp_in_color_mode": True,
         },
     )
     built = light._build_light_mapping(desc)
@@ -540,6 +541,7 @@ def test_build_light_mapping() -> None:
     assert built.brightness_max == 1000
     assert built.color_temp_min == 10
     assert built.color_temp_max == 90
+    assert built.brightness_dp_in_color_mode is True
 
 
 def test_get_mapped_dp_ids_includes_the_water_valve_entity() -> None:

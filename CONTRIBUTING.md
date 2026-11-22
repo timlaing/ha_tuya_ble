@@ -116,7 +116,9 @@ string `values`. Confirm enum ordering from device evidence, not option names.
 
 **cover**: `state_dp_id`, `position_set_dp_id`, `position_dp_id`, `tilt_dp_id`
 
-**light**: `switch_dp_id`, `color_mode_dp_id`, `brightness_dp_id`, `brightness_min`, `brightness_max`, `color_temp_dp_id`, `color_temp_min`, `color_temp_max`, `color_data_dp_id`
+**light**: `switch_dp_id`, `color_mode_dp_id`, `brightness_dp_id`, `brightness_min`, `brightness_max`, `color_temp_dp_id`, `color_temp_min`, `color_temp_max`, `color_data_dp_id`, `brightness_dp_in_color_mode`
+
+Set `brightness_dp_in_color_mode: true` when brightness stays on `brightness_dp_id` even in colour mode (e.g. the `dj_v2_color_alg` strips). By default HS-mode brightness is read from the colour data V field.
 
 **lock**: `door_dp_id` (DP ID for door status sensor), plus the `*_dp_id` fields the shared lock handlers declare: `passage_dp_id`, `manual_lock_dp_id`, `unlock_dp_id` and `open_dp_id`. Without handlers a lock reads its `dp_id` as the bolt/motor state (on = unlocked) and writes it for lock/unlock. A lock that cannot report a truthful locked state should get a `bluetooth_unlock` button instead of a lock entity.
 

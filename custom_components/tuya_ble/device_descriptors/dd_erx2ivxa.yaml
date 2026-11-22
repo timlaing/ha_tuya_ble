@@ -1,0 +1,19 @@
+category: dd
+product_id: erx2ivxa
+device_name: RGBWIC Strip Light-3M
+model_name: erx2ivxa
+# Tuya reports dj_v2_color_alg: brightness is always DP3 (10-1000), and the V
+# field of the colour string is not the brightness. Restate the full light
+# block because a product descriptor replaces the category defaults.
+entities:
+  light:
+    - translation_key: switch_led
+      name: Strip light
+      switch_dp_id: 1
+      color_mode_dp_id: 2
+      brightness_dp_id: 3
+      color_data_dp_id: 5
+      color_temp_dp_id: 0
+      brightness_min: 10
+      brightness_max: 1000
+      brightness_dp_in_color_mode: true

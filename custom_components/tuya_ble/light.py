@@ -46,6 +46,7 @@ class TuyaBLELightMapping:
     brightness_max: int = 255
     color_temp_min: int = 0
     color_temp_max: int = 100
+    brightness_dp_in_color_mode: bool = False
     descriptor: EntityDescriptor | None = None
 
 
@@ -97,6 +98,7 @@ def _build_light_mapping(desc: EntityDescriptor) -> TuyaBLELightMapping:
         "brightness_max",
         "color_temp_min",
         "color_temp_max",
+        "brightness_dp_in_color_mode",
     ):
         if field_name in extra:
             kwargs[field_name] = extra[field_name]
@@ -201,7 +203,10 @@ class TuyaBLELight(TuyaBLEEntity, LightEntity):
     @property
     def brightness(self) -> int | None:
         """Return the brightness of the light (0-255)."""
-        if self.color_mode == ColorMode.HS:
+        if (
+            self.color_mode == ColorMode.HS
+            and not self._mapping.brightness_dp_in_color_mode
+        ):
             color_data = self._get_color_data()
             if color_data is not None:
                 _h, _s, v = color_data
@@ -292,6 +297,49 @@ class TuyaBLELight(TuyaBLEEntity, LightEntity):
             return None
         return TuyaBLEDataPointType.DT_ENUM, index
 
+    def _colour_commands(self, kwargs: dict[str, Any]) -> list[dict[str, Any]]:
+        """Build the work-mode, colour and brightness writes for a colour call."""
+        commands: list[dict[str, Any]] = []
+        work_mode = self._work_mode_write("colour")
+        if work_mode is not None:
+            mode_dp_type, mode_value = work_mode
+            commands.append({
+                "dp_id": self._mapping.color_mode_dp_id,
+                "dp_type": mode_dp_type,
+                "value": mode_value,
+            })
+        hs_color = kwargs[ATTR_HS_COLOR]
+        brightness = kwargs.get(ATTR_BRIGHTNESS, self.brightness or 0)
+        h = round(remap_value(hs_color[0], 0, 360, 0, 360))
+        s = round(remap_value(hs_color[1], 0, 100, 0, 1000))
+        v = round(remap_value(brightness, 0, 255, 0, 1000))
+        commands.append({
+            "dp_id": self._mapping.color_data_dp_id,
+            "dp_type": TuyaBLEDataPointType.DT_STRING,
+            "value": f"{h:04x}{s:04x}{v:04x}",
+        })
+        if (
+            self._mapping.brightness_dp_in_color_mode
+            and ATTR_BRIGHTNESS in kwargs
+            and self._mapping.brightness_dp_id != 0
+        ):
+            # This strip keeps brightness on a separate data point even
+            # in colour mode; the colour V field is not its brightness.
+            commands.append({
+                "dp_id": self._mapping.brightness_dp_id,
+                "dp_type": TuyaBLEDataPointType.DT_VALUE,
+                "value": round(
+                    remap_value(
+                        kwargs[ATTR_BRIGHTNESS],
+                        0,
+                        255,
+                        self._mapping.brightness_min,
+                        self._mapping.brightness_max,
+                    )
+                ),
+            })
+        return commands
+
     def turn_on(self, **kwargs: Any) -> None:
         """Turn on the light."""
         if self._write_handler is not None:
@@ -347,25 +395,7 @@ class TuyaBLELight(TuyaBLEEntity, LightEntity):
             })
 
         if colour_requested:
-            work_mode = self._work_mode_write("colour")
-            if work_mode is not None:
-                mode_dp_type, mode_value = work_mode
-                commands.append({
-                    "dp_id": self._mapping.color_mode_dp_id,
-                    "dp_type": mode_dp_type,
-                    "value": mode_value,
-                })
-            hs_color = kwargs[ATTR_HS_COLOR]
-            brightness = kwargs.get(ATTR_BRIGHTNESS, self.brightness or 0)
-            h = round(remap_value(hs_color[0], 0, 360, 0, 360))
-            s = round(remap_value(hs_color[1], 0, 100, 0, 1000))
-            v = round(remap_value(brightness, 0, 255, 0, 1000))
-            colorstr = f"{h:04x}{s:04x}{v:04x}"
-            commands.append({
-                "dp_id": self._mapping.color_data_dp_id,
-                "dp_type": TuyaBLEDataPointType.DT_STRING,
-                "value": colorstr,
-            })
+            commands.extend(self._colour_commands(kwargs))
         elif ATTR_BRIGHTNESS in kwargs and self._mapping.brightness_dp_id != 0:
             value = round(
                 remap_value(
