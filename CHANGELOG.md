@@ -5,7 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog],
 and this project adheres to [Semantic Versioning].
 
-## [Unreleased]
+## [2.10.0] - 2026-11-22
+
+This full release gathers the six 2.10.0 beta builds into one stable release. It adds Tuya BLE protocol v4 support with Security V2 login, broader device and descriptor coverage, on-demand connections, and lock, light, climate and event platforms. The experimental devices still need physical hardware validation on this integration; Security V2 and the newer protocol-4 firmware have not been confirmed on real hardware.
 
 ### Added
 
@@ -13,14 +15,11 @@ and this project adheres to [Semantic Versioning].
 - **Mobile cloud diagnostics**: store bounded, recursively sanitized device, product and status snapshots alongside the existing QR-cloud data. Preserve approved metadata and field shapes without credentials, private account data or raw status values; snapshots remain downloadable when Bluetooth verification fails.
 - **Curtain and blind motors** (#170): add the rechargeable Curtain Robot (`cl` / `cq7xquhj`), AM25 Plus L (`y0dtvgqf`), RSH-MC27 (`ousymtkt`) and experimental AOK AM25 (`v3fzfd2y`), with open/close/stop and target/current position. Battery is exposed on all except the mains-powered AM25 Plus L. The Curtain Robot reverses commands, reported movement and percentages together without changing other covers. Untested direction, limit, reset and work-state controls are left out. Thanks to @albertgoca93, @ShanePadellaro, @hogi1200 and @CloCkWeRX for ha-tuya-ble/ha_tuya_ble PRs 359, 320, 332 and 126.
 - **Additional lock descriptors** (#179, experimental): Pulido PLD_P130 (`0qxp5u7s`) uses the shared passage/bolt handlers with separate held-open Unlock and momentary Open actions; H13 (`kholoaew`) offers tested settings and a lock-only button, not the failed unlock command. Pirnar Securosmart (`uyf1ewof`) and CTL20H drawer locks (`y2yaegze`, `qcrilcpr`) expose only evidenced diagnostics. Nine other products are registered as metadata only pending Bluetooth schema and command evidence. Corrects Pirnar's placeholder manufacturer. See the lock audit for exact limitations; no device was tested for this port. Thanks to @way-lo, @Test-subj, @flo-m, @eric1905, @SittingDuck52, @jpmreis, @khseal, @deg3n and @CloCkWeRX for source patches, schemas and reports.
-
 - **MiBoxer BS64 stair controller (`dj` / `c2twgywo`) — experimental** (#171): mode-based on/off, brightness sent atomically with white work mode, and mode/auto-effect selects. Timing controls and colour temperature await verified ranges and calibration rather than using assumed values. Thanks to @3XX0 for the owner-tested mapping in ha-tuya-ble/ha_tuya_ble#355 and @Meanen for the light-mode correction in #286. This port still needs physical testing; existing lights are unchanged.
 - **Refresh a lock's Bluetooth unlock check** (#199): the integration's options can fetch a new check from the linked Tuya account without removing the device. Only a valid check replaces the stored one, then the integration reloads; keys, identity and entities stay unchanged. Entries without cloud login, including manual entries, can link through the existing QR login first. Network errors and missing or invalid checks leave the old check intact. Thanks to @timlaing for the refresh-path request.
 - **Primary smart locks** (#166, experimental): descriptors for EL605A (`jtmspro` / `2hmqh0ty`, battery and unlock button), 8052F66 (`dappsdq4`, automatic-lock mode and momentary Open), C-014S (`djrqe0q6`, lock/unlock, state and settings), and CTL20 (`tkbdvrzr`, unlock button only). All DP71 payloads are withheld from logs and diagnostics. EL605A lock state and CTL20's other entities await their redacted schemas; C-014S doorbell awaits #172. Physical testing on this integration is still needed. Thanks to @steven-ahfu, @GeorgeBark, @rairulyle and @albertgoca93 for the source mappings and device tests; see `docs/PRIMARY_LOCKS.md` for evidence and limitations.
-
 - **Event platform and Arlec Smart Buttons** (#172, experimental): registry-backed single/double-click and long-press events plus battery for `wxkg` / `kpzc6pm8` (SG022HA) and `ja5osu5g` (ZG101Z), based on ha-tuya-ble/ha_tuya_ble#228 by @CloCkWeRX and the tuya-local contributors. Repeated identical reports each emit an event; cached values, unrelated updates and connection changes do not. The first event data-point report after setup or reconnect is used as a silent baseline, which can discard a real click if the device sends no initial status. Only verified string values are mapped; direct BLE enum order and hardware behaviour still need captures. Generic doorbell support and the C-014S DP24 lock doorbell event are tested; hardware behaviour still needs verification. Fingerbot bus events are unchanged.
 - **Bluetooth Smart TRV (`wkf` / `llflaywg`) — experimental** (#198): Auto/Heat/Off, an explicitly named Full open option, comfort/eco presets, temperature correction, eco deviation, window detection, child lock, brightness, up/down orientation and read-only diagnostics. Uses @tomaz1's device-owner schema and BLE reports rather than the incompatible `wk` copy in ha-tuya-ble/ha_tuya_ble#261. Target temperature writes remain unverified; schedules, uncertain writable bounds and motor thrust controls are not exposed. Existing `wk` thermostats are unchanged.
-
 - **Read-only research subsets** (#181, experimental): Yieryi BLE-YL01 water-quality readings and HCT-626 valve-state/runtime reports from tuya-local gateway schemas, plus preliminary AQUA CREATIV TITAN PRO 300 DP101/102 diagnostics from @vrnoleg's BLE report. No unverified write controls or guessed enum labels are offered, and the aquarium no longer inherits unrelated generic light controls. Direct BLE operation remains untested here; KC8B105 is deferred for missing DP types/scales. Thanks to @CloCkWeRX and the tuya-local contributors for the schema leads, and @valeriovernacchia-source and @rgerr for the mower research. Full sources and omissions: [research subsets](docs/research-device-subsets.md).
 - **PARKSIDE Smart battery 12Ah (`dcb`/`fay1puxy`) — experimental** (#175): a descriptor for the 12 Ah pack from the source fork's PR 283 (thanks @kleju00). It exposes the battery's read-only sensors only — battery, temperatures, charge and discharge current and voltage, the cycle and protection-event counters, fault and tool diagnostics. Battery status and the writable settings (switches, numbers, work mode, identify) are left out until a diagnostics download from this battery confirms them.
 - **Vacuum platform and CHYW200.ABIR window cleaner** (#178, experimental): cleaning robots described by a device descriptor now get a Home Assistant vacuum entity that offers only the actions the robot supports. The first is the CHYW200.ABIR window cleaning robot (`ccjqr` / `pnxl0r3l`): start and stop, its activity, and the cleaning mode as fan speed, plus its mode and direction selects, status, cleaning time, fault and automatic water spray. It has not yet been tested on this integration; please report how it works. Thanks to @buliaksk for the device mapping and @CloCkWeRX for the original vacuum platform in the ha-tuya-ble fork.
@@ -45,6 +44,21 @@ and this project adheres to [Semantic Versioning].
 - **Shared smart-lock behaviour** (#165): device descriptors can now tell passage mode, automatic locking, the bolt report and a momentary open apart, instead of treating every lock the same. A lock can hold itself open with passage mode, toggle automatic locking, unlock with an empty Bluetooth trigger, or offer an **Open** action that releases it for a few seconds; a lock that cannot report whether it is locked can get an unlock button instead. The lock state stays unknown after a restart until the lock reports it, rather than showing locked. No supported lock changes behaviour yet; products using this follow separately. Ported from the ha-tuya-ble fork; thanks to @steven-ahfu, @way-lo, @rairulyle, @GeorgeBark and @albertgoca93.
 - **Connect on demand** (#167): a new **Connection settings** option can stop Home Assistant keeping a device's Bluetooth connection open. It then connects for each command, which adds about 1 to 3 seconds, disconnects after an idle delay (30 seconds by default) and does not reconnect by itself, which saves battery on devices such as Fingerbots and frees a connection slot on Bluetooth proxies. A status refresh (every 15 minutes by default, or off) keeps sensor values current. Between connections the device stays available while Home Assistant receives its Bluetooth advertisements. Keeping the connection open remains the default, so existing devices are unchanged. Ported from ha-tuya-ble/ha_tuya_ble#311 by @SittingDuck52, with the battery advice on active Bluetooth proxies from ha-tuya-ble/ha_tuya_ble#283 by @kleju00.
 - **Bluetooth unlock check for locks** (#165): when the Tuya cloud reports a lock's `ble_unlock_check` while the device is added, it is stored so the lock can be opened with the timestamped command the Tuya app sends, for whichever app member the check was issued to. The check and the commands built from it are never logged or included in diagnostics. Older entries can fetch it through the integration options. Experimental: only tested by the original contributors on their own locks.
+- **Newer Bluetooth login (Security V2)** (#39): devices that announce Security V2, such as the Battery BLE Roller (`cl` / `jetlwvfm`), now log in with the extra security key from the Tuya cloud (`sec_key`), matching the approach already proven on the YZD02B irrigation timer. The key is only stored for these devices and is never logged or included in diagnostics.
+- **Tuya app handshake**: setup also tries the handshake the Tuya app itself uses with newer Bluetooth firmware, after the existing ones.
+- **Add a device anyway**: when the Bluetooth check for a Tuya BLE protocol v4 device fails, setup explains why (for example, the device did not reply or did not accept the login) and lets you add the device anyway, so its diagnostics can be collected. It may show as unavailable until support is added.
+- **Diagnostics**: show whether the Tuya cloud sent a `sec_key`, whether it is stored and whether the device uses Security V2. `cloud_info.fields` lists every field the cloud sends for the device; only product and version fields show their values, all others show just their type and length.
+- **Automatic protocol-4 compatibility verification** (#147): setup tests bounded read/authentication-only connection profiles and saves a profile only after authenticated pairing and a mapped datapoint report. Restore verified profiles offline after Home Assistant restarts, recalculate packet capacity on each connection, and support acknowledged protocol-4 control writes. Existing entries can use **Reconfigure** to verify compatibility while preserving entity IDs.
+- **Maxmarr tubular blind motor (`cl` / `mnet9kgf`)** (#149, fixes #145): add a cover with position control, battery and fault sensors, a disabled-by-default work-state sensor, and a motor-direction select.
+- **Simart Akilli Parmak Fingerbot (`kg` / `gnpbj0bq`)** (#150, fixes #148): add battery, push, position, hold-time, Push/Switch mode, switch and manual-control entities. Omit the reverse-position switch because DP104 is an enum, and omit unsupported program controls because DP109 is absent.
+- **Protocol 4 / FD50 BLE connections and datapoint reports** (#139): use the protocol 4 handshake and characteristics, and decode its status reports. This builds on the identity-advertisement support to cover device connections; authenticated cloud-credential fallback remains limited to protocols 2 and 3.
+- **Authenticated cloud-credential fallback when the BLE and cloud UUIDs differ** (#136): when a bound device's advertised UUID matches no cloud record, the config flow now ranks at most four complete, unused cloud candidates and probes them with a bounded, cancellable authenticated read — requiring an encrypted `DEVICE_INFO` response, an accepted PAIR, a status acknowledgement and a mapped datapoint decrypted with the session key, while refusing control, write, reset, unbind and OTA commands. Exact UUID matching remains the preferred path.
+- **Protocol 4 / FD50 Tuya BLE identity advertisement decoding** (#134): identity advertisements are decoded and used during discovery, with unsupported or malformed records (empty or non-printable UUIDs, unverified protocol 5, compressed identities) rejected instead of falling back to an alternate key, and manual discovery completing before candidate filtering.
+- **MaXpeedingRods MXR4000GT generator descriptor (`qt` / `jlblyn8z`)** (#135) and a **Battery BLE Roller descriptor (`jetlwvfm`)** (#129).
+
+### Changed
+
+- **Contributor CI labeling**: pull requests from forks now receive automatic labels.
 
 ### Fixed
 
@@ -52,7 +66,6 @@ and this project adheres to [Semantic Versioning].
 - **Primary lock state confirmation** (#166): 8052F66 and C-014S keep their last device-reported lock state while a command is pending, and stay unknown until the first report. A successful local write alone no longer implies the lock confirmed a physical state change.
 - **Unlock-check privacy for the additional locks** (#179): H13 and both CTL20H drawer-lock variants withhold DP71 reports from logs and live diagnostics even though unlocking is not exposed. This does not enable an unlock command.
 - **Explicitly unsupported lock controls** (#179): an empty product lock descriptor now overrides the category's generic lock, rather than silently enabling unverified lock/unlock commands. Existing product mappings are unchanged.
-
 - **Entity labels** (#180): English lock, alarm, Fingerbot programming and thermostat labels now use sentence case. Fingerbot Touch settings use readable channel labels instead of numeric menu prefixes. Existing entity IDs, unique IDs and user-assigned names are kept. Inspired by ha-tuya-ble/ha_tuya_ble#335 and #336; thanks to @rairulyle. No entity-ID renaming or dynamic lock-name change is included.
 - **Bound classic devices with a misleading product ID** (#182): when an older Tuya BLE device's identity cannot be read, setup now tries the devices from your Tuya account whose product matches the advertisement first, then the other devices, up to four in total. Previously, if the advertised product matched a different device, only that device was tried and setup failed with `device_not_registered`. If more than four devices in your account match the advertised product, setup still stops with `too_many_candidates` without trying any.
 - **Tool current on the older Parkside batteries** (#175): DP 157 on the `z5ztlw3k` (4 Ah) and `ajrhf1aj` (8 Ah) packs was declared as an electric current without a unit, which Home Assistant flags as invalid. It is now a plain measurement, as on the 2026 packs, until a diagnostics download confirms the unit. An audit against the source fork's PR 283 (thanks @kleju00) and the #103 diagnostics (thanks @bip1963) confirmed the existing status order and the charge voltage and current units on `vllfabvs` and `z5ztlw3k`; the conflicting PR 283 status order was not adopted, as it has no device evidence.
@@ -65,20 +78,6 @@ and this project adheres to [Semantic Versioning].
 - **Temperature briefly shown in the wrong unit** (#173): on sensors with a °C/°F select, including the existing CO2 detector, soil moisture sensor and water bottle, a reading is no longer relabelled while a unit change is still being sent. The unit shown is the one the device last reported, so it changes as soon as the device confirms the new unit, including when the unit is changed before the device has first reported it.
 - **Choosing the right Bluetooth login for Security V2 devices** (#163): a Tuya BLE protocol v4 device can announce that it supports Security V2 without having it switched on. Setup now tries the classic login first for such devices, and the Security V2 login only if the device ignores the classic one. Devices that announce Security V2 as switched on use only Security V2 when the Tuya cloud provides a `sec_key`; without one, only the classic login can be tried. The login that worked is saved with the connection profile, and **Reconfigure** checks it again. Devices that do not announce Security V2 keep the classic login even when the Tuya cloud sends a `sec_key`, as some do (for example `qcrilcpr`, `mknd4lci`, `gvygg3m8`, `c2twgywo` and `cq7xquhj`). Devices added before this change keep their previous login (Security V2 whenever a `sec_key` is stored) until you run **Reconfigure**, which applies the new selection. When you replace the device keys in the options and enter a security key, the saved login is kept unless the device now announces Security V2 as switched on; removing the security key also removes the saved login, so only the classic login is used. Diagnostics show the saved login under `identity.security_mode`. Thanks to @SittingDuck52, @eric1905, @oranav, @CloCkWeRX, @3XX0 and @albertgoca93 for the upstream reports and fixes in ha-tuya-ble. The new order has not yet been tested on a Security V2 device.
 - **Unavailable devices after a quick reconnect** (#167): a device that reconnected shortly after dropping its connection no longer stays shown as available indefinitely after its next disconnect.
-
-## [2.10.0-beta.6] - 2026-11-18
-
-> **Beta — for testing only.** This build supersedes beta.5 with support for Tuya BLE protocol v4 devices that use the newer "Security V2" login, lets you add a device even when the Bluetooth check fails so its diagnostics can be shared, and fixes setup of some older (protocol 3) devices whose Bluetooth identity could not be read. Security V2 has not yet been tested on a device; if a device was added with an earlier beta, remove it and add it again so the new login details are fetched.
-
-### Added
-
-- **Newer Bluetooth login (Security V2)** (#39): devices that announce Security V2, such as the Battery BLE Roller (`cl` / `jetlwvfm`), now log in with the extra security key from the Tuya cloud (`sec_key`), matching the approach already proven on the YZD02B irrigation timer. The key is only stored for these devices and is never logged or included in diagnostics.
-- **Tuya app handshake**: setup also tries the handshake the Tuya app itself uses with newer Bluetooth firmware, after the existing ones.
-- **Add a device anyway**: when the Bluetooth check for a Tuya BLE protocol v4 device fails, setup explains why (for example, the device did not reply or did not accept the login) and lets you add the device anyway, so its diagnostics can be collected. It may show as unavailable until support is added.
-- **Diagnostics**: show whether the Tuya cloud sent a `sec_key`, whether it is stored and whether the device uses Security V2. `cloud_info.fields` lists every field the cloud sends for the device; only product and version fields show their values, all others show just their type and length.
-
-### Fixed
-
 - **Bluetooth check stopped before connecting** (#39): setup no longer gives up on Tuya BLE protocol v4 devices that do not advertise themselves as added to an account; the device's own encrypted reply now decides.
 - **Missing readings from Tuya BLE protocol v4 sensors** (#39): one- and two-byte number readings are no longer thrown away, restoring SRB-PM01 humidity and battery values.
 - **Clearer setup messages**: the Bluetooth check and reconfigure messages are shorter and easier to follow.
@@ -86,70 +85,15 @@ and this project adheres to [Semantic Versioning].
 - **Bluetooth notifications on the Pi's own adapter**: Tuya BLE protocol v4 devices now use BlueZ's StartNotify, which other integrations found necessary for these devices.
 - **Classic product-key advertisements** (#158): setup now reads older Tuya BLE advertisements that carry a product key instead of a product ID, so bound Wi-Fi and Bluetooth combo bulbs no longer fail with `identity_not_decoded`. Thanks to @zdenax for the report and fix.
 - **Bound classic devices that could not be identified** (#155): setup now keeps scanning until an older Tuya BLE device's advertisement can be read, and if it still cannot, finds the device by logging in to each matching device from your Tuya account instead of failing with `identity_not_decoded`. Reported for the Fingerbot Touch (`kg` / `bs3ubslo`); thanks to @njubinho for the capture.
-
-## [2.10.0-beta.5] - 2026-11-17
-
-> **Beta — for testing only.** This build supersedes beta.4 with quieter BLE connection failures and bounded automatic recovery. It does not fix the underlying radio or ESPHome proxy GATT errors, and fresh affected-device hardware testing remains necessary.
-
-### Fixed
-
 - **BLE connection retry and outage log spam** (#153): limit all devices to three connection/handshake cycles per batch while retaining the Bluetooth connector's internal retries. Log one concise warning per device outage, with individual failure tracebacks available at debug level, and reset warning suppression after a successful handshake.
 - **Automatic BLE recovery** (#153): retry background connections with exponential delays from five to sixty seconds, including profile-less devices and FD50 identity recovery. Avoid duplicate retry owners during identity backoff and prevent stale reconnect tasks from overwriting the delay reset after recovery.
-
-## [2.10.0-beta.4] - 2026-11-16
-
-> **Beta — for testing only.** This build supersedes beta.3 with automatic protocol-4 compatibility verification and additional device support. Fresh affected-device hardware testing remains necessary; this beta does not claim to resolve every report in #39 or support every protocol-4 firmware.
-
-### Added
-
-- **Automatic protocol-4 compatibility verification** (#147): setup tests bounded read/authentication-only connection profiles and saves a profile only after authenticated pairing and a mapped datapoint report. Restore verified profiles offline after Home Assistant restarts, recalculate packet capacity on each connection, and support acknowledged protocol-4 control writes. Existing entries can use **Reconfigure** to verify compatibility while preserving entity IDs.
-- **Maxmarr tubular blind motor (`cl` / `mnet9kgf`)** (#149, fixes #145): add a cover with position control, battery and fault sensors, a disabled-by-default work-state sensor, and a motor-direction select.
-- **Simart Akilli Parmak Fingerbot (`kg` / `gnpbj0bq`)** (#150, fixes #148): add battery, push, position, hold-time, Push/Switch mode, switch and manual-control entities. Omit the reverse-position switch because DP104 is an enum, and omit unsupported program controls because DP109 is absent.
-
-### Fixed
-
 - **Simart Fingerbot reconnects** (#150): enable the reporter-tested Fingerbot Touch reconnect handling for this model, tolerating duplicate notification fragments and rejecting stale-client callbacks and queued writes.
 - **Protocol-4 connection and control recovery** (#147): bound reconnect attempts, fail pending requests on disconnect, preserve datapoint rollback on rejected writes, and publish cover movement only after a successful command. Correct the Battery BLE Roller's ENUM controls and serialize reconfiguration with runtime ownership.
-
-## [2.10.0-beta.3] - 2026-11-15
-
-> **Beta — for testing only.** This build supersedes beta.2 with runtime connection recovery after setup. UUID selection and storage are unchanged, and this beta does not claim to resolve every report in #39. Fresh affected-device hardware testing remains necessary.
-
-### Fixed
-
 - **Runtime availability after successful setup** (#144): initialize the runtime protocol from cached advertisements, preserve the negotiated protocol during concurrent updates, and start a fresh authenticated runtime session rather than reuse setup-probe keys. Failed handshakes close their clients, late notifications from old links are ignored, and recovery resumes automatically after blocked cleanup.
 - **Native and proxy teardown recovery** (#144): retain failed-link ownership until disconnection is acknowledged or an ESPHome source is explicitly confirmed lost. Recover native BlueZ sessions through a fresh bus only when needed, preserve session provenance across Bleak 3.0.2 and 3.1.0, and avoid redundant disconnects after confirmed teardown. Allow ESPHome's acknowledgement and slot-settling wait to finish. Fingerbot Touch failed handshakes use shared tracked cleanup while its notification deduplication and normal stop/write behavior are preserved.
 - **LY curtain motor / Blind Controller (`cl` / `ulughw4g`) mappings** (#143): DP 105 is now auto-close temperature, not cover speed, and the work-state option order is corrected. Add temperature and fault sensors, closing-side and learning selects, and disabled-by-default reset and raw timer-schedule entities.
-
-### Changed
-
-- **Contributor CI labeling**: pull requests from forks now receive automatic labels.
-
-## [2.10.0-beta.2] - 2026-11-13
-
-> **Beta — for testing only.** This build supersedes beta.1 with protocol 4 connections and safer credential-probe retries. Test affected devices and report results on #39 before 2.10.0 ships.
-
-### Added
-
-- **Protocol 4 / FD50 BLE connections and datapoint reports** (#139): use the protocol 4 handshake and characteristics, and decode its status reports. This extends beta.1's identity-advertisement support to device connections; authenticated cloud-credential fallback remains limited to protocols 2 and 3.
-
-### Fixed
-
 - **Fingerbot Touch (`kg` / `bs3ubslo`)** (#137, fixes #132). Expose both channels and battery percentage, and clean up obsolete Fingerbot Plus controls for this product. Each channel has one switch that sends ON/OFF in Switch mode or triggers one press in Push mode. In Push mode, Home Assistant returns the switch to OFF after the configured touch duration. Per-channel settings include mode, touch duration, double-tap interval, touch input, inversion, and a separate OFF duration in Switch mode. The integration preserves existing channel switch IDs and improves BLE reconnect handling for this model.
 - **Credential verification continues after failed candidates** (#141, refs #39): timeouts and silent disconnects receive one fresh-session retry before advancing through distinct UUIDs and remaining credentials. Malformed cloud metadata is isolated per record. Cleanup retains ownership of partially established connections, confirms native and proxy disconnection, and rejects proxy-session changes before connecting so retries cannot overlap unclosed links. Only authenticated expected datapoints can confirm a match; a sole cloud candidate is never trusted automatically.
-
-## [2.10.0-beta.1] - 2026-11-12
-
-> **Beta — for testing only.** This pre-release exists so the fix for the "unable to match cloud UUID" failures reported in #39 can be validated on real hardware before 2.10.0 ships. Install it from HACS with pre-releases enabled, test, and report back on #39.
-
-### Added
-
-- **Authenticated cloud-credential fallback when the BLE and cloud UUIDs differ** (#136): when a bound device's advertised UUID matches no cloud record, the config flow now ranks at most four complete, unused cloud candidates and probes them with a bounded, cancellable authenticated read — requiring an encrypted `DEVICE_INFO` response, an accepted PAIR, a status acknowledgement and a mapped datapoint decrypted with the session key, while refusing control, write, reset, unbind and OTA commands. Exact UUID matching remains the preferred path.
-- **Protocol 4 / FD50 Tuya BLE identity advertisement decoding** (#134): identity advertisements are decoded and used during discovery, with unsupported or malformed records (empty or non-printable UUIDs, unverified protocol 5, compressed identities) rejected instead of falling back to an alternate key, and manual discovery completing before candidate filtering.
-- **MaXpeedingRods MXR4000GT generator descriptor (`qt` / `jlblyn8z`)** (#135) and a **Battery BLE Roller descriptor (`jetlwvfm`)** (#129).
-
-### Fixed
-
 - **Discovery and setup validation for FD50 devices**: established sessions are preserved, vanished selector candidates are purged, concurrent candidate resolution no longer races setup, and deferred FD50 choices are kept without bypassing validation.
 
 ## [2.9.0] - 2026-10-30
