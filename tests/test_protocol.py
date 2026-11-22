@@ -169,13 +169,14 @@ async def test_receive_dp_all_types(h: ProtocolHarness) -> None:
     assert dp2.value is True
 
 
-async def test_receive_dp_keeps_entries_before_malformed_one(
+async def test_receive_dp_keeps_state_unchanged_before_malformed_one(
     h: ProtocolHarness,
 ) -> None:
-    """v3 stores the entries before a malformed one but fires no callback.
+    """A malformed v3 packet stores nothing and fires no callback.
 
-    This pins long-standing behaviour: unlike the protocol-4 parser, the v3
-    parser is not all-or-nothing, and the ack is never sent.
+    Like protocol 4, the v3 parser now decodes every entry before applying any
+    of them, so a truncated packet cannot leave partial updates or un-dispatched
+    report snapshots behind. The ack is never sent either.
     """
     seen: list[TuyaBLEDataPoint] = []
     h.device.register_callback(seen.extend)
@@ -187,9 +188,7 @@ async def test_receive_dp_keeps_entries_before_malformed_one(
     with pytest.raises(TuyaBLEDataFormatError):
         h.notify(msg)
     await asyncio.sleep(0)
-    dp3 = h.device.datapoints[3]
-    assert dp3 is not None
-    assert dp3.value == 7
+    assert h.device.datapoints[3] is None
     assert h.device.datapoints[4] is None
     assert not seen
     assert not h.writes()

@@ -9,6 +9,7 @@ from struct import pack
 import pytest
 
 from custom_components.tuya_ble.tuya_ble.const import (
+    MAX_INPUT_LENGTH,
     TuyaBLECode,
     TuyaBLEDataPointType,
 )
@@ -69,3 +70,26 @@ async def test_locally_created_datapoint_has_no_report_snapshot(
     dp = datapoints.get_or_create(7, TuyaBLEDataPointType.DT_BOOL)
     assert dp.reports == ()
     assert dp.report_revision == 0
+
+
+async def test_report_log_retains_more_than_one_packet_of_reports(
+    h: ProtocolHarness,
+) -> None:
+    """Every report in a large packet is retained, not trimmed to a small cap."""
+    count = 80  # above the old 64-entry limit
+    entries = b"".join(
+        pack(">BBB", 3, TuyaBLEDataPointType.DT_BOOL.value, 1) + b"\x01"
+        for _ in range(count)
+    )
+    msg = frame_packet0(
+        encrypt_payload(_session_key(h), 5, 1, 0, TuyaBLECode.FUN_RECEIVE_DP, entries)
+    )
+    h.notify(msg)
+    await asyncio.sleep(0)
+
+    assert count < MAX_INPUT_LENGTH // 4
+    dp = h.device.datapoints[3]
+    assert dp is not None
+    reports = dp.reports
+    assert len(reports) == count
+    assert [report.report_revision for report in reports] == list(range(1, count + 1))

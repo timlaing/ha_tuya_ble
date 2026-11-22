@@ -13,7 +13,7 @@ from struct import pack
 import time
 from typing import TYPE_CHECKING
 
-from .const import TuyaBLEDataPointType
+from .const import MAX_INPUT_LENGTH, TuyaBLEDataPointType
 from .exceptions import (
     BLE_CONNECTION_EXCEPTIONS,
     TuyaBLEDataFormatError,
@@ -30,9 +30,10 @@ TuyaBLEDataPointValue = bytes | bytearray | memoryview | bool | int | str
 # Logged in place of the value of a data point that carries a credential.
 REDACTED_VALUE = "<redacted>"
 
-# Enough reports for a single BLE packet of repeated events. Keeping the log
-# bounded stops long-running devices from growing it without limit.
-_REPORT_LOG_LIMIT = 64
+# A single packet can hold up to MAX_INPUT_LENGTH bytes of datapoints; the
+# smallest v3 entry is 4 bytes, so that many reports may arrive in one batch.
+# Retain them all, with a little headroom, before trimming older history.
+_REPORT_LOG_LIMIT = MAX_INPUT_LENGTH // 4 + 1
 
 
 @dataclass(frozen=True)

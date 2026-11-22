@@ -151,6 +151,9 @@ class TuyaBLEEvent(TuyaBLEEntity, EventEntity):
                 event_type = self._mapping.event_values.get(value)
                 if event_type is not None:
                     self._trigger_event(event_type)
+                    # HA only records the last-event fields in _trigger_event;
+                    # publish each one so automations see every click.
+                    self.async_write_ha_state()
         self.async_write_ha_state()
 
 

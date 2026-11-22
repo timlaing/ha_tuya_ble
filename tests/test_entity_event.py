@@ -404,14 +404,24 @@ async def test_two_reports_in_one_packet_emit_both_clicks(hass: HomeAssistant) -
     add_dp(device, dp_id, DPType.DT_STRING, "single_click")
     add_dp(device, dp_id, DPType.DT_STRING, "double_click")
     emitted: list[str] = []
+    writes = 0
     original = entity._trigger_event  # pylint: disable=protected-access
 
     def _capture(event_type: str) -> None:
         emitted.append(event_type)
         original(event_type)
 
-    with patch.object(entity, "_trigger_event", side_effect=_capture):
+    def _count_write() -> None:
+        nonlocal writes
+        writes += 1
+
+    with (
+        patch.object(entity, "_trigger_event", side_effect=_capture),
+        patch.object(entity, "async_write_ha_state", side_effect=_count_write),
+    ):
         device._fire_callbacks([dp, dp])  # pylint: disable=protected-access
 
     assert emitted == ["single_click", "double_click"]
+    # Each mapped report publishes its own state change, plus the final flush.
+    assert writes == len(emitted) + 1
     assert entity.state_attributes["event_type"] == "double_click"
