@@ -1,5 +1,14 @@
 # Supported devices
 
+## Experimental research subsets (#181)
+
+- **Yieryi BLE-YL01 (`sh/v1jqz5cy`)**: read-only TDS, temperature, battery, pH, EC, ORP, chlorine and salinity. Gateway-schema-backed; direct BLE transport/types and hardware operation are unverified. No calibration, thresholds, backlight, actions or enum writes.
+- **HCT-626 (`sfkzq/smd9kj1n`)**: read-only valve and smart-weather BOOL reports, weather-delay remaining and runtime/spray-time sensors. Gateway-schema-backed; not tested over direct BLE. No valves/switches, timers, battery-scale guesses, schedules or enum writes.
+- **AQUA CREATIV TITAN PRO 300 (`dj/e2kdgdsu`)**: report-only DP101 BOOL and disabled-by-default DP102 raw numeric diagnostic, based on preliminary source BLE observations. No standard light, power, brightness, RGB or channel controls; generic DP20–24 are explicitly blocked.
+- **KC8B105 (`gcj/7yr5iwga`) remains unsupported**: missing DP types/scales; no sibling mower profile or provisioning changes.
+
+Entities require matching reported types at platform setup. These subsets are **not physically tested support in this integration**. See [evidence, every omission and hardware acceptance](docs/research-device-subsets.md).
+
 ## Fingerbots (category_id `szjqr`)
 
 - **Fingerbot** (product_ids `ltak7e1p`, `y6kttvd6`, `yrnk7mnn`, `nvr2rocq`, `bnt7wajf`, `rvdceqjh`, `5xhbk964`): original device, powered by CR2 battery.
