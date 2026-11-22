@@ -59,6 +59,7 @@ PLATFORMS: list[Platform] = [
     Platform.CLIMATE,
     Platform.COVER,
     Platform.LAWN_MOWER,
+    Platform.EVENT,
     Platform.LIGHT,
     Platform.LOCK,
     Platform.NUMBER,

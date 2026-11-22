@@ -3,8 +3,14 @@ product_id: djrqe0q6
 device_name: Smart Lock C-014S
 model_name: C-014S
 sensitive_dp_ids: [71]
-# DP24 doorbell is pending event-platform support (#172).
 entities:
+  event:
+    - dp_id: 24
+      translation_key: doorbell
+      device_class: doorbell
+      dp_type: 1
+      event_values:
+        true: ring
   lock:
     - dp_id: 47
       translation_key: lock

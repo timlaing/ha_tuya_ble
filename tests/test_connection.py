@@ -622,7 +622,9 @@ async def test_stale_response_resets() -> None:
     await h.register_notify()
     # Send packet 0
     resp = frame_packet0(
-        encrypt_payload(session_key(h), 5, 1, 0, TuyaBLECode.FUN_RECEIVE_DP, b"\x00")
+        encrypt_payload(
+            session_key(h), 5, 1, 0, TuyaBLECode.FUN_RECEIVE_DP, b"\x01\x01\x01\x01"
+        )
     )
     h.notify(resp)
     await asyncio.sleep(0)
@@ -820,7 +822,9 @@ async def test_missing_packet_resets() -> None:
     h = ProtocolHarness()
     await h.register_notify()
     resp = frame_packet0(
-        encrypt_payload(session_key(h), 5, 1, 0, TuyaBLECode.FUN_RECEIVE_DP, b"\x00")
+        encrypt_payload(
+            session_key(h), 5, 1, 0, TuyaBLECode.FUN_RECEIVE_DP, b"\x01\x01\x01\x01"
+        )
     )
     h.notify(resp)
     await asyncio.sleep(0)

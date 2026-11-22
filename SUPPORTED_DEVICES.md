@@ -31,6 +31,27 @@ Programming (series of actions) is implemented for Fingerbot Plus. Exposed entit
 - CO2 Detector (product_id `59s19z5m`): bitmap alarm switches.
 - **XZ-JCO01 CO2 Detector** (product_id `wmb2xzj6`) — experimental: the `59s19z5m` layout, which the reporter of ha-tuya-ble/ha_tuya_ble#317 uses unchanged. No cloud schema has been captured.
 
+## Wireless buttons (category_id `wxkg`)
+
+- **Arlec Smart Button SG022HA** (product_id `kpzc6pm8`, experimental).
+- **Arlec Smart Button ZG101Z** (product_id `ja5osu5g`, experimental).
+
+Battery percentage (DP 10) and single/double-click/long-press events (DP 1).
+The descriptors accept only the verified gateway strings `single_click`,
+`double_click` and `long_press`; no BLE enum order is inferred from those names.
+Based on ha-tuya-ble/ha_tuya_ble#228 and make-all/tuya-local#1828/#3153.
+Direct BLE pairing, click values and wake/reconnect behaviour have not been
+tested on this integration. Please provide diagnostics and a debug capture for
+each press type before integer enum mappings are added.
+
+The first DP 1 report after setup or a physical disconnect is a silent baseline,
+preventing an initial status from triggering automations. Subsequent identical
+click reports each emit. A device that sends a click instead of an initial status
+can lose that first click, especially if it disconnects between presses.
+The wire protocol does not label status snapshots separately from live presses.
+Existing Fingerbot bus events are unaffected. The C-014S lock now has a DP24
+doorbell event; other lock doorbell mappings await device evidence.
+
 ## Smart Locks (category_id `ms`)
 
 - Smart Lock (product_ids `ludzroix`, `isk2p555`, `gumrixyt`, `uamrw6h3`, `sidhzylo`, `mqc2hevy`, `a6nttc41`, `okkyfgfs`, `k53ok3u9`). Supports lock/unlock, alarm events, door status, and per-device unlock tracking (BLE, fingerprint, password, card, phone remote, dynamic code).
@@ -60,7 +81,7 @@ New **experimental** descriptors (see [DP evidence and physical-verification che
 
 - **EL605A Knob Lock** (`2hmqh0ty`): battery and empty-RAW DP71 unlock button. Lock state is deferred until this model's redacted schema confirms its numeric state DP.
 - **8052F66 Smart Lock** (`dappsdq4`): DP33 automatic-lock mode (Lock/Unlock), timestamped DP71 **Open**, battery, alarm, last-used user IDs, automatic-lock switch, auto-lock delay (5–20 s), volume and verification mode. The lock state is the automatic-lock mode, not a temporary physical handle release.
-- **Smart Lock C-014S** (`djrqe0q6`, also sold as LOOCK A04 TUYA): DP46 lock / empty-RAW DP71 unlock, DP47 state, battery, alarm, last-used user IDs, automatic-lock switch, auto-lock delay (3–600 s), volume and verification mode. DP24 doorbell is pending #172.
+- **Smart Lock C-014S** (`djrqe0q6`, also sold as LOOCK A04 TUYA): DP46 lock / empty-RAW DP71 unlock, DP47 state, battery, alarm, last-used user IDs, automatic-lock switch, auto-lock delay (3–600 s), volume and verification mode, and a DP24 doorbell event.
 - **Drawer Lock CTL20** (`tkbdvrzr`): timestamped DP71 unlock button only; no reliable lock-state DP. Other CTL20H-like mappings need this product's redacted schema before they can be added.
 
 Source contributors tested these on hardware, but this integration's descriptors and handshake selection still need device verification. Timestamped unlock needs the cloud `ble_unlock_check` captured during initial setup;

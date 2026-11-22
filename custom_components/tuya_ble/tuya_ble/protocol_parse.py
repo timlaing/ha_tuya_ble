@@ -213,11 +213,16 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
     def _parse_datapoints_v3(
         self, timestamp: float, flags: int, data: bytes, start_pos: int
     ) -> None:
-        """Parse a v3 datapoint payload and fire callbacks."""
-        datapoints: list[TuyaBLEDataPoint] = []
+        """Parse a v3 datapoint payload and fire callbacks.
 
+        Every entry is decoded before any datapoint is stored, so a malformed
+        report cannot leave partial updates (or un-dispatched report snapshots)
+        behind. This matches the all-or-nothing behaviour of protocol 4.
+        """
+        entries: list[tuple[int, TuyaBLEDataPointType, bytes, DataPointValue]] = []
         pos = start_pos
-        while len(data) - pos >= 4:
+        # A v3 header is three bytes (id, type, length); the value may be empty.
+        while len(data) - pos >= 3:
             dp_id: int = data[pos]
             pos += 1
             dp_type = self._datapoint_type(data[pos])
@@ -229,14 +234,18 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
                 raise TuyaBLEDataLengthError()
             raw_value = data[pos:next_pos]
             value = self._decode_datapoint_value(dp_type, raw_value)
-            datapoints.append(
-                self._update_datapoint(
-                    timestamp, flags, dp_id, dp_type, raw_value, value
-                )
-            )
+            entries.append((dp_id, dp_type, raw_value, value))
             pos = next_pos
 
-        self._fire_callbacks(datapoints)
+        if pos != len(data):
+            # Fewer than three bytes remain, or a trailing header declares a
+            # value it cannot carry. Reject the whole batch, never a prefix.
+            raise TuyaBLEDataLengthError()
+
+        self._fire_callbacks([
+            self._update_datapoint(timestamp, flags, dp_id, dp_type, raw, value)
+            for dp_id, dp_type, raw, value in entries
+        ])
 
     def _parse_datapoints_v4(
         self, timestamp: float, data: bytes, start_pos: int

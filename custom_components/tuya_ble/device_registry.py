@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from homeassistant.components.climate.const import HVACMode
+from homeassistant.components.event import EventDeviceClass
 from homeassistant.components.vacuum.const import VacuumActivity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
@@ -302,6 +303,52 @@ def _validate_vacuum(raw: dict[str, Any]) -> None:
         )
 
 
+def _validate_event_values(raw: dict[str, Any]) -> None:
+    """Require explicit, typed wire values instead of guessing enum order."""
+    wire_types = {1: bool, 3: str, 4: int}
+    dp_type = raw.get("dp_type")
+    if (
+        not isinstance(dp_type, int)
+        or isinstance(dp_type, bool)
+        or dp_type not in wire_types
+    ):
+        raise DeviceRegistryError(
+            "Event dp_type must be bool (1), string (3) or enum (4)"
+        )
+    values = raw.get("event_values")
+    if not isinstance(values, dict) or not values:
+        raise DeviceRegistryError("Event event_values must be a non-empty mapping")
+    for value, event_type in values.items():
+        if not isinstance(value, wire_types[dp_type]) or (
+            dp_type == 4 and isinstance(value, bool)
+        ):
+            raise DeviceRegistryError("Event wire values must match dp_type")
+        if not isinstance(event_type, str) or not event_type:
+            raise DeviceRegistryError("Event types must be non-empty strings")
+
+
+def _validate_event(raw: dict[str, Any]) -> None:
+    """Validate event metadata and disallow replay of restored values."""
+    dp_id = raw.get("dp_id")
+    if not isinstance(dp_id, int) or isinstance(dp_id, bool) or not 1 <= dp_id <= 255:
+        raise DeviceRegistryError("Event dp_id must be an integer from 1 to 255")
+    _validate_event_values(raw)
+    try:
+        EventDeviceClass(raw.get("device_class", ""))
+    except ValueError as exc:
+        raise DeviceRegistryError(
+            "Event device_class must be button or doorbell"
+        ) from exc
+    if raw.get("restore", False):
+        raise DeviceRegistryError("Event entities cannot restore data point values")
+    if raw["device_class"] == "doorbell" and set(raw["event_values"].values()) != {
+        "ring"
+    }:
+        raise DeviceRegistryError(
+            "Doorbell event types must use the standard ring event"
+        )
+
+
 def _validate_climate_action(raw: dict[str, Any]) -> None:
     """Validate that a switch-driven hvac action names a usable switch."""
     name = raw.get("translation_key", raw.get("dp_id", "?"))
@@ -419,6 +466,7 @@ def _validate_sensor_report_options(raw: dict[str, Any]) -> None:
 
 _PLATFORM_VALIDATORS: dict[str, tuple[Callable[[dict[str, Any]], None], ...]] = {
     "climate": (_validate_climate_modes, _validate_climate_action),
+    "event": (_validate_event,),
     "light": (_validate_light_mode,),
     "select": (_validate_settable_options,),
     "sensor": (_validate_sensor_report_options,),

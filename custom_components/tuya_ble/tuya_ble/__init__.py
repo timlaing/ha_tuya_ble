@@ -26,7 +26,7 @@ from .const import (
     SecurityMode,
     TuyaBLEDataPointType,
 )
-from .datapoints import TuyaBLEDataPoint, TuyaBLEDataPoints
+from .datapoints import TuyaBLEDataPoint, TuyaBLEDataPoints, TuyaBLEReport
 from .lock_check import (
     build_timestamped_unlock_command,
     decode_ble_unlock_check,
@@ -67,6 +67,7 @@ __all__ = [
     "TuyaBLEDataPoint",
     "TuyaBLEDataPoints",
     "TuyaBLEDataPointType",
+    "TuyaBLEReport",
     "TuyaBLEDevice",
     "TuyaBLEDeviceCredentials",
     "TuyaBLEDeviceFunction",
