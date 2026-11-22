@@ -662,7 +662,12 @@ async def test_unexpected_packet_number(h: ProtocolHarness) -> None:
     """A re-sent packet number should reset the input buffer."""
     # First frame packet0 with expected length, then a lower packet num.
     encrypted = encrypt_payload(
-        session_key(h), 5, 1, 0, TuyaBLECode.FUN_RECEIVE_DP, b"\x00" * 4
+        session_key(h),
+        5,
+        1,
+        0,
+        TuyaBLECode.FUN_RECEIVE_DP,
+        pack(">BBB", 1, TuyaBLEDataPointType.DT_BOOL.value, 1) + b"\x01",
     )
     p0 = pack_varint(0) + pack_varint(len(encrypted)) + pack(">B", 2 << 4) + encrypted
     h.notify(p0)

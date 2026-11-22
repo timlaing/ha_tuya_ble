@@ -236,6 +236,11 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
             entries.append((dp_id, dp_type, raw_value, value))
             pos = next_pos
 
+        if pos != len(data):
+            # Fewer than four bytes remain: a trailing header that declares a
+            # value it cannot carry. Reject the whole batch, never a prefix.
+            raise TuyaBLEDataLengthError()
+
         self._fire_callbacks([
             self._update_datapoint(timestamp, flags, dp_id, dp_type, raw, value)
             for dp_id, dp_type, raw, value in entries

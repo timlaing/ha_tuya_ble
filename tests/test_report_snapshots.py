@@ -13,6 +13,7 @@ from custom_components.tuya_ble.tuya_ble.const import (
     TuyaBLECode,
     TuyaBLEDataPointType,
 )
+from custom_components.tuya_ble.tuya_ble.exceptions import TuyaBLEDataLengthError
 from tests.protocol_harness import (
     ProtocolHarness,
     encrypt_payload,
@@ -93,3 +94,21 @@ async def test_report_log_retains_more_than_one_packet_of_reports(
     reports = dp.reports
     assert len(reports) == count
     assert [report.report_revision for report in reports] == list(range(1, count + 1))
+
+
+async def test_v3_rejects_trailing_incomplete_entry(h: ProtocolHarness) -> None:
+    """A trailing header with a missing value rejects the whole v3 packet."""
+    # Complete DP3 entry, then a 3-byte header declaring a 4-byte value that
+    # is not present. The loop stops before it, so this must still be rejected.
+    data = pack(">BBB", 3, TuyaBLEDataPointType.DT_VALUE.value, 1) + b"\x07"
+    data += pack(">BBB", 4, TuyaBLEDataPointType.DT_VALUE.value, 4)
+    seen: list[object] = []
+    h.device.register_callback(seen.extend)
+    msg = frame_packet0(
+        encrypt_payload(_session_key(h), 5, 1, 0, TuyaBLECode.FUN_RECEIVE_DP, data)
+    )
+    with pytest.raises(TuyaBLEDataLengthError):
+        h.notify(msg)
+    await asyncio.sleep(0)
+    assert h.device.datapoints[3] is None
+    assert not seen
