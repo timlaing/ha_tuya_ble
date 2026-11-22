@@ -36,7 +36,7 @@ by the device. Their evidenced wire types are recorded below instead.
 | C-014S `djrqe0q6` / 339  | 8                          | residual_electricity                                                                                                                    | value     | %    | 0–100                              | read                         |
 | C-014S / 339             | 12, 13, 15, 19, 55, 62, 63 | unlock_fingerprint, unlock_password, unlock_card, unlock_ble, unlock_temporary, unlock_phone_remote, unlock_voice_remote (respectively) | value     | —    | user IDs; bounds unknown           | read                         |
 | C-014S / 339             | 21                         | alarm_lock                                                                                                                              | enum      | —    | indices 0–14; YAML option order    | read                         |
-| C-014S / 339             | 24                         | doorbell                                                                                                                                | bool      | —    | false/true                         | read; **deferred to #172**   |
+| C-014S / 339             | 24                         | doorbell                                                                                                                                | bool      | —    | false/true                         | event; `ring` on true        |
 | C-014S / 339             | 31                         | beep_volume                                                                                                                             | enum      | —    | 0 mute, 1 low, 2 normal, 3 high    | read/write                   |
 | C-014S / 339             | 33                         | automatic_lock                                                                                                                          | bool      | —    | false/true                         | read/write                   |
 | C-014S / 339             | 34                         | unlock_switch                                                                                                                           | enum      | —    | 0 single_unlock, 1 combination     | read/write                   |
@@ -80,8 +80,8 @@ including #209's mobile snapshot storage/export paths inherited from #195.
 - 8052F66's lock state is **automatic-lock mode**, not the physical handle state.
   Open briefly releases the handle without switching to passage mode. Local
   fingerprint/password entry does not make this lock entity temporarily unlocked.
-- C-014S has no duplicate unlock button. DP24 doorbell, events, replay filtering
-  and aggregate last-unlock state are pending #172.
+- C-014S has no duplicate unlock button. DP24 doorbell emits a `ring` event on a
+  true report; replay filtering and aggregate last-unlock state remain unimplemented.
 - CTL20 has no reliable lock-state DP and therefore **only an unlock button**.
   Copied CTL20H sensors/switches are deferred pending redacted CTL20 schema and
   reports; no actuator or enum ordering is inferred from that similar product.

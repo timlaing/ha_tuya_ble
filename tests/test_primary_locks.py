@@ -98,7 +98,11 @@ def test_shipping_registry(product_id: str, tmp_path: Path) -> None:
     assert not descriptor.category_defaults
     assert descriptor.sensitive_dp_ids == {71}
     assert 71 in get_mapped_dp_ids("jtmspro", product_id)
-    assert 24 not in get_mapped_dp_ids("jtmspro", product_id)
+    mapped = get_mapped_dp_ids("jtmspro", product_id)
+    if product_id == "djrqe0q6":
+        assert 24 in mapped  # C-014S DP24 doorbell event (#172)
+    else:
+        assert 24 not in mapped
     for descriptors in descriptor.entities.values():
         for entity in descriptors:
             if entity.platform == "sensor":

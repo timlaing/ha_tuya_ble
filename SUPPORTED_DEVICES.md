@@ -49,8 +49,8 @@ preventing an initial status from triggering automations. Subsequent identical
 click reports each emit. A device that sends a click instead of an initial status
 can lose that first click, especially if it disconnects between presses.
 The wire protocol does not label status snapshots separately from live presses.
-Existing Fingerbot bus events are unaffected. Lock doorbell mappings await #166;
-no new lock event entity is enabled by this change.
+Existing Fingerbot bus events are unaffected. The C-014S lock now has a DP24
+doorbell event; other lock doorbell mappings await device evidence.
 
 ## Smart Locks (category_id `ms`)
 
@@ -81,7 +81,7 @@ New **experimental** descriptors (see [DP evidence and physical-verification che
 
 - **EL605A Knob Lock** (`2hmqh0ty`): battery and empty-RAW DP71 unlock button. Lock state is deferred until this model's redacted schema confirms its numeric state DP.
 - **8052F66 Smart Lock** (`dappsdq4`): DP33 automatic-lock mode (Lock/Unlock), timestamped DP71 **Open**, battery, alarm, last-used user IDs, automatic-lock switch, auto-lock delay (5–20 s), volume and verification mode. The lock state is the automatic-lock mode, not a temporary physical handle release.
-- **Smart Lock C-014S** (`djrqe0q6`, also sold as LOOCK A04 TUYA): DP46 lock / empty-RAW DP71 unlock, DP47 state, battery, alarm, last-used user IDs, automatic-lock switch, auto-lock delay (3–600 s), volume and verification mode. DP24 doorbell is pending #172.
+- **Smart Lock C-014S** (`djrqe0q6`, also sold as LOOCK A04 TUYA): DP46 lock / empty-RAW DP71 unlock, DP47 state, battery, alarm, last-used user IDs, automatic-lock switch, auto-lock delay (3–600 s), volume and verification mode, and a DP24 doorbell event.
 - **Drawer Lock CTL20** (`tkbdvrzr`): timestamped DP71 unlock button only; no reliable lock-state DP. Other CTL20H-like mappings need this product's redacted schema before they can be added.
 
 Source contributors tested these on hardware, but this integration's descriptors and handshake selection still need device verification. Timestamped unlock needs the cloud `ble_unlock_check` captured during initial setup;

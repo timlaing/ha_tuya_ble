@@ -254,7 +254,9 @@ async def test_boolean_doorbell(hass: HomeAssistant) -> None:
     assert doorbell.state != first
     assert doorbell.state_attributes == {"event_type": "ring"}
     assert doorbell.device_class == EventDeviceClass.DOORBELL
-    assert "jtmspro" not in event.mapping
+    # The C-014S lock now registers a real DP24 doorbell mapping.
+    assert "jtmspro" in event.mapping
+    assert "djrqe0q6" in event.mapping["jtmspro"].products
 
 
 @pytest.mark.parametrize("product_id", ["kpzc6pm8", "ja5osu5g"])
@@ -425,3 +427,29 @@ async def test_two_reports_in_one_packet_emit_both_clicks(hass: HomeAssistant) -
     # Each mapped report publishes its own state change, plus the final flush.
     assert writes == len(emitted) + 1
     assert entity.state_attributes["event_type"] == "double_click"
+
+
+async def test_c014s_doorbell_uses_registry_mapping(hass: HomeAssistant) -> None:
+    """The C-014S DP24 doorbell is wired from its descriptor, not test code."""
+    entity = await _entity(hass)
+    # build_context uses a generic product; look up the lock mapping directly.
+    lock_mapping = event.mapping["jtmspro"].products["djrqe0q6"][0]
+    assert lock_mapping.dp_id == 24
+    assert lock_mapping.dp_type == DPType.DT_BOOL
+    assert lock_mapping.event_values == {True: "ring"}
+
+    doorbell = event.TuyaBLEEvent(
+        hass,
+        entity.coordinator,
+        entity.device,
+        make_product_info(),
+        lock_mapping,
+    )
+    doorbell.hass = hass
+    doorbell.entity_id = "event.test_c014s_doorbell"
+    _mock_state_write(doorbell)
+    await doorbell.async_added_to_hass()
+    _report(doorbell, True, dp_id=24, dp_type=DPType.DT_BOOL)
+    assert doorbell.state is None
+    _report(doorbell, True, dp_id=24, dp_type=DPType.DT_BOOL)
+    assert doorbell.state_attributes == {"event_type": "ring"}
