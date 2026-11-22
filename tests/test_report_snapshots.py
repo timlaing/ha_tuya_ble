@@ -112,3 +112,21 @@ async def test_v3_rejects_trailing_incomplete_entry(h: ProtocolHarness) -> None:
     await asyncio.sleep(0)
     assert h.device.datapoints[3] is None
     assert not seen
+
+
+async def test_v3_accepts_trailing_zero_length_entry(h: ProtocolHarness) -> None:
+    """A complete zero-length entry at the tail is parsed, not rejected."""
+    # DP3 with a value, then DP4 with an empty value (three-byte header only).
+    data = pack(">BBB", 3, TuyaBLEDataPointType.DT_VALUE.value, 1) + b"\x07"
+    data += pack(">BBB", 4, TuyaBLEDataPointType.DT_STRING.value, 0)
+    seen: list[int] = []
+    h.device.register_callback(lambda dps: seen.extend(dp.dp_id for dp in dps))
+    msg = frame_packet0(
+        encrypt_payload(_session_key(h), 5, 1, 0, TuyaBLECode.FUN_RECEIVE_DP, data)
+    )
+    h.notify(msg)
+    await asyncio.sleep(0)
+    assert seen == [3, 4]
+    dp4 = h.device.datapoints[4]
+    assert dp4 is not None
+    assert dp4.value == ""

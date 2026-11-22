@@ -221,7 +221,8 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
         """
         entries: list[tuple[int, TuyaBLEDataPointType, bytes, DataPointValue]] = []
         pos = start_pos
-        while len(data) - pos >= 4:
+        # A v3 header is three bytes (id, type, length); the value may be empty.
+        while len(data) - pos >= 3:
             dp_id: int = data[pos]
             pos += 1
             dp_type = self._datapoint_type(data[pos])
@@ -237,7 +238,7 @@ class TuyaBLEProtocolParseMixin(TuyaBLEProtocolSendMixin):
             pos = next_pos
 
         if pos != len(data):
-            # Fewer than four bytes remain: a trailing header that declares a
+            # Fewer than three bytes remain, or a trailing header declares a
             # value it cannot carry. Reject the whole batch, never a prefix.
             raise TuyaBLEDataLengthError()
 
