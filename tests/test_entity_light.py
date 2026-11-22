@@ -10,6 +10,7 @@ from homeassistant.components.light.const import ColorMode
 from homeassistant.core import HomeAssistant
 
 from custom_components.tuya_ble import light
+from custom_components.tuya_ble.device_registry import get_registry
 from custom_components.tuya_ble.devices import (
     TuyaBLECoordinator,
     TuyaBLEProductInfo,
@@ -705,3 +706,92 @@ async def test_hs_color_hs_mode_without_color_data(hass: HomeAssistant) -> None:
     add_dp(device, 2, TuyaBLEDataPointType.DT_ENUM, "colour")
     assert entity.color_mode == ColorMode.HS
     assert entity.hs_color is None
+
+
+# --- issue #215: brightness on a separate DP even in colour mode ----------
+
+
+def _make_color_mode_entity(
+    hass: HomeAssistant,
+    device: TuyaBLEDevice,
+    coordinator: TuyaBLECoordinator,
+    product: TuyaBLEProductInfo,
+) -> TuyaBLELight:
+    """Build the erx2ivxa mapping: brightness DP3, no colour-temperature DP."""
+    mapping = light.TuyaBLELightMapping(
+        description=LightEntityDescription(key="switch_led", name=None),
+        switch_dp_id=1,
+        color_mode_dp_id=2,
+        brightness_dp_id=3,
+        color_data_dp_id=5,
+        brightness_min=10,
+        brightness_max=1000,
+        brightness_dp_in_color_mode=True,
+    )
+    entity = TuyaBLELight(hass, coordinator, device, product, mapping)
+    entity.hass = hass
+    return entity
+
+
+async def test_hs_brightness_uses_separate_dp_when_flagged(
+    hass: HomeAssistant,
+) -> None:
+    """A strip whose colour V is zero still reports DP3 brightness in HS mode."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_color_mode_entity(hass, device, coordinator, product)
+    add_dp(device, 2, TuyaBLEDataPointType.DT_ENUM, 1)
+    add_dp(device, 5, TuyaBLEDataPointType.DT_STRING, "001903520000")
+    add_dp(device, 3, TuyaBLEDataPointType.DT_VALUE, 1000)
+    assert entity.color_mode == ColorMode.HS
+    assert entity.brightness == 255
+
+
+async def test_legacy_hs_brightness_still_uses_color_data(
+    hass: HomeAssistant,
+) -> None:
+    """Without the flag, HS brightness still comes from the colour V field."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_entity(hass, device, coordinator, product)
+    add_dp(device, 2, TuyaBLEDataPointType.DT_ENUM, "colour")
+    add_dp(device, 5, TuyaBLEDataPointType.DT_STRING, "0000000001f4")
+    add_dp(device, 3, TuyaBLEDataPointType.DT_VALUE, 1000)
+    assert entity.brightness == 128
+
+
+async def test_hs_brightness_without_dp_reports_255_for_unflagged(
+    hass: HomeAssistant,
+) -> None:
+    """With the flag and no brightness report, state stays unknown."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_color_mode_entity(hass, device, coordinator, product)
+    add_dp(device, 2, TuyaBLEDataPointType.DT_ENUM, 1)
+    add_dp(device, 5, TuyaBLEDataPointType.DT_STRING, "001903520000")
+    assert entity.brightness is None
+
+
+async def test_turn_on_hs_color_writes_brightness_dp(
+    hass: HomeAssistant,
+) -> None:
+    """Brightness with a colour change writes the separate brightness DP."""
+    device, coordinator, product = build_context(hass)
+    entity = _make_color_mode_entity(hass, device, coordinator, product)
+    entity.turn_on(hs_color=(25, 85), brightness=128)
+    await hass.async_block_till_done()
+    dp_brightness = device.datapoints[3]
+    dp_color = device.datapoints[5]
+    assert dp_brightness is not None
+    assert 490 <= int(dp_brightness.value) <= 510
+    assert dp_color is not None
+    colorstr = str(dp_color.value)
+    assert 498 <= int(colorstr[8:], 16) <= 502
+
+
+async def test_erx2ivxa_descriptor_uses_brightness_dp_in_color_mode() -> None:
+    """The shipping descriptor for #215 opts into the separate brightness DP."""
+    descriptor = get_registry().get("dd", "erx2ivxa")
+    assert descriptor is not None
+    (light_desc,) = descriptor.get("light")
+    assert light_desc.extra["brightness_dp_in_color_mode"] is True
+    assert light_desc.extra["color_temp_dp_id"] == 0
+    assert light_desc.extra["brightness_min"] == 10
+    assert light_desc.extra["brightness_max"] == 1000

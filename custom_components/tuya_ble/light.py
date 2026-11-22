@@ -46,6 +46,7 @@ class TuyaBLELightMapping:
     brightness_max: int = 255
     color_temp_min: int = 0
     color_temp_max: int = 100
+    brightness_dp_in_color_mode: bool = False
     descriptor: EntityDescriptor | None = None
 
 
@@ -97,6 +98,7 @@ def _build_light_mapping(desc: EntityDescriptor) -> TuyaBLELightMapping:
         "brightness_max",
         "color_temp_min",
         "color_temp_max",
+        "brightness_dp_in_color_mode",
     ):
         if field_name in extra:
             kwargs[field_name] = extra[field_name]
@@ -201,7 +203,10 @@ class TuyaBLELight(TuyaBLEEntity, LightEntity):
     @property
     def brightness(self) -> int | None:
         """Return the brightness of the light (0-255)."""
-        if self.color_mode == ColorMode.HS:
+        if (
+            self.color_mode == ColorMode.HS
+            and not self._mapping.brightness_dp_in_color_mode
+        ):
             color_data = self._get_color_data()
             if color_data is not None:
                 _h, _s, v = color_data
@@ -366,6 +371,26 @@ class TuyaBLELight(TuyaBLEEntity, LightEntity):
                 "dp_type": TuyaBLEDataPointType.DT_STRING,
                 "value": colorstr,
             })
+            if (
+                self._mapping.brightness_dp_in_color_mode
+                and ATTR_BRIGHTNESS in kwargs
+                and self._mapping.brightness_dp_id != 0
+            ):
+                # This strip keeps brightness on a separate data point even
+                # in colour mode; the colour V field is not its brightness.
+                commands.append({
+                    "dp_id": self._mapping.brightness_dp_id,
+                    "dp_type": TuyaBLEDataPointType.DT_VALUE,
+                    "value": round(
+                        remap_value(
+                            kwargs[ATTR_BRIGHTNESS],
+                            0,
+                            255,
+                            self._mapping.brightness_min,
+                            self._mapping.brightness_max,
+                        )
+                    ),
+                })
         elif ATTR_BRIGHTNESS in kwargs and self._mapping.brightness_dp_id != 0:
             value = round(
                 remap_value(
