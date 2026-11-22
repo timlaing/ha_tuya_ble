@@ -242,6 +242,12 @@
       },
       "work_time": {
         "name": "Running time"
+      },
+      "temp_correction": {
+        "name": "Temperature correction"
+      },
+      "eco_temp_deviation": {
+        "name": "Temperature deviation (eco)"
       }
     },
     "select": {
@@ -336,6 +342,30 @@
         "state": {
           "chinese_simplified": "Chinese (simplified)",
           "english": "English"
+        }
+      },
+      "valve_mode": {
+        "name": "Valve operating mode",
+        "state": {
+          "auto": "Auto",
+          "manual": "Manual",
+          "off": "Off",
+          "full_open": "Full open (100%)"
+        }
+      },
+      "led_brightness": {
+        "name": "LED brightness",
+        "state": {
+          "high": "High",
+          "mid": "Medium",
+          "low": "Low"
+        }
+      },
+      "screen_orientation": {
+        "name": "Screen orientation",
+        "state": {
+          "up": "Up",
+          "down": "Down"
         }
       }
     },
@@ -499,7 +529,9 @@
         "state": {
           "auto": "Auto",
           "manual": "Manual",
-          "idle": "Idle"
+          "idle": "Idle",
+          "closed": "Closed",
+          "opened": "Opened"
         }
       },
       "work_states_zone1": {
@@ -610,6 +642,43 @@
       },
       "firmware_version": {
         "name": "Firmware version"
+      },
+      "window_state": {
+        "name": "Window state",
+        "state": {
+          "closed": "Closed",
+          "opened": "Opened"
+        }
+      },
+      "child_lock_state": {
+        "name": "Child lock state",
+        "state": {
+          "disabled": "Disabled",
+          "enabled": "Enabled"
+        }
+      },
+      "valve_open_degree": {
+        "name": "Valve opening"
+      },
+      "motor_thrust_state": {
+        "name": "Motor thrust",
+        "state": {
+          "strong": "Strong",
+          "middle": "Medium",
+          "weak": "Weak"
+        }
+      },
+      "mfg_model": {
+        "name": "Manufacturer model"
+      },
+      "fw_version_int": {
+        "name": "Firmware version"
+      },
+      "lower_temperature_limit": {
+        "name": "Lower temperature limit"
+      },
+      "upper_temperature_limit": {
+        "name": "Upper temperature limit"
       }
     },
     "switch": {

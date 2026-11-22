@@ -99,6 +99,21 @@ model_name: 16wgjvck
 
 **climate**: `hvac_mode_dp_id`, `hvac_switch_dp_id`, `hvac_switch_mode`, `hvac_modes`, `current_temperature_dp_id`, `current_temperature_coefficient`, `target_temperature_dp_id`, `target_temperature_coefficient`, `target_temperature_step`, `target_temperature_min`, `target_temperature_max`, `temperature_unit`, `current_humidity_dp_id`, `current_humidity_coefficient`, `target_humidity_dp_id`, `target_humidity_coefficient`, `target_humidity_min`, `target_humidity_max`, `preset_mode_dp_ids`
 
+For explicit climate mode wire types, `hvac_mode_dp_type` is `2` (VALUE,
+the existing default) or `4` (ENUM). Optional `hvac_mode_values` lists the
+unique byte indices matching `hvac_modes`; unlisted reported values have no
+HVAC mode rather than being silently mapped to heating. `hvac_action_dp_id`
+reads a closed/opened enum (`0` idle, `1` heating), reporting off when the HVAC
+mode is off. ENUM presets use `preset_enum_dp_id` plus `preset_enum_values`
+(preset name → unique byte index), separately from existing Boolean
+`preset_mode_dp_ids`. Mode-data-point, temperature-target and ENUM-preset
+writes are awaited, so failures reach the caller. Switch-backed HVAC modes and
+humidity targets use background writes, whose failures do not propagate.
+
+Select `enum_values` similarly supplies unique byte indices matching `options`,
+for non-contiguous ENUM choices such as up/down = 0/2. Do not combine it with
+string `values`. Confirm enum ordering from device evidence, not option names.
+
 **cover**: `state_dp_id`, `position_set_dp_id`, `position_dp_id`, `tilt_dp_id`
 
 **light**: `switch_dp_id`, `color_mode_dp_id`, `brightness_dp_id`, `brightness_min`, `brightness_max`, `color_temp_dp_id`, `color_temp_min`, `color_temp_max`, `color_data_dp_id`

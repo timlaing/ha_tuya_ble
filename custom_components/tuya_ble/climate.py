@@ -35,6 +35,10 @@ class TuyaBLEClimateMapping:
 
     hvac_mode_dp_id: int = 0
     hvac_modes: list[str] | None = None
+    hvac_mode_dp_type: TuyaBLEDataPointType = TuyaBLEDataPointType.DT_VALUE
+    # Explicit wire values avoid assigning a normal HVAC mode to full-open.
+    hvac_mode_values: list[int] | None = None
+    hvac_action_dp_id: int = 0
 
     hvac_switch_dp_id: int = 0
     hvac_switch_mode: HVACMode | None = None
@@ -43,6 +47,8 @@ class TuyaBLEClimateMapping:
     hvac_action_from_switch: bool = False
 
     preset_mode_dp_ids: dict[str, int] | None = None
+    preset_enum_dp_id: int = 0
+    preset_enum_values: dict[str, int] | None = None
 
     temperature_unit: str = UnitOfTemperature.CELSIUS
     current_temperature_dp_id: int = 0
@@ -95,6 +101,10 @@ def _build_climate_mapping(desc: EntityDescriptor) -> TuyaBLEClimateMapping:
     kwargs: dict[str, Any] = {"description": _climate_description(desc)}
     for field_name in (
         "hvac_mode_dp_id",
+        "hvac_mode_values",
+        "hvac_action_dp_id",
+        "preset_enum_dp_id",
+        "preset_enum_values",
         "hvac_switch_dp_id",
         "current_temperature_dp_id",
         "current_temperature_coefficient",
@@ -114,6 +124,8 @@ def _build_climate_mapping(desc: EntityDescriptor) -> TuyaBLEClimateMapping:
             kwargs[field_name] = extra[field_name]
     if "hvac_modes" in extra:
         kwargs["hvac_modes"] = [HVACMode(m) for m in extra["hvac_modes"]]
+    if "hvac_mode_dp_type" in extra:
+        kwargs["hvac_mode_dp_type"] = TuyaBLEDataPointType(extra["hvac_mode_dp_type"])
     if "hvac_switch_mode" in extra:
         kwargs["hvac_switch_mode"] = HVACMode(extra["hvac_switch_mode"])
     if "preset_mode_dp_ids" in extra:
@@ -177,6 +189,9 @@ class TuyaBLEClimate(TuyaBLEEntity, ClimateEntity):
         self._attr_hvac_mode = HVACMode.HEAT
         self._attr_preset_mode = PRESET_NONE
         self._attr_hvac_action = HVACAction.HEATING
+        if climate_mapping.hvac_action_dp_id:
+            self._attr_hvac_mode = None
+            self._attr_hvac_action = None
 
         if climate_mapping.hvac_mode_dp_id and climate_mapping.hvac_modes:
             self._attr_hvac_modes = [HVACMode(m) for m in climate_mapping.hvac_modes]
@@ -195,6 +210,10 @@ class TuyaBLEClimate(TuyaBLEEntity, ClimateEntity):
             }
         else:
             self._preset_by_dp_id = {}
+        if climate_mapping.preset_enum_values:
+            self._attr_supported_features |= ClimateEntityFeature.PRESET_MODE
+            self._attr_preset_modes = list(climate_mapping.preset_enum_values)
+            self._attr_preset_mode = None
 
         if (
             climate_mapping.target_temperature_dp_id != 0
@@ -264,12 +283,23 @@ class TuyaBLEClimate(TuyaBLEEntity, ClimateEntity):
         self._read_scaled_attrs()
         self._read_hvac_mode()
         self._read_preset_mode()
-        self._attr_hvac_action = (
-            self._switch_hvac_action()
-            if self._mapping.hvac_action_from_switch
-            else self._thermostat_hvac_action()
-        )
+        if self._mapping.hvac_action_dp_id:
+            self._attr_hvac_action = self._reported_hvac_action()
+        elif self._mapping.hvac_action_from_switch:
+            self._attr_hvac_action = self._switch_hvac_action()
+        else:
+            self._attr_hvac_action = self._thermostat_hvac_action()
         self.async_write_ha_state()
+
+    @callback
+    def _reported_hvac_action(self) -> HVACAction | None:
+        """Read a closed/opened work-state enum without guessing from setpoints."""
+        datapoint = self.device.datapoints[self._mapping.hvac_action_dp_id]
+        if self._attr_hvac_mode == HVACMode.OFF:
+            return HVACAction.OFF
+        if datapoint is None or datapoint.value not in (0, 1):
+            return None
+        return HVACAction.HEATING if datapoint.value == 1 else HVACAction.IDLE
 
     @callback
     def _thermostat_hvac_action(self) -> HVACAction:
@@ -323,13 +353,30 @@ class TuyaBLEClimate(TuyaBLEEntity, ClimateEntity):
         hvac_modes = self._mapping.hvac_modes
         if not hvac_modes or not datapoint or not isinstance(datapoint.value, int):
             return None
-        if datapoint.value >= len(hvac_modes):
+        if self._mapping.hvac_mode_values:
+            if datapoint.value not in self._mapping.hvac_mode_values:
+                return None
+            return HVACMode(
+                hvac_modes[self._mapping.hvac_mode_values.index(datapoint.value)]
+            )
+        if not 0 <= datapoint.value < len(hvac_modes):
             return None
         return HVACMode(hvac_modes[datapoint.value])
 
     @callback
     def _read_preset_mode(self) -> None:
         """Update the current preset mode from the device datapoints."""
+        if self._mapping.preset_enum_values:
+            datapoint = self.device.datapoints[self._mapping.preset_enum_dp_id]
+            self._attr_preset_mode = next(
+                (
+                    preset
+                    for preset, value in self._mapping.preset_enum_values.items()
+                    if datapoint is not None and datapoint.value == value
+                ),
+                None,
+            )
+            return
         if not self._preset_by_dp_id:
             return
         current_preset_mode = PRESET_NONE
@@ -350,7 +397,7 @@ class TuyaBLEClimate(TuyaBLEEntity, ClimateEntity):
                 TuyaBLEDataPointType.DT_VALUE,
                 int_value,
             )
-            self.hass.create_task(datapoint.set_value(int_value))
+            await datapoint.set_value(int_value)
 
     async def async_set_humidity(self, humidity: int) -> None:
         """Set new target humidity."""
@@ -371,12 +418,14 @@ class TuyaBLEClimate(TuyaBLEEntity, ClimateEntity):
             and hvac_mode in self._mapping.hvac_modes
         ):
             int_value = self._mapping.hvac_modes.index(hvac_mode)
+            if self._mapping.hvac_mode_values:
+                int_value = self._mapping.hvac_mode_values[int_value]
             datapoint = self.device.datapoints.get_or_create(
                 self._mapping.hvac_mode_dp_id,
-                TuyaBLEDataPointType.DT_VALUE,
+                self._mapping.hvac_mode_dp_type,
                 int_value,
             )
-            self.hass.create_task(datapoint.set_value(int_value))
+            await datapoint.set_value(int_value)
         elif self._mapping.hvac_switch_dp_id != 0 and self._mapping.hvac_switch_mode:
             bool_value = hvac_mode == self._mapping.hvac_switch_mode
             datapoint = self.device.datapoints.get_or_create(
@@ -388,6 +437,17 @@ class TuyaBLEClimate(TuyaBLEEntity, ClimateEntity):
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set new preset mode."""
+        if self._mapping.preset_enum_values:
+            if preset_mode not in self._mapping.preset_enum_values:
+                raise ValueError(f"Unsupported preset: {preset_mode}")
+            enum_value = self._mapping.preset_enum_values[preset_mode]
+            enum_datapoint = self.device.datapoints.get_or_create(
+                self._mapping.preset_enum_dp_id,
+                TuyaBLEDataPointType.DT_ENUM,
+                enum_value,
+            )
+            await enum_datapoint.set_value(enum_value)
+            return
         if not self._mapping.preset_mode_dp_ids:
             return
 

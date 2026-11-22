@@ -1,0 +1,141 @@
+# Experimental: owner schema and BLE reports, not verified on this integration.
+# https://github.com/tomaz1/ha_tuya_ble/blob/main/custom_components/tuya_ble/climate.py
+category: wkf
+product_id: llflaywg
+device_name: Bluetooth Smart TRV (experimental)
+model_name: llflaywg
+entities:
+  climate:
+    - translation_key: thermostatic_radiator_valve
+      name: Radiator thermostat
+      hvac_mode_dp_id: 1
+      hvac_mode_dp_type: 4 # ENUM, including writes before the first report
+      hvac_modes: [auto, heat, "off"]
+      hvac_mode_values: [0, 1, 2] # 3 is full-open, deliberately not normal HEAT
+      hvac_action_dp_id: 6
+      preset_enum_dp_id: 114
+      preset_enum_values:
+        comfort: 0
+        eco: 1
+      current_temperature_dp_id: 3
+      current_temperature_coefficient: 10.0
+      target_temperature_dp_id: 2 # Owner writes this, but schema comment says R.
+      target_temperature_coefficient: 10.0
+      target_temperature_min: 5.0
+      target_temperature_max: 35.0
+      target_temperature_step: 0.5
+  number:
+    - dp_id: 101
+      translation_key: temp_correction
+      legacy_keys: [temperature_calibration]
+      name: Temperature correction
+      dp_type: 2
+      coefficient: 10.0
+      unit: °C
+      min_value: -10.0
+      max_value: 10.0
+      step: 0.1
+      entity_category: config
+    - dp_id: 115
+      translation_key: eco_temp_deviation
+      name: Temperature deviation (eco)
+      dp_type: 2
+      coefficient: 10.0
+      unit: °C
+      min_value: 0.5
+      max_value: 5.0
+      step: 0.1
+      entity_category: config
+      handlers:
+        when: thermostat.in_eco_mode
+  switch:
+    - dp_id: 8
+      translation_key: window_check
+      dp_type: 1
+      icon: mdi:window-closed
+      entity_category: config
+    - dp_id: 12
+      translation_key: child_lock
+      dp_type: 1
+      icon: mdi:account-lock
+      entity_category: config
+  select:
+    - dp_id: 1
+      translation_key: valve_mode
+      name: Valve operating mode
+      dp_type: 4
+      options: [auto, manual, "off", full_open]
+      entity_category: config
+    - dp_id: 111
+      translation_key: led_brightness
+      name: LED brightness
+      dp_type: 4
+      options: [high, mid, low]
+      entity_category: config
+    - dp_id: 113
+      translation_key: screen_orientation
+      name: Screen orientation
+      dp_type: 4
+      options: [up, down]
+      enum_values: [0, 2]
+      entity_category: config
+  sensor:
+    - dp_id: 13
+      translation_key: battery
+      device_class: battery
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+    - dp_id: 6
+      translation_key: work_state
+      name: Work state
+      device_class: enum
+      options: [closed, opened]
+      entity_category: diagnostic
+    - dp_id: 7
+      translation_key: window_state
+      name: Window state
+      device_class: enum
+      options: [closed, opened]
+      entity_category: diagnostic
+    - dp_id: 12
+      translation_key: child_lock_state
+      name: Child lock state
+      device_class: enum
+      options: [disabled, enabled]
+      entity_category: diagnostic
+      handlers:
+        read: thermostat.child_lock_state
+    - dp_id: 108
+      translation_key: valve_open_degree
+      name: Valve opening
+      coefficient: 10.0
+      unit: "%"
+      state_class: measurement
+      entity_category: diagnostic
+    - dp_id: 110
+      translation_key: motor_thrust_state
+      name: Motor thrust
+      device_class: enum
+      options: [strong, middle, weak]
+      entity_category: diagnostic
+    - dp_id: 109
+      translation_key: mfg_model
+      name: Manufacturer model
+      entity_category: diagnostic
+    - dp_id: 112
+      translation_key: fw_version_int
+      name: Firmware version
+      entity_category: diagnostic
+    - dp_id: 15
+      translation_key: lower_temperature_limit
+      name: Lower temperature limit
+      coefficient: 10.0
+      unit: °C
+      entity_category: diagnostic
+    - dp_id: 16
+      translation_key: upper_temperature_limit
+      name: Upper temperature limit
+      coefficient: 10.0
+      unit: °C
+      entity_category: diagnostic

@@ -99,7 +99,9 @@ Additional experimental products ([evidence and limitations](docs/lock-product-a
 
 - Thermostatic Radiator Valve (product_ids `drlajpqc`, `nhj2j7su`, `zmachryv`). Supports temperature set, modes, and calibration. Additional switches: window check, antifreeze, child lock, water scale proof, programming mode.
 
-The `wkf` / `llflaywg` radiator valve is not supported yet. Its published datapoints differ from the `wk` valves (for example, DP 101 is temperature correction, not the heating switch), so the `wk` layout cannot be reused. Tracked in #198.
+## Climate (category_id `wkf`)
+
+- **Experimental** Bluetooth Smart TRV (`llflaywg`): Auto/Heat/Off, explicit Full open select, comfort/eco presets, temperature correction, eco deviation, window detection, child lock, brightness, up/down orientation and read-only diagnostics. Target writes follow the owner code but are not hardware-confirmed; schedules and uncertain writable settings are omitted. See [evidence and hardware acceptance](docs/LLFLAYWG_TRV.md).
 
 ## Heaters (category_id `qn`)
 

@@ -285,6 +285,7 @@ The integration supports a broad range of Tuya BLE devices across the following 
 | Smart locks (`ms`, `jtmspro`)            | Smart locks, cylinder locks, Raycube K7 Pro+, CentralAcesso               |
 | Wireless buttons (`wxkg`)                | Arlec SG022HA / ZG101Z (experimental; string reports only)                |
 | Climate (`wk`)                           | Thermostatic radiator valves (TRV)                                        |
+| Climate (`wkf`)                          | Bluetooth Smart TRV `llflaywg` ([experimental](docs/LLFLAYWG_TRV.md))     |
 | Heaters (`qn`)                           | MaXpeedingRods diesel parking heater (experimental)                       |
 | Irrigation & water (`ggq`, `sfkzq`)      | Irrigation computers, water valves, dual water timers                     |
 | Smart water bottle (`znhsb`)             | Smart water bottles                                                       |
