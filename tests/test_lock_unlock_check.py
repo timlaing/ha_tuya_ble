@@ -89,10 +89,15 @@ def test_decode_and_build() -> None:
 
 def test_build_stored_check_unlock_command() -> None:
     """The stored-check variant echoes the cloud key bytes, not the current time."""
-    assert build_stored_check_unlock_command(CHECK) == (
+    command = build_stored_check_unlock_command(CHECK)
+    assert command == (
         bytes.fromhex("ffff0001") + b"97531864" + bytes.fromhex("01010203040001")
     )
-    assert len(build_stored_check_unlock_command(CHECK)) == 19
+    assert len(command) == 19
+
+
+def test_build_stored_check_unlock_command_rejects_malformed() -> None:
+    """A malformed check never produces a command."""
     with pytest.raises(ValueError, match="invalid format"):
         build_stored_check_unlock_command(_encoded(b"invalid"))
 
