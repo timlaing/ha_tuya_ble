@@ -4,216 +4,82 @@
 
 ## Project
 
-Home Assistant custom integration (HACS) for Tuya BLE devices. Handles encryption and device protocol locally over Bluetooth — no cloud dependency after initial key exchange.
+Home Assistant custom integration (HACS) for Tuya BLE devices. Encryption and the device protocol run locally over Bluetooth; the Tuya cloud is used only for initial key exchange and one-time app-key recovery. Forked from PlusPlus-ua/ha_tuya_ble, maintained by @timlaing.
 
-Forked from [PlusPlus-ua/ha_tuya_ble](https://github.com/PlusPlus-ua/ha_tuya_ble), maintained by [@timlaing](https://github.com/timlaing/ha_tuya_ble).
+OpenCode-specific operating rules (plans, commits, pushes, PRs, rebases, `.opencode` backups) live in `.opencode/private-instructions.md`, referenced from `.opencode/opencode.json`. Sonar/Qube repo rules are in `.github/skills/code-review/SKILL.md` §9.
 
-## Tests
+## Development commands
 
-A pytest unit-test suite lives in `tests/` (1093 tests, 99% branch coverage of `custom_components/tuya_ble`, incl. entity platforms and config flow). CI runs it on every push/PR (`.github/workflows/test.yml`) with a `--cov-fail-under=90` gate, and `lint.yml` runs `prek run --all-files`. Other workflows: `checks.yml` (required statuses), `hass.yml`/`hacs.yml` (metadata validation), `codeql.yml`, `sonarqube.yml`, `release-drafter.yml` with `autolabeler.yml` (PR labels), `stale.yml` (60-day issue lifecycle, PRs excluded) and `issue-autolabeler.yml` (adds `needs-triage` on open/reopen). Run locally with coverage:
+Set up with `python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements-dev.txt` (also `scripts/setup.sh` in devcontainers).
 
 ```sh
+.venv/bin/python -m pytest -q                          # unit tests (3170, ~2s timeout each)
 .venv/bin/python -m pytest --cov=custom_components.tuya_ble --cov-branch --cov-report=term-missing
-# or just the unit tests without coverage:
-.venv/bin/python -m pytest -q
-```
-
-`pyproject.toml` configures `testpaths=["tests"]`, `asyncio_mode="auto"`, and `addopts=["--disable-socket", "--allow-unix-socket", "--timeout=2"]`.
-
-### Test conventions
-
-- Tests import via `custom_components.tuya_ble.*` (never bare `tuya_ble.*`); `custom_components/` is added to `sys.path` in `tests/conftest.py`. **Do not** add `custom_components/tuya_ble` itself to `sys.path` — its `select.py`/`text.py` etc. shadow stdlib modules.
-- Tests exercise **public** entry points. Setting device/flow internals (`_client`, `_session_key`, `_manager`, protected `_qr_*` login state) as **test setup state** is acceptable.
-- Real `TuyaBLEDevice` + `TuyaBLECoordinator` are built in tests; the device's `send_datapoints` is stubbed so no BLE I/O occurs. Data points are driven via the public `TuyaBLEDataPoints.update_from_device`.
-- Entity classes register their coordinator listener in `async_added_to_hass()`, not `__init__` — call `await entity.async_added_to_hass()` before asserting on coordinator-triggered updates, or call the handler directly.
-- The descriptor registry in `device_registry.py` is pure: `get_registry`, `get_mapped_dp_ids` and descriptor validation are unit-tested directly. `get_product_info_by_ids`, `get_device_product_info`, `get_short_address` and `get_device_info` live in `entity.py` and are also unit-tested directly (via the `devices.py` shim in `test_devices.py`).
-- The `hass` fixture comes from `pytest-homeassistant-custom-component`; config-flow tests build flow objects directly and drive `async_step_*`, patching `config_flow.HASSTuyaBLEDeviceManager` and the protected `_qr_login_control` / `_qr_code` / `_qr_user_code` attributes with fakes. They are single-underscore attributes — there is no name mangling in `config_flow.py`.
-- Tests that mock `asyncio.create_task` or `asyncio.sleep` should use a module-level `pytestmark = pytest.mark.filterwarnings("ignore::RuntimeWarning")` and a `_close_task()` helper that calls `coro.close()` on the mocked coroutine to prevent unawaited-coroutine warnings from leaking into other tests via `gc.collect()`.
-- Most modules log at `debug`, and pytest's `caplog` does **not** capture `DEBUG` unless the level is raised. Every assertion against a debug message needs `caplog.at_level(logging.DEBUG)` (as a context manager, or `caplog.set_level(logging.DEBUG)` for the whole test) — the warning-level pattern in `test_protocol.py` does not transfer. Use `caplog.clear()` between two phases of one test, since the text accumulates.
-- Logging conventions for the integration: module-level `_LOGGER = logging.getLogger(__name__)`, lazy `%`-style formatting only (never f-strings, to match the existing call sites), `debug` for happy-path traces, `warning` for recoverable anomalies, `error` only where the user is shown a failure form. **Never log** `local_key`, `access_token`, `refresh_token`, `terminal_id`, `user_code`, QR tokens, or `endpoint`.
-
-### Coverage requirements
-
-Every Python file under `custom_components/tuya_ble/` **must** meet these minimums:
-
-- **Line coverage > 90 %**
-- **Branch coverage ~ 100 %** (cover all `if`/`elif`/`else`/`match` arms)
-
-Run coverage after writing tests:
-
-```sh
-.venv/bin/python -m pytest --cov=custom_components.tuya_ble --cov-branch --cov-report=term-missing
-```
-
-If a file falls below the threshold, add tests until it passes before committing.
-
-### Test files
-
-| File                                                                       | Covers                                                                                                |
-| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `tests/conftest.py`                                                        | `sys.path`, fakes (`FakeBLEManager`, `FakeBleakClient`, …), `make_device()`, `make_credentials()`     |
-| `tests/protocol_harness.py`                                                | packet building/encryption helpers for protocol tests                                                 |
-| `tests/test_datapoints.py`                                                 | `TuyaBLEDataPoint`/`TuyaBLEDataPoints`                                                                |
-| `tests/test_manager.py`, `tests/test_const.py`, `tests/test_exceptions.py` | manager, consts, exceptions                                                                           |
-| `tests/test_protocol.py`                                                   | `protocol_mixin` packet/AES logic                                                                     |
-| `tests/test_protocol_v4.py`                                                | protocol 4 (FD50) handshake, characteristic choice, `0x8006`/`0x8007` reports, SDK firmware double    |
-| `tests/test_protocol_v4_identity.py`                                       | protocol 4 version from the advertisement: identity record, stored advertisement, beacon wait         |
-| `tests/test_base.py`                                                       | `base.IntegerTypeData`/`EnumTypeData`                                                                 |
-| `tests/test_device.py`                                                     | `TuyaBLEDevice` connection/state (mocked connect flow)                                                |
-| `tests/test_connection.py`                                                 | BLE connection lifecycle, error paths, protocol edge cases                                            |
-| `tests/test_cloud.py`                                                      | `cloud.py`                                                                                            |
-| `tests/test_coordinator.py`                                                | `coordinator.py` connect/disconnect transitions, update batches, delayed-disconnect timer             |
-| `tests/test_entity.py`                                                     | `entity.py` unique-id resolution, DP-code matching, data point sends                                  |
-| `tests/test_devices.py`                                                    | product lookup, coordinator and device-info helpers; descriptor-vs-cloud-metadata precedence tests    |
-| `tests/test_mappings.py`                                                   | per-platform `get_mapping_by_device` + pure Fingerbot/sensor helpers                                  |
-| `tests/test_device_registry.py`                                            | `device_registry.py` (load/validate/resolve, `EntityDescriptor`)                                      |
-| `tests/test_registry_init.py`                                              | off-event-loop registry initialisation, caching, concurrency, failure/retry                           |
-| `tests/test_parkside_batteries.py`                                         | PARKSIDE `dcb` battery descriptors: units, scaling, status order, read paths                          |
-| `tests/test_handlers.py`                                                   | YAML descriptor handler callables (`battery`, `measurement`, `raw`, `rssi`, `water_valve`, Fingerbot) |
-| `tests/test_lock_handlers.py`                                              | shared `lock.*` handlers via test-only fixture descriptors (passage, automatic lock, DP71 open)       |
-| `tests/test_lock_unlock_check.py`                                          | `ble_unlock_check` format, cloud capture, entry storage, diagnostics and log redaction                |
-| `tests/test_entity_binary_sensor.py`                                       | binary_sensor entity methods                                                                          |
-| `tests/test_entity_button.py`                                              | button entity methods                                                                                 |
-| `tests/test_entity_climate.py`                                             | climate entity methods                                                                                |
-| `tests/test_entity_number.py`                                              | number entity methods (incl. fingerbot number handler aliases)                                        |
-| `tests/test_entity_select.py`                                              | select entity methods                                                                                 |
-| `tests/test_entity_sensor.py`                                              | sensor entity methods                                                                                 |
-| `tests/test_entity_switch.py`                                              | switch entity methods                                                                                 |
-| `tests/test_entity_text.py`                                                | text entity methods                                                                                   |
-| `tests/test_entity_valve.py`                                               | valve entity methods                                                                                  |
-| `tests/test_entity_vacuum.py`                                              | vacuum entity, descriptor validation and vacuum services                                              |
-| `tests/test_entity_lawn_mower.py`                                          | lawn_mower platform: descriptor validation, activities, commands, services                            |
-| `tests/test_parkside_mower.py`                                             | Parkside robot mower (`gcj`/`9hdajpiw`) supporting entities and handlers                              |
-| `tests/test_entity_lock.py`                                                | lock entity methods                                                                                   |
-| `tests/test_entity_cover.py`                                               | cover entity methods                                                                                  |
-| `tests/test_entity_light.py`                                               | light entity methods                                                                                  |
-| `tests/test_config_flow.py`                                                | config/options flow steps                                                                             |
-| `tests/test_config_flow_logging.py`                                        | `config_flow.py` debug/warning log output (reuses the fakes from `test_config_flow.py`)               |
-| `tests/test_config_flow_classic_bound.py`                                  | bound classic records whose identity does not decode (#155): scan fallback, probe-only setup          |
-| `tests/test_init.py`                                                       | integration `async_setup_entry`/`async_unload_entry`, offline manager, update listener                |
-| `tests/test_setup_entries.py`                                              | per-platform `async_setup_entry` boilerplate                                                          |
-| `tests/test_util.py`                                                       | `util.py` (e.g. `remap_value`)                                                                        |
-| `tests/test_diagnostics.py`                                                | config-entry and device diagnostics, redaction, schema refresh and fallback                           |
-| `tests/test_security_v2.py`                                                | FD50 Security V2 keys, flags 14/15, pair frame, verification, cloud `sec_key`, diagnostics            |
-| `tests/test_config_flow_unverified.py`                                     | opt-in setup of protocol-4 devices whose verification failed                                          |
-| `tests/test_on_demand_connection.py`                                       | on-demand connections: idle disconnect, reconnect on command, idle-close ordering, availability       |
-| `tests/test_config_flow_options_connection.py`                             | options-flow connection settings (keep connection, idle delay, status refresh) and validation         |
-| `tests/test_cbf02v2_fingerbot.py`                                          | CBF02V2 Finger Robot descriptor: two modes, inverted switch, fixed-value DP102 button, scaling        |
-| `tests/test_swtz_thermometers.py`                                          | `swtz` cooking thermometers: battery and signed 0.1 °C probe readings, incl. wire decoding            |
-| `tests/test_config_flow_manual.py`                                         | manual credential entry: validation, Bluetooth verification, errors and claims                        |
-| `tests/test_config_flow_options_credentials.py`                            | options-flow key-pair replacement, security-key clearing and refusal                                  |
-| `tests/test_session_recovery.py`                                           | failed/unanswered command recovery: no replay after reconnect, stale clients, waiters                 |
-| `tests/test_mobile_cloud.py`                                               | one-time mobile app login, target identity, atomic key pairs and optional enrichment                  |
-| `tests/test_mobile_snapshot.py`                                            | bounded recursive mobile metadata sanitization, export revalidation and privacy                       |
-| `tests/test_config_flow_mobile.py`                                         | conditional app-key recovery, numeric country validation, cancellation and reconfiguration            |
-| `tests/test_reconnect_absent_device.py`                                    | absent at startup: advertising, duplicate connects, failed handshakes, unload, drops                  |
-| `tests/test_security_key_selection.py`                                     | classic vs Security V2 login order from the FD50 bits, fallback, saved `security_mode`                |
-| `tests/test_security_v2_state.py`                                          | announced FD50 Security V2 supported/enabled state, mismatch log, diagnostics                         |
-
-### prek
-
-Use `.venv/bin/prek run --all-files` for the full check set (trailing-whitespace, end-of-file, ruff, ruff-format, cspell, yamllint, prettier, mypy, pylint). Do **not** use `pre-commit` directly — this repo drives the same hook config through `prek` from the virtual environment. Run prek on new/changed test files too.
-
-Pytest is also available as a manual `prek` hook, including branch coverage. Run the complete suite with:
-
-```sh
+.venv/bin/prek run --all-files                          # full check set; never use pre-commit directly
 .venv/bin/prek run --hook-stage manual pytest --all-files
-```
-
-The `mypy` and `pylint` hooks pull `additional_dependencies` from the requirements files via generated blocks (marked `# BEGIN GENERATED REQUIREMENTS` / `# END GENERATED REQUIREMENTS`) in `.pre-commit-config.yaml`. These are managed by `scripts/sync_prek_deps.py`; the `check-prek-deps` prek hook fails if they drift. After changing `requirements*.txt`, regenerate with:
-
-```sh
 .venv/bin/python scripts/sync_prek_deps.py requirements.txt requirements-dev.txt
 ```
 
-`scripts/sync_prek_deps.py` preserves trailing newlines and updates every generated block, so running it is idempotent with prettier. The script lives under `scripts/` (outside `custom_components/`), so the coverage thresholds do **not** apply to it.
+`pyproject.toml`: `testpaths=["tests"]`, `asyncio_mode="auto"`, `addopts` include `--disable-socket --allow-unix-socket --timeout=2`. CI (`.github/workflows/test.yml`) gates on `--cov-fail-under=90` overall; the per-file target is >90% line / ~100% branch coverage of `custom_components/tuya_ble` — add tests until each modified file meets it.
 
-To modernize typing syntax (e.g. `Optional[X]` → `X | None`), run the manual hook:
-`.venv/bin/prek run --hook-stage manual python-typing-update --all-files` — applies changes that need manual review before committing.
+`mypy`/`pylint` hook dependencies come from generated `# BEGIN GENERATED REQUIREMENTS` blocks in `.pre-commit-config.yaml`, maintained by `scripts/sync_prek_deps.py` (idempotent, prettier-compatible); `check-prek-deps` fails on drift. `scripts/` is outside `custom_components/`, so coverage thresholds do not apply to it. Manual hook `python-typing-update` modernizes typing syntax and needs review before committing.
 
-## SonarQube
+## Test conventions
 
-Two SonarQube paths are in play — know which one a task refers to.
+- Import via `custom_components.tuya_ble.*`, never bare `tuya_ble.*`; `custom_components/` is on `sys.path` from `tests/conftest.py`. Do **not** add `custom_components/tuya_ble` itself to `sys.path` — `select.py`/`text.py` shadow stdlib modules.
+- Exercise public entry points. Setting internals (`_client`, `_session_key`, `_manager`, protected `_qr_*`) as **setup state** is acceptable.
+- Tests build a real `TuyaBLEDevice` + `TuyaBLECoordinator` with `send_datapoints` stubbed (no BLE I/O); drive reports through `TuyaBLEDataPoints.update_from_device`.
+- Entities register their coordinator listener in `async_added_to_hass()`, not `__init__` — `await entity.async_added_to_hass()` before asserting on coordinator updates.
+- The `hass` fixture is from `pytest-homeassistant-custom-component`; config-flow tests call `async_step_*` directly with `config_flow.HASSTuyaBLEDeviceManager` and the single-underscore `_qr_*` attributes patched with fakes (no name mangling).
+- Fakes/helpers (`make_device`, `make_credentials`, `add_dp`) are in `tests/conftest.py`; packet-building helpers in `tests/protocol_harness.py`. Tests mirror module names (`test_<module>.py`).
+- Tests mocking `asyncio.create_task`/`sleep` need module-level `pytestmark = pytest.mark.filterwarnings("ignore::RuntimeWarning")` and a `_close_task()` helper calling `coro.close()` to avoid unawaited-coroutine warnings leaking via `gc.collect()`.
+- Most modules log at `debug`; `caplog` does not capture DEBUG unless raised — use `caplog.at_level(logging.DEBUG)` for each debug assertion and `caplog.clear()` between phases of one test.
+- Integration logging: module-level `_LOGGER`, lazy `%`-style formatting (no f-strings), `debug` happy path, `warning` recoverable, `error` only with a user-facing failure form. Never log `local_key`, `access_token`, `refresh_token`, `terminal_id`, `user_code`, QR tokens, `endpoint`, or cloud `ble_unlock_check`/`sec_key`.
 
-- **Local/IDE analysis (MCP)**: configured in `.opencode/opencode.json` via a local SonarQube MCP server. After creating or modifying files, run `sonarqube_analyze_file_list` on those files to catch issues before they reach CI. General MCP guidance lives in `.github/instructions/sonarqube_mcp.instructions.md`. Repo-specific, frequently-hit rules are in `.github/skills/code-review/SKILL.md` §9 (S8508 `dict.fromkeys`, S1172 unused param, S5778 exception-test, etc.).
-- **CI SonarCloud scan**: `.github/workflows/sonarqube.yml` runs on PRs and pushes to `main`, gated on the Test workflow's `coverage.xml` artifact and a `SONAR_TOKEN` secret. Project key is `timlaing_ha_tuya_ble`.
+## Quality gates
 
-Workflow notes (from the MCP instructions):
-
-- Disable automatic analysis with `sonarqube_toggle_automatic_analysis` at the start of a task and re-enable it when done.
-- Do **not** verify a fix via `search_sonar_issues_in_projects` — the server lags behind local analysis.
-- Prefer fixing a SonarQube issue with a code change over suppressing it; only use `sonarqube_change_sonar_issue_status` (`accept`/`falsepositive`) when a fix isn't appropriate.
-- **Before any push** (when the MCP server is available), run `sonarqube_analyze_file_list` on all changed/created files and resolve any new issues, so problems are caught before they reach CI.
+- CI: `test.yml` (pytest + coverage artifact), `lint.yml` (prek), `hass.yml`/`hacs.yml` (metadata), `codeql.yml`, `sonarqube.yml`, `checks.yml` (required statuses), `action-refs.yml` (full-SHA action pins, `scripts/check_action_refs.py`), `release-drafter.yml`/`autolabeler.yml`, `stale.yml`, `issue-autolabeler.yml`.
+- SonarCloud: project key `timlaing_ha_tuya_ble`; scan gated on the coverage artifact and `SONAR_TOKEN`. Recurring rules: S3516/S3776 (split long functions), S8508 (`dict.fromkeys` with mutable values), S1172 (unused params), S5778 (exception test). Prefer code fixes over suppression. Local Sonar IDE MCP may be unavailable; `.github/instructions/sonarqube_mcp.instructions.md` covers its setup.
+- Before pushing, run prek and local Sonar analysis when the MCP tools are available.
 
 ## Architecture
 
 ```
-Tuya BLE Device <-> Home Assistant (ha_tuya_ble)
+Tuya BLE device <-> Home Assistant integration
                         |
-                Tuya Cloud (QR code login, key exchange only)
+                Tuya cloud (QR login, key exchange, one-time app login only)
 ```
 
-All public BLE symbols — `TuyaBLEDevice`, `TuyaBLEDataPoint`, `TuyaBLEDataPointType`, `TuyaBLEDataPoints`, `BLE_CONNECTION_EXCEPTIONS`, `BLEAK_EXCEPTIONS`, `SERVICE_UUID`, `AbstractTuyaBLEDeviceManager`, `TuyaBLEDeviceCredentials` — are re-exported from `tuya_ble/__init__.py`. Platform files and `cloud.py` import them from the package (`from .tuya_ble import ...`), never from the internal defining module. After the split of `tuya_ble.py`, `TuyaBLEDataPoint` lives in `datapoints.py` and protocol logic in `protocol_mixin.py`, but you must still import them via the package.
-
-`devices.py` is a **pure re-export shim** — all of its former contents now live in `device_registry.py` (`EntityDescriptor`, descriptor loading/validation, `get_registry`), `entity.py` (`TuyaBLEEntity`, `get_device_info`, `get_product_info_by_ids`), and `coordinator.py` (`TuyaBLECoordinator`). `products.py` no longer exists: product metadata moved into the YAML descriptors in `device_descriptors/`. Don't add new code to `devices.py`; import these symbols from their defining modules.
+- Public BLE symbols (`TuyaBLEDevice`, `TuyaBLEDataPoint`, `TuyaBLEDataPointType`, `TuyaBLEDataPoints`, `BLE_CONNECTION_EXCEPTIONS`, `BLEAK_EXCEPTIONS`, `SERVICE_UUID`, `AbstractTuyaBLEDeviceManager`, `TuyaBLEDeviceCredentials`, `is_valid_ble_unlock_check`, `TuyaBLEReport`) are re-exported from `tuya_ble/__init__.py`. Import from the package (`from .tuya_ble import ...`), never internal modules; `TuyaBLEDataPoint` lives in `datapoints.py` and protocol logic in split `protocol_*` modules.
+- `devices.py` is a pure re-export shim — do not add code there. Owners: `device_registry.py` (`EntityDescriptor`, descriptor loading/validation, `get_registry`, `get_mapped_dp_ids`), `entity.py` (`TuyaBLEEntity`, `get_device_info`, `get_product_info_by_ids`, `get_device_product_info`, `get_short_address`), `coordinator.py` (`TuyaBLECoordinator`).
+- `device_descriptors/` is the source of truth for product metadata: one `<category>_<product_id>.yaml` per product, `_category_*.yaml` defaults and `handlers/`. Adding a device normally means one descriptor file, no platform code.
+- 15 platform files (binary_sensor, button, climate, cover, event, lawn_mower, light, lock, number, select, sensor, switch, text, vacuum, valve): each `_build_mapping()` walks `get_registry().products.values()` and returns category → product → mappings. Per-device logic lives in descriptor `handlers:` (sensor `battery`/`rssi`/`measurement`, valve `water_valve`, mower `parkside_mower`, shared `handlers/fingerbot/`, `handlers/lock/`), not in platform files.
 
 ## Key files
 
-| File                                     | Purpose                                                                                                                                    |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `config_flow.py`                         | QR code login flow (menu → user code → scan → device selection)                                                                            |
-| `config_flow_manual.py`                  | Manual credential fallback: form validation and Bluetooth verification before entry creation                                               |
-| `config_flow_options.py`                 | Options flow (QR-code re-authentication, transactional local/security key-pair replacement)                                                |
-| `config_flow_mobile.py`                  | Conditional app login for missing Security V2 keys; password/session data stays ephemeral                                                  |
-| `mobile_cloud.py`                        | Read-only exact-device mobile API access using tuya-mobile; import matching local/security keys together                                   |
-| `mobile_snapshot.py`                     | Pure bounded sanitization of device metadata before persistence and again before diagnostics export                                        |
-| `cloud.py`                               | `tuya_sharing.Manager` wrapper, MAC-based device credential lookup                                                                         |
-| `const.py`                               | Constants — imports shared names from `homeassistant.components.tuya.const`; re-exports `DPType` from `tuya_ble.const`                     |
-| `device_registry.py`                     | `EntityDescriptor`, YAML descriptor loading/validation, `get_registry`, `get_mapped_dp_ids` — the product registry                         |
-| `device_descriptors/`                    | **Source of truth** for product metadata: one `<category>_<product_id>.yaml` per product, plus `_category_*.yaml` defaults and `handlers/` |
-| `device_descriptors/handlers/fingerbot/` | Shared Fingerbot handlers (`in_program_mode`, `get/set_program`, repeat/maintenance helpers, etc.) in `mode.py`/`program.py`               |
-| `device_descriptors/handlers/lock/`      | Shared smart-lock handlers: `state.py` (lock `read`), `command.py` (lock `write`/`open`, lock button `write`)                              |
-| `diagnostics.py`                         | `async_get_config_entry_diagnostics` / `async_get_device_diagnostics`, redaction, cloud-schema refresh                                     |
-| `entity.py`                              | `TuyaBLEEntity` base class, `get_device_info`                                                                                              |
-| `coordinator.py`                         | `TuyaBLECoordinator` (DataUpdateCoordinator subclass)                                                                                      |
-| `devices.py`                             | **Re-export shim** — imports from the split modules above; don't add code here                                                             |
-| `tuya_ble/`                              | Vendored BLE protocol library (encryption, pairing) — no cloud dependency                                                                  |
-| `tuya_ble/__init__.py`                   | **Re-exports** all public BLE symbols — import from here, not the internal modules                                                         |
-| `tuya_ble/manager.py`                    | `AbstractTuyaBLEDeviceManager` interface + `TuyaBLEDeviceCredentials` that `cloud.py` implements                                           |
-| `tuya_ble/tuya_ble.py`                   | `TuyaBLEDevice(TuyaBLEProtocol)` — BLE connection management, device state                                                                 |
-| `tuya_ble/protocol_mixin.py`             | `TuyaBLEProtocol` mixin — packet building/sending/parsing, AES encryption (`BLEAK_EXCEPTIONS`, `BLE_CONNECTION_EXCEPTIONS`)                |
-| `tuya_ble/datapoints.py`                 | `TuyaBLEDataPoint`, `TuyaBLEDataPoints`                                                                                                    |
-| `tuya_ble/const.py`                      | `TuyaBLECode`, `TuyaBLEDataPointType`, `DPType`, UUIDs                                                                                     |
-| `strings.json`                           | UI strings for config flow and entity translations                                                                                         |
-
-## Entity platforms
-
-There are **14 platform files** (binary_sensor, button, climate, cover, lawn_mower, light, lock, number, select, sensor, switch, text, vacuum, valve) and they all follow the same pattern: a `_build_mapping()` function that walks `get_registry().products.values()` and returns a dict keyed by Tuya category ID → product ID → list of data-point mappings. The mappings are **built from the YAML descriptors, not authored by hand**, so adding a device means writing one descriptor file and no platform edits.
-
-Some platforms carry bespoke per-device logic beyond the mapping dict. It lives in YAML descriptor `handlers:` blocks that name a callable under `device_descriptors/handlers/`, not in the platform files — `battery.battery_enum`, `rssi.rssi` and `measurement.active_throttled` (blank while a switch DP is off, throttled by `report_min_change`/`report_max_interval`) for sensors, `raw.raw_hex`, `water_valve.*` for valves, `parkside_mower.*` for the Parkside robot mower logs and rain delay, and the shared Fingerbot handlers under `handlers/fingerbot/` (`program.get_program`, `program.set_program`, `mode.in_program_mode`, `program.set_repeat_forever`), consumed by `text.py`, `switch.py`, `number.py` and `button.py`. `select.py` also defines a `TemperatureUnitDescription` entity-description subclass. Editing a device that needs special handling means adding or changing a handler module and referencing it from the descriptor, not editing the mappings.
+| File                                                                                         | Purpose                                                                                                 |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `config_flow.py`, `config_flow_options.py`, `config_flow_manual.py`, `config_flow_mobile.py` | QR login, options, manual credentials, conditional app login                                            |
+| `mobile_cloud.py`, `mobile_snapshot.py`                                                      | Read-only mobile API and bounded sanitization of its metadata                                           |
+| `cloud.py`, `const.py`                                                                       | `tuya_sharing.Manager` wrapper / credential lookup; constants (shared Tuya names imported from HA core) |
+| `device_registry.py`, `device_descriptors/`                                                  | Product registry and YAML descriptors                                                                   |
+| `entity.py`, `devices.py`, `coordinator.py`                                                  | Base entity/helpers, re-export shim, update/connection coordinator                                      |
+| `light.py`, `lock.py`, `lawn_mower.py`, `event.py`                                           | Platforms with bespoke descriptor/handler behaviour                                                     |
+| `diagnostics.py`                                                                             | Config-entry/device diagnostics and redaction                                                           |
+| `strings.json`                                                                               | Config-flow and entity translations                                                                     |
 
 ## Dependencies
 
-- **`tuya-device-sharing-sdk`** — QR code login, `Manager`, `CustomerApi` (listed in manifest.json)
-- **`pycryptodomex`** (dev env: **`pycryptodome`**) — both import as `Crypto.Cipher`; used for AES in `tuya_ble/tuya_ble.py` and `tuya_ble/protocol_mixin.py`. HA core provides pycryptodomex at runtime; requirements-dev.txt installs pycryptodome for local checks
-- **`bleak` / `bleak_retry_connector`** — BLE communication — provided by HA core
-- **`homeassistant.components.tuya.const`** — shared constants (`TUYA_CLIENT_ID`, `CONF_USER_CODE`, etc.)
-
-Runtime deps are `tuya-device-sharing-sdk` and pinned `tuya-mobile` (manifest.json); the latter is used only for conditional, one-time app login. Development tools (`ruff`, `mypy`, `pylint`, `pytest`, `prek`, `homeassistant`, `pycryptodome`) live in `requirements-dev.txt`.
-
-Do not add `tuya-iot-py-sdk` back. The integration migrated away from it in `e5ca99f`.
+Runtime: `tuya-device-sharing-sdk` and pinned `tuya-mobile` (manifest.json). `pycryptodomex` at runtime (HA core) / `pycryptodome` locally (`requirements-dev.txt`), both imported as `Crypto.Cipher`; `bleak`/`bleak_retry_connector` from HA core. Dev tools in `requirements-dev.txt`. Do not reintroduce `tuya-iot-py-sdk`.
 
 ## Gotchas
 
-- `manifest.json` requires `bluetooth_adapters` as a dependency
-- `TUYA_CLIENT_ID` and `TUYA_SCHEMA` are imported from HA core's Tuya integration — do not redefine locally
-- `tuya_ble/` is a clean abstraction boundary — it knows nothing about cloud auth, only BLE encryption
-- Diivoo timers using the **Homgar app** (not Tuya Smart Life) won't appear in Tuya cloud — no local key extractable
-- `functions` / `status_range` on `TuyaBLEDeviceCredentials` carry the device specs from cloud, under the `CONF_FUNCTIONS` / `CONF_STATUS_RANGE` keys
-- `ble_unlock_check` on `TuyaBLEDeviceCredentials` is a lock credential read from the cloud device status, validated by `tuya_ble/lock_check.py`, persisted under `CONF_BLE_UNLOCK_CHECK` and read by the lock handlers through `device.device_manager.get_device_credentials`, excluded from `repr`, masked in `__str__` and never logged. Descriptors list the DPs carrying commands built from it in `sensitive_dp_ids`, which setup applies to `device.datapoints.sensitive_ids` (log redaction) and diagnostics withhold
-- `sec_key` on `TuyaBLEDeviceCredentials` is the cloud Security V2 key. It is persisted under `CONF_SEC_KEY` only when the FD50 advertisement announces Security V2, is excluded from `repr`, masked in `__str__`, redacted in diagnostics and never logged
-- Mobile login is only offered for eligible missing/unusable-key failures. Never persist or log the mobile password, username, SID, ecode or login tokens; do not reuse the standalone probe's session cache in the integration. Persist sanitized mobile metadata under `CONF_MOBILE_SNAPSHOT`; never persist a raw mobile response for later redaction.
-- `local_schema` on `TuyaBLEDeviceCredentials` carries the captured cloud schema (full local strategy, full status range with `report_type`, and `captured_at`), persisted under `CONF_LOCAL_SCHEMA` in the config entry's `data` by `config_flow.py` and exported by `diagnostics.py`. DP metadata only — never credentials
-- `tuya_ble/tuya_ble.py` and `tuya_ble/protocol_mixin.py` use `from Crypto.Cipher import AES` (pycryptodome/pycryptodomex) — not a listed runtime requirement but always available in HA
-- The connection policy lives in the entry **options** (`CONF_KEEP_CONNECTION`, `CONF_IDLE_DISCONNECT_DELAY`, `CONF_STATUS_POLL_INTERVAL`); missing options keep the link open. `TuyaBLEDevice(..., idle_disconnect_delay=None)` keeps it open; a number selects on-demand connections, where `_disconnected` schedules no reconnect and the coordinator's `connected` follows "reached since setup and still advertising" instead of the delayed-disconnect timer
-- `select.py` subclasses `SelectEntityDescription` as `TemperatureUnitDescription` (select.py:43) purely to supply the `icon` and `entity_category` defaults for the `temperature_unit` translation key. Descriptions are always assembled into a `kwargs` dict that already contains `key`, so a subclass never has to repeat it — add a new subclass for its defaults, not for `key`.
+- `manifest.json` requires `bluetooth_adapters`; `TUYA_CLIENT_ID`/`TUYA_SCHEMA` come from HA core's Tuya integration — do not redefine.
+- `tuya_ble/` knows nothing about cloud auth, only BLE encryption.
+- `ble_unlock_check` and `sec_key` on `TuyaBLEDeviceCredentials` are secrets: validated/persisted under `CONF_BLE_UNLOCK_CHECK`/`CONF_SEC_KEY`, excluded from `repr`, masked in `__str__`, withheld in diagnostics and never logged. `sensitive_dp_ids` in descriptors drives `device.datapoints.sensitive_ids` (log redaction).
+- Mobile login is only offered for eligible missing/unusable-key failures; never persist or log the password, username, SID, ecode or tokens; do not reuse the probe's session cache. Persist sanitized metadata under `CONF_MOBILE_SNAPSHOT`.
+- `local_schema` (`CONF_LOCAL_SCHEMA`) carries captured DP metadata only, never credentials.
+- Connection policy lives in entry options (`CONF_KEEP_CONNECTION`, `CONF_IDLE_DISCONNECT_DELAY`, `CONF_STATUS_POLL_INTERVAL`); missing options keep the link open. On-demand mode disconnects after an idle delay and does not self-reconnect.
+- Diivoo timers using the Homgar app do not appear in Tuya cloud — no local key extractable.
+- `select.py` subclasses `SelectEntityDescription` as `TemperatureUnitDescription` to supply icon/entity-category defaults, not `key` (descriptions already include `key`).
+- `tuya_ble/tuya_ble.py` and `tuya_ble/protocol_mixin.py` use `from Crypto.Cipher import AES` — not a stated runtime requirement but always available in HA.
