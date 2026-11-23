@@ -98,8 +98,9 @@ def test_build_stored_check_unlock_command() -> None:
 
 def test_build_stored_check_unlock_command_rejects_malformed() -> None:
     """A malformed check never produces a command."""
+    invalid = _encoded(b"invalid")
     with pytest.raises(ValueError, match="invalid format"):
-        build_stored_check_unlock_command(_encoded(b"invalid"))
+        build_stored_check_unlock_command(invalid)
 
 
 @pytest.mark.parametrize(
