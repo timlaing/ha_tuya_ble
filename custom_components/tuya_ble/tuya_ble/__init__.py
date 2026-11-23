@@ -28,6 +28,7 @@ from .const import (
 )
 from .datapoints import TuyaBLEDataPoint, TuyaBLEDataPoints, TuyaBLEReport
 from .lock_check import (
+    build_stored_check_unlock_command,
     build_timestamped_unlock_command,
     decode_ble_unlock_check,
     is_valid_ble_unlock_check,
@@ -79,6 +80,7 @@ __all__ = [
     "async_probe_authenticated_status",
     "async_detect_v4_credentials",
     "async_detect_v4_profile",
+    "build_stored_check_unlock_command",
     "build_timestamped_unlock_command",
     "decode_ble_unlock_check",
     "is_valid_ble_unlock_check",

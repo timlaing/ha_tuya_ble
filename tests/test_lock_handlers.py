@@ -104,6 +104,25 @@ entities:
       handlers:
         write: lock.command.press_raw_unlock
 """,
+    # Drawer lock CTL20H: DP47 reports state, DP46 locks, DP71 replays the
+    # stored check code and key (ha-tuya-ble/ha_tuya_ble#361).
+    "jtmspro_teststored.yaml": """
+category: jtmspro
+product_id: teststored
+sensitive_dp_ids: [71]
+entities:
+  lock:
+    - dp_id: 47
+      translation_key: lock
+      dp_type: 1
+      manual_lock_dp_id: 46
+      unlock_dp_id: 71
+      open_dp_id: 71
+      handlers:
+        read: lock.state.reported_bolt
+        write: lock.command.manual_lock_or_stored_check_unlock
+        open: lock.command.stored_check_open
+""",
     # Drawer lock: no truthful lock state, only a timestamped unlock button.
     "jtmspro_testbutton.yaml": """
 category: jtmspro
@@ -508,3 +527,50 @@ def test_invalid_sensitive_dp_ids_are_rejected(
     text = f"category: jtmspro\nproduct_id: testbad\nsensitive_dp_ids: {value}\n"
     with pytest.raises(DeviceRegistryError, match="sensitive_dp_ids"):
         _load(tmp_path, monkeypatch, **{"jtmspro_testbad.yaml": text})
+
+
+@pytest.mark.usefixtures("registry")
+async def test_stored_check_lock_state_and_commands(hass: HomeAssistant) -> None:
+    """DP47 reports state; DP46 locks; DP71 replays the stored code and key.
+
+    Unlike the timestamped variant, the command does not depend on the clock and
+    stays the same across calls (ha-tuya-ble/ha_tuya_ble#361).
+    """
+    entity, device = _lock(hass, "teststored", MEMBER1_CHECK)
+    assert entity.is_locked is None
+    add_dp(device, 47, TuyaBLEDataPointType.DT_BOOL, False)
+    assert entity.is_locked is True
+    add_dp(device, 47, TuyaBLEDataPointType.DT_BOOL, True)
+    assert entity.is_locked is False
+
+    assert entity.supported_features == LockEntityFeature.OPEN
+    await entity.async_lock()
+    assert _value(device, 46) is True
+    await entity.async_unlock()
+    expected = bytes.fromhex("ffff0001") + b"12345678" + bytes.fromhex("01010203040001")
+    assert _value(device, 71) == expected
+    assert device.sent == [[46], [71]]
+
+    await entity.async_open()
+    assert _value(device, 71) == expected
+    assert device.sent == [[46], [71], [71]]
+
+
+@pytest.mark.usefixtures("registry")
+@pytest.mark.parametrize(
+    ("check", "key"),
+    [
+        (None, "ble_unlock_check_missing"),
+        ("not-base64!", "ble_unlock_check_invalid"),
+    ],
+)
+async def test_stored_check_rejects_bad_check(
+    hass: HomeAssistant, check: str | None, key: str
+) -> None:
+    """A missing or malformed check fails the call before anything is written."""
+    entity, device = _lock(hass, "teststored", check)
+    with pytest.raises(HomeAssistantError) as err:
+        await entity.async_unlock()
+    assert err.value.translation_key == key
+    assert device.datapoints[71] is None
+    assert not device.sent

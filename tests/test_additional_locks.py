@@ -62,7 +62,7 @@ MAPPED = {
     "0qxp5u7s": {6, 8, 12, 19, 33, 46, 47},
     "kholoaew": {8, 13, 28, 31, 33, 46, 47},
     "uyf1ewof": {8, 12, 19, 22, 33, 47},
-    "y2yaegze": {8, 15, 19, 33, 62},
+    "y2yaegze": {8, 15, 19, 33, 46, 47, 62, 71},
     "qcrilcpr": {8},
 }
 PAIRS = [(category, pid) for category, ids in PRODUCTS.items() for pid in ids]
@@ -97,7 +97,9 @@ def test_registry_and_platform_safety(category: str, product_id: str) -> None:
     assert descriptor.manufacturer != "Example Product"
     assert get_mapped_dp_ids(category, product_id) == MAPPED.get(product_id, set())
     device = _device(category, product_id)
-    assert bool(lock.get_mapping_by_device(device)) == (product_id == "0qxp5u7s")
+    assert bool(lock.get_mapping_by_device(device)) == (
+        product_id in {"0qxp5u7s", "y2yaegze"}
+    )
     assert not number.get_mapping_by_device(device)
     if product_id not in MAPPED:
         for platform in (sensor, binary_sensor, button, switch, select):
@@ -379,7 +381,7 @@ async def test_lock_setup_requires_report_when_not_forced(
     assert entity.is_locked is True
 
 
-@pytest.mark.parametrize("product_id", ["kholoaew", "y2yaegze", "qcrilcpr"])
+@pytest.mark.parametrize("product_id", ["kholoaew", "qcrilcpr"])
 async def test_unmapped_unlock_check_reports_remain_private(
     hass: HomeAssistant, caplog: pytest.LogCaptureFixture, product_id: str
 ) -> None:

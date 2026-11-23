@@ -13,7 +13,11 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 
 from ....const import DOMAIN
-from ....tuya_ble import TuyaBLEDataPointType, build_timestamped_unlock_command
+from ....tuya_ble import (
+    TuyaBLEDataPointType,
+    build_stored_check_unlock_command,
+    build_timestamped_unlock_command,
+)
 from .. import requires_dp_ids
 
 if TYPE_CHECKING:
@@ -51,6 +55,28 @@ async def _timestamped_unlock_command(entity: TuyaBLEEntity) -> bytes:
         return build_timestamped_unlock_command(
             check, int(dt_util.utcnow().timestamp())
         )
+    except ValueError:
+        raise HomeAssistantError(
+            translation_domain=DOMAIN, translation_key="ble_unlock_check_invalid"
+        ) from None
+
+
+async def _stored_check_command(entity: TuyaBLEEntity) -> bytes:
+    """Build the DP 71 command that replays the stored cloud check and key.
+
+    Used by locks that ignore a timestamped command (ha-tuya-ble/ha_tuya_ble#361).
+    Raises before anything is written when the check is missing or malformed;
+    neither the check nor the command is ever logged.
+    """
+    device = entity.device
+    credentials = await device.device_manager.get_device_credentials(device.address)
+    check = credentials.ble_unlock_check if credentials is not None else None
+    if not check:
+        raise HomeAssistantError(
+            translation_domain=DOMAIN, translation_key="ble_unlock_check_missing"
+        )
+    try:
+        return build_stored_check_unlock_command(check)
     except ValueError:
         raise HomeAssistantError(
             translation_domain=DOMAIN, translation_key="ble_unlock_check_invalid"
@@ -121,6 +147,33 @@ async def manual_lock_or_raw_unlock(
     )
 
 
+@requires_dp_ids("manual_lock_dp_id", "unlock_dp_id")
+async def manual_lock_or_stored_check_unlock(
+    lock: TuyaBLELock, _product: TuyaBLEProductInfo, locked: bool
+) -> None:
+    """Lock with ``manual_lock`` on, unlock with the stored-check DP 71 command.
+
+    For locks that ignore a timestamped command and instead replay the check
+    code and key the cloud issued (ha-tuya-ble/ha_tuya_ble#361). Writing
+    ``manual_lock`` off does not move the bolt on these locks.
+    """
+    if locked:
+        await _write(
+            lock,
+            lock.descriptor_dp_id("manual_lock_dp_id"),
+            TuyaBLEDataPointType.DT_BOOL,
+            True,
+        )
+        return
+    command = await _stored_check_command(lock)
+    await _write(
+        lock,
+        lock.descriptor_dp_id("unlock_dp_id"),
+        TuyaBLEDataPointType.DT_RAW,
+        command,
+    )
+
+
 # --- lock open handlers -----------------------------------------------------
 
 
@@ -139,6 +192,18 @@ async def momentary_open(lock: TuyaBLELock, _product: TuyaBLEProductInfo) -> Non
 async def timestamped_open(lock: TuyaBLELock, _product: TuyaBLEProductInfo) -> None:
     """Release the lock briefly with the timestamped ``ble_unlock_check`` command."""
     command = await _timestamped_unlock_command(lock)
+    await _write(
+        lock,
+        lock.descriptor_dp_id("open_dp_id"),
+        TuyaBLEDataPointType.DT_RAW,
+        command,
+    )
+
+
+@requires_dp_ids("open_dp_id")
+async def stored_check_open(lock: TuyaBLELock, _product: TuyaBLEProductInfo) -> None:
+    """Release the lock briefly with the stored-check ``ble_unlock_check`` command."""
+    command = await _stored_check_command(lock)
     await _write(
         lock,
         lock.descriptor_dp_id("open_dp_id"),
