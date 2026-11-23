@@ -10,6 +10,8 @@ and the lock accepts::
 
     0xFFFF | member id (2) | check code (8) | 0x01 | unix time (4, BE) | 0x0001
 
+Some locks instead echo the four bytes stored in the cloud value (the ``time``
+field above) rather than the current time; see ``build_stored_check_unlock_command``.
 The member id is the app user slot the check was issued for (``0x0001`` for the
 first member) and is taken from the value, never assumed. The format was
 reverse-engineered from the Tuya app by GeorgeBark (ha-tuya-ble/ha_tuya_ble#353)
@@ -26,6 +28,7 @@ _MEMBER_ID = slice(0, 2)
 _SEPARATOR = slice(2, 4)
 _CHECK_CODE = slice(4, 12)
 _CHECK_FLAG_INDEX = 12
+_KEY = slice(13, 17)
 _TRAILER = slice(17, 19)
 _INVALID_MEMBER_IDS = frozenset({b"\x00\x00", b"\xff\xff"})
 _MAX_TIMESTAMP = 0xFFFFFFFF
@@ -55,6 +58,25 @@ def _has_check_layout(payload: bytes) -> bool:
         and payload[_CHECK_CODE].isdigit()
         and payload[_CHECK_FLAG_INDEX] == 1
         and payload[_TRAILER] == b"\x00\x00"
+    )
+
+
+def build_stored_check_unlock_command(ble_unlock_check: str) -> bytes:
+    """Build a DP 71 unlock command that replays the stored check code and key.
+
+    Some locks (e.g. the Drawer Lock CTL20H, ha-tuya-ble/ha_tuya_ble#361) ignore
+    a timestamped command and only accept the check code and the four key bytes
+    stored in the cloud value. The layout is otherwise the same as the
+    timestamped variant; the member id still comes from the value, never fixed.
+    """
+    check = decode_ble_unlock_check(ble_unlock_check)
+    return (
+        b"\xff\xff"
+        + check[_MEMBER_ID]
+        + check[_CHECK_CODE]
+        + b"\x01"
+        + check[_KEY]
+        + b"\x00\x01"
     )
 
 

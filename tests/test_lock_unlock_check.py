@@ -37,6 +37,7 @@ from custom_components.tuya_ble.tuya_ble import (
     TuyaBLEDataPoints,
     TuyaBLEDataPointType,
     TuyaBLEDevice,
+    build_stored_check_unlock_command,
     build_timestamped_unlock_command,
     decode_ble_unlock_check,
     is_valid_ble_unlock_check,
@@ -84,6 +85,16 @@ def test_decode_and_build() -> None:
     )
     assert build_timestamped_unlock_command(CHECK, 0)[-6:-2] == b"\x00\x00\x00\x00"
     assert build_timestamped_unlock_command(CHECK, 0xFFFFFFFF)[-6:-2] == b"\xff" * 4
+
+
+def test_build_stored_check_unlock_command() -> None:
+    """The stored-check variant echoes the cloud key bytes, not the current time."""
+    assert build_stored_check_unlock_command(CHECK) == (
+        bytes.fromhex("ffff0001") + b"97531864" + bytes.fromhex("01010203040001")
+    )
+    assert len(build_stored_check_unlock_command(CHECK)) == 19
+    with pytest.raises(ValueError, match="invalid format"):
+        build_stored_check_unlock_command(_encoded(b"invalid"))
 
 
 @pytest.mark.parametrize(

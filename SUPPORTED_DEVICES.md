@@ -101,7 +101,7 @@ Never share that check or DP71 values.
 Additional experimental products ([evidence and limitations](docs/lock-product-audit.md)):
 
 - Smart Lock H13 (`kholoaew`): battery, password user number, motor diagnostic, volume/language and automatic-lock settings, and a lock-only button. Unlock explicitly failed in source testing; no lock entity.
-- Drawer Lock CTL20H (`y2yaegze`): read-only battery, card/Bluetooth/remote user-number and automatic-lock diagnostics. CTL20H_8018 (`qcrilcpr`): battery only; source handshake quirks are not ported here, so connection can still fail. Neither has a verified unlock command or truthful bolt state.
+- **Drawer Lock CTL20H (`y2yaegze`) — experimental**: lock state from DP47, lock on DP46 and unlock on DP71 with the stored cloud `ble_unlock_check`, plus battery, card/Bluetooth/remote user-number and automatic-lock diagnostics. The unlock path is owner-verified on one lock (ha-tuya-ble/ha_tuya_ble#361) but the lock command and cloud-flow check fetch were not hardware-confirmed; test on your own device. CTL20H_8018 (`qcrilcpr`): battery only; source handshake quirks are not ported here, so connection can still fail, and no unlock command is exposed.
 - A1 Ultra-JM (`hc7n0urm`), CS-9 (`pyawczjj`), Gainsborough Liberty GGC01HA (`yfqp0shy`) and XCase NX-4964 (`qicggi0m`): metadata only, no mapped control or state. The preceding lock/unlock summary applies to the existing products, not these experimental entries.
 
 ## Climate (category_id `wk`)

@@ -1,11 +1,23 @@
-# Issue 154 schema confirms these IDs; settings/control did not work.
+# Issue 154 schema confirms the diagnostic IDs; #218 adds the owner-verified
+# control path from ha-tuya-ble/ha_tuya_ble#361: DP47 reports the bolt state,
+# DP46 locks, DP71 unlocks with the stored cloud ble_unlock_check value.
 category: jtmspro
 product_id: y2yaegze
 device_name: Drawer Lock CTL20H
 model_name: CTL20H
 sensitive_dp_ids: [71]
 entities:
-  lock: []
+  lock:
+    - dp_id: 47
+      translation_key: lock
+      dp_type: 1
+      manual_lock_dp_id: 46
+      unlock_dp_id: 71
+      open_dp_id: 71
+      handlers:
+        read: lock.state.reported_bolt
+        write: lock.command.manual_lock_or_stored_check_unlock
+        open: lock.command.stored_check_open
   sensor:
     - dp_id: 8
       translation_key: battery
