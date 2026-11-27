@@ -1,6 +1,6 @@
 aiousbwatcher
 dbus-fast
-homeassistant==2026.10.4
+homeassistant==2026.11.3
 mypy
 prek
 pycryptodome
