@@ -96,7 +96,7 @@ repos:
           - tuya-mobile==1.2.0
           - aiousbwatcher
           - dbus-fast
-          - homeassistant==2026.10.4
+          - homeassistant==2026.11.3
           - mypy
           - prek
           - pycryptodome
@@ -124,7 +124,7 @@ repos:
           - tuya-mobile==1.2.0
           - aiousbwatcher
           - dbus-fast
-          - homeassistant==2026.10.4
+          - homeassistant==2026.11.3
           - mypy
           - prek
           - pycryptodome
@@ -154,7 +154,7 @@ repos:
           - tuya-mobile==1.2.0
           - aiousbwatcher
           - dbus-fast
-          - homeassistant==2026.10.4
+          - homeassistant==2026.11.3
           - mypy
           - prek
           - pycryptodome
