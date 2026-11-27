@@ -7,6 +7,7 @@ awaits the data point write, so a rejected command fails the service call.
 
 from __future__ import annotations
 
+from secrets import randbelow
 from typing import TYPE_CHECKING
 
 from homeassistant.exceptions import HomeAssistantError
@@ -83,6 +84,66 @@ async def _stored_check_command(entity: TuyaBLEEntity) -> bytes:
         ) from None
 
 
+# --- passwordless key pair -------------------------------------------------
+# The standard Tuya BLE lock model uses DP 60 (remote_no_pd_setkey) to install
+# a short-lived 8-digit key and DP 61 (remote_no_dp_key) to replay it in an
+# unlock/lock command. The wire layout and the one-time member-7 code are the
+# documented tuya-local implementation (make-all/tuya-local lock.py and its
+# devices/README.md). The generated code and both payloads are secrets: they
+# are never logged, and descriptors using these handlers mark both DPs as
+# sensitive.
+
+_KEY_MEMBER_ID = 7
+_KEY_SOURCE_UNKNOWN = 0
+_KEY_USES = 1
+_KEY_VALIDITY_WINDOW = 300
+_KEY_CODE_LIMIT = 100_000_000
+
+
+def _key_code() -> str:
+    """Return a fresh 8-digit ASCII code for a one-time key."""
+    return f"{randbelow(_KEY_CODE_LIMIT):08d}"
+
+
+def _key_set_message(code: str, timestamp: int) -> bytes:
+    """Build the DP 60 installation message for *code* at *timestamp*."""
+    return (
+        _KEY_MEMBER_ID.to_bytes(3, "big")
+        + (timestamp - _KEY_VALIDITY_WINDOW).to_bytes(4, "big")
+        + (timestamp + _KEY_VALIDITY_WINDOW).to_bytes(4, "big")
+        + _KEY_USES.to_bytes(2, "big")
+        + code.encode("ascii")
+    )
+
+
+def _key_command(locked: bool, code: str) -> bytes:
+    """Build the DP 61 lock/unlock command for *code*."""
+    action = 0 if locked else 1
+    return (
+        action.to_bytes(1, "big")
+        + _KEY_MEMBER_ID.to_bytes(2, "big")
+        + code.encode("ascii")
+        + _KEY_SOURCE_UNKNOWN.to_bytes(2, "big")
+    )
+
+
+@requires_dp_ids("set_key_dp_id", "unlock_key_dp_id")
+async def _write_keyed_code(lock: TuyaBLELock, locked: bool) -> None:
+    """Send a one-time key installation and its command in one BLE payload."""
+    device = lock.device
+    set_key_dp_id = lock.descriptor_dp_id("set_key_dp_id")
+    unlock_key_dp_id = lock.descriptor_dp_id("unlock_key_dp_id")
+    for dp_id in (set_key_dp_id, unlock_key_dp_id):
+        if device.datapoints[dp_id] is None:
+            device.datapoints.get_or_create(dp_id, TuyaBLEDataPointType.DT_RAW, b"")
+    code = _key_code()
+    timestamp = int(dt_util.utcnow().timestamp())
+    await device.set_multiple_values({
+        set_key_dp_id: _key_set_message(code, timestamp),
+        unlock_key_dp_id: _key_command(locked, code),
+    })
+
+
 # --- lock write handlers ----------------------------------------------------
 
 
@@ -94,6 +155,22 @@ async def automatic_lock(
     The entity's DP is the automatic-lock switch (ha-tuya-ble/ha_tuya_ble#353).
     """
     await _write(lock, lock.dp_id, TuyaBLEDataPointType.DT_BOOL, locked)
+
+
+@requires_dp_ids("set_key_dp_id", "unlock_key_dp_id")
+async def passwordless_key_lock(
+    lock: TuyaBLELock, _product: TuyaBLEProductInfo, locked: bool
+) -> None:
+    """Lock or unlock with the DP 60/61 one-time passwordless key pair."""
+    await _write_keyed_code(lock, locked)
+
+
+@requires_dp_ids("set_key_dp_id", "unlock_key_dp_id")
+async def passwordless_key_open(
+    lock: TuyaBLELock, _product: TuyaBLEProductInfo
+) -> None:
+    """Momentarily release the lock with the DP 60/61 passwordless key pair."""
+    await _write_keyed_code(lock, False)
 
 
 @requires_dp_ids("manual_lock_dp_id", "passage_dp_id")

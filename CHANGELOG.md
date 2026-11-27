@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning].
 
 - **Drawer Lock CTL20H (`jtmspro` / `y2yaegze`, #218, experimental)**: owner-verified lock state from DP47, lock on DP46 and unlock on DP71 built from the stored cloud `ble_unlock_check`, ported from ha-tuya-ble/ha_tuya_ble#361. The lock command and cloud-flow check fetch were not hardware-confirmed; CTL20H_8018 (`qcrilcpr`) is unchanged.
 
+### Fixed
+
+- **Bluetooth Cabinet Lock (`ms` / `gumrixyt`, #220, experimental)**: replace the non-existent DP 47 lock/switch and DP 40 door sensor with the firmware's actual schema: battery DP 8, low-battery alarm DP 21, the writable automatic-lock switch DP 33, and lock/unlock/Open through the passwordless DP 60/61 one-time key pair. The key DPs are redacted and the lock state stays unknown until a bolt report is verified. The key command format follows the standard Tuya BLE lock protocol documented by tuya-local, but has not been proven on this hardware here.
+
 ## [2.10.0] - 2026-11-22
 
 This full release gathers the six 2.10.0 beta builds into one stable release. It adds Tuya BLE protocol v4 support with Security V2 login, broader device and descriptor coverage, on-demand connections, and lock, light, climate and event platforms. The experimental devices still need physical hardware validation on this integration; Security V2 and the newer protocol-4 firmware have not been confirmed on real hardware.

@@ -350,7 +350,26 @@ def test_existing_category_default_unchanged() -> None:
     product = get_registry().get("ms", "bvclwu9b")
     assert product is not None
     assert product.get("lock")[0].dp_id == 47
-    assert lock.get_mapping_by_device(_device("ms", "gumrixyt"))[0].dp_id == 47
+
+
+def test_gumrixyt_descriptor_matches_issue_220_schema() -> None:
+    """Only the reported/keyed DPs are mapped; DP 40 and 47 are gone."""
+    device = _device("ms", "gumrixyt")
+    assert get_mapped_dp_ids("ms", "gumrixyt") == {8, 21, 33, 60, 61}
+    assert {mapping.dp_id for mapping in sensor.get_mapping_by_device(device)} == {
+        8,
+        21,
+    }
+    assert {mapping.dp_id for mapping in switch.get_mapping_by_device(device)} == {33}
+    assert not binary_sensor.get_mapping_by_device(device)
+    (mapping,) = lock.get_mapping_by_device(device)
+    assert mapping.dp_id == 61
+    assert mapping.dp_type == TuyaBLEDataPointType.DT_RAW
+    assert mapping.extra == {"set_key_dp_id": 60, "unlock_key_dp_id": 61}
+    assert mapping.getter is not None
+    assert mapping.setter is not None
+    assert mapping.opener is not None
+    assert get_device_product_info(device).sensitive_dp_ids == {60, 61}
 
 
 async def test_lock_setup_requires_report_when_not_forced(
@@ -415,5 +434,43 @@ async def test_unmapped_unlock_check_reports_remain_private(
     payload = await async_get_config_entry_diagnostics(hass, entry)
     assert payload["live"]["71"]["value"] == "**REDACTED**"
     assert payload["live"]["71"]["raw"] == "**REDACTED**"
+    assert command.decode() not in repr(payload)
+    assert command.hex() not in repr(payload)
+
+
+async def test_gumrixyt_key_dps_remain_private(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The passwordless key pair is redacted in logs and diagnostics."""
+    device = _device("ms", "gumrixyt")
+    product = get_device_product_info(device)
+    assert product.sensitive_dp_ids == {60, 61}
+    device.datapoints.sensitive_ids = product.sensitive_dp_ids
+    command = b"synthetic-key-payload"
+    with caplog.at_level(logging.DEBUG):
+        for dp_id in (60, 61):
+            device.datapoints.update_from_device(
+                dp_id, 0.0, 0, TuyaBLEDataPointType.DT_RAW, b"", b""
+            )
+            device.datapoints.update_from_device(
+                dp_id, 1.0, 0, TuyaBLEDataPointType.DT_RAW, command, command
+            )
+    assert command.decode() not in caplog.text
+    assert "<redacted>" in caplog.text
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CATEGORY: "ms",
+            CONF_PRODUCT_ID: "gumrixyt",
+            CONF_UUID: "synthetic-device",
+        },
+    )
+    entry.add_to_hass(hass)
+    hass.data[DOMAIN] = {entry.entry_id: SimpleNamespace(device=device)}
+    payload = await async_get_config_entry_diagnostics(hass, entry)
+    for dp_id in (60, 61):
+        assert payload["live"][str(dp_id)]["value"] == "**REDACTED**"
+        assert payload["live"][str(dp_id)]["raw"] == "**REDACTED**"
     assert command.decode() not in repr(payload)
     assert command.hex() not in repr(payload)

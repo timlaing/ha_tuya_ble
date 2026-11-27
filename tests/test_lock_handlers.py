@@ -135,6 +135,24 @@ entities:
       handlers:
         write: lock.command.press_timestamped_unlock
 """,
+    # Cabinet lock: DP 60/61 install and replay a one-time passwordless key.
+    # There is no bolt report, so the lock state stays unknown (#220).
+    "jtmspro_testkey.yaml": """
+category: jtmspro
+product_id: testkey
+sensitive_dp_ids: [60, 61]
+entities:
+  lock:
+    - dp_id: 61
+      translation_key: lock
+      dp_type: 0
+      set_key_dp_id: 60
+      unlock_key_dp_id: 61
+      handlers:
+        read: lock.state.unknown
+        write: lock.command.passwordless_key_lock
+        open: lock.command.passwordless_key_open
+""",
 }
 
 
@@ -216,6 +234,20 @@ def _value(device: EntityDevice, dp_id: int) -> Any:
 
 def _command(member: bytes, code: bytes) -> bytes:
     return b"\xff\xff" + member + code + bytes.fromhex("016ad8eb640001")
+
+
+def _key_set(code: bytes, timestamp: int) -> bytes:
+    return (
+        b"\x00\x00\x07"
+        + (timestamp - 300).to_bytes(4, "big")
+        + (timestamp + 300).to_bytes(4, "big")
+        + b"\x00\x01"
+        + code
+    )
+
+
+def _key_command(action: int, code: bytes) -> bytes:
+    return action.to_bytes(1, "big") + b"\x00\x07" + code + b"\x00\x00"
 
 
 # --- passage mode, bolt state and momentary open (#324, #327) ---------------
@@ -574,3 +606,74 @@ async def test_stored_check_rejects_bad_check(
     assert err.value.translation_key == key
     assert device.datapoints[71] is None
     assert not device.sent
+
+
+# --- passwordless key pair (#220) --------------------------------------------
+
+
+@pytest.mark.usefixtures("registry")
+async def test_passwordless_key_commands_and_unknown_state(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """One-time key installation and command are sent atomically on DP 60/61."""
+    freezer.move_to(NOW)
+    entity, device = _lock(hass, "testkey")
+    assert get_product_info_by_ids("jtmspro", "testkey").sensitive_dp_ids == {60, 61}
+    assert entity.supported_features == LockEntityFeature.OPEN
+    assert entity.is_locked is None
+
+    with patch(
+        "custom_components.tuya_ble.device_descriptors.handlers.lock.command.randbelow",
+        return_value=12345678,
+    ):
+        await entity.async_lock()
+    assert device.sent == [[60, 61]]
+    assert _value(device, 60) == _key_set(b"12345678", 0x6AD8EB64)
+    assert _value(device, 61) == _key_command(0, b"12345678")
+    add_dp(device, 61, TuyaBLEDataPointType.DT_RAW, b"reported-command")
+    assert entity.is_locked is None
+
+    with patch(
+        "custom_components.tuya_ble.device_descriptors.handlers.lock.command.randbelow",
+        return_value=87654321,
+    ):
+        await entity.async_unlock()
+        await entity.async_open()
+    assert device.sent == [[60, 61], [60, 61], [60, 61]]
+    assert _value(device, 60) == _key_set(b"87654321", 0x6AD8EB64)
+    assert _value(device, 61) == _key_command(1, b"87654321")
+    assert entity.is_locked is None
+
+
+@pytest.mark.usefixtures("registry")
+async def test_passwordless_key_write_failure_rolls_back(
+    hass: HomeAssistant,
+) -> None:
+    """A rejected bulk write leaves neither key data point with a stale value."""
+    entity, device = _lock(hass, "testkey")
+    with (
+        patch.object(device, "send_datapoints", side_effect=BleakError("x")),
+        pytest.raises(BleakError),
+    ):
+        await entity.async_unlock()
+    assert _value(device, 60) == b""
+    assert _value(device, 61) == b""
+
+
+@pytest.mark.parametrize("missing", ["set_key_dp_id", "unlock_key_dp_id"])
+def test_passwordless_key_handler_requires_both_dp_ids(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, missing: str
+) -> None:
+    """Neither key data point may be omitted from a descriptor."""
+    key_ids = {"set_key_dp_id": 60, "unlock_key_dp_id": 61}
+    key_ids.pop(missing)
+    fields = "".join(f"      {key}: {value}\n" for key, value in key_ids.items())
+    text = (
+        "category: jtmspro\nproduct_id: testbad\nentities:\n  lock:\n"
+        "    - dp_id: 61\n      translation_key: lock\n      dp_type: 0\n"
+        + fields
+        + "      handlers:\n"
+        "        write: lock.command.passwordless_key_lock\n"
+    )
+    with pytest.raises(DeviceRegistryError, match=missing):
+        _load(tmp_path, monkeypatch, **{"jtmspro_testbad.yaml": text})
