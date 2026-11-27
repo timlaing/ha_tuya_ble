@@ -356,10 +356,10 @@ def test_gumrixyt_descriptor_matches_issue_220_schema() -> None:
     """Only the reported/keyed DPs are mapped; DP 40 and 47 are gone."""
     device = _device("ms", "gumrixyt")
     assert get_mapped_dp_ids("ms", "gumrixyt") == {8, 21, 33, 60, 61}
-    assert {mapping.dp_id for mapping in sensor.get_mapping_by_device(device)} == {
-        8,
-        21,
-    }
+    sensor_mappings = sensor.get_mapping_by_device(device)
+    assert {mapping.dp_id for mapping in sensor_mappings} == {8, 21}
+    alarm = next(mapping for mapping in sensor_mappings if mapping.dp_id == 21)
+    assert alarm.description.options == ["low_battery"]
     assert {mapping.dp_id for mapping in switch.get_mapping_by_device(device)} == {33}
     assert not binary_sensor.get_mapping_by_device(device)
     (mapping,) = lock.get_mapping_by_device(device)
