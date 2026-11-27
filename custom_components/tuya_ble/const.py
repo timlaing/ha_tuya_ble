@@ -78,6 +78,7 @@ CONF_CLOUD_INFO: Final = "cloud_info"
 CONF_CLOUD_REGION: Final = "cloud_region"
 CONF_MOBILE_SNAPSHOT: Final = "mobile_cloud_info"
 CONF_CREDENTIAL_SOURCE: Final = "credential_source"
+CONF_UNVERIFIED: Final = "unverified"
 
 TUYA_DOMAIN: Final = "tuya"
 

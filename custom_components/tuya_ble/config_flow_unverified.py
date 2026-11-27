@@ -89,6 +89,7 @@ class _UnverifiedSetupMixin:
             advertisement: TuyaBLEAdvertisementInfo,
             credentials: TuyaBLEDeviceCredentials,
             pairing_uuid: str | None,
+            unverified: bool = False,
         ) -> ConfigFlowResult:
             """Provided by the config flow."""
 
@@ -135,9 +136,12 @@ class _UnverifiedSetupMixin:
                 "%s: adding device without a verified Bluetooth connection",
                 discovery.address,
             )
+            # Keep the cloud credentials, including sec_key: runtime still
+            # attempts the link and diagnostics need them to explain failures.
             return self._create_device_entry(
                 discovery,
                 advertisement,
                 replace(credentials, connection_profile=None),
                 None,
+                unverified=True,
             )

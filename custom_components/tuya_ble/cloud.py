@@ -198,10 +198,18 @@ class HASSTuyaBLEDeviceManager:
         if force_update:
             await self._hass.async_add_executor_job(self._manager.update_device_cache)
 
-        for device in self._manager.device_map.values():
-            if device.uuid == uuid:
-                return device
-        return None
+        matches = [
+            device
+            for device in self._manager.device_map.values()
+            if device.uuid == uuid
+        ]
+        if len({getattr(device, "id", None) for device in matches}) > 1:
+            _LOGGER.warning(
+                "Several cloud records share Tuya UUID %s; skipping ambiguous lookup",
+                uuid,
+            )
+            return None
+        return matches[0] if matches else None
 
     async def get_device_credentials_by_uuid(
         self,

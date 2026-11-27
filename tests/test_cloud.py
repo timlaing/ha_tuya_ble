@@ -527,6 +527,33 @@ async def test_get_cloud_device_by_uuid_returns_raw_device() -> None:
     assert await mgr.get_cloud_device_by_uuid("nope") is None
 
 
+async def test_get_cloud_device_by_uuid_duplicate_same_id_returns_first() -> None:
+    """Two cloud records with the same device ID are one identity."""
+    first = make_device(id="same-id", local_key="secret-key-one")
+    second = make_device(id="same-id", local_key="secret-key-two")
+    mgr = _manager()
+    mgr._manager.device_map = {"first": first, "second": second}  # pylint: disable=protected-access
+
+    assert await mgr.get_cloud_device_by_uuid("uuid") is first
+
+
+async def test_get_cloud_device_by_uuid_ambiguous_ids_returns_none(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A UUID reused by different cloud IDs is not a credible credential match."""
+    first = make_device(id="old-id", local_key="secret-key-one", sec_key="secret-one")
+    second = make_device(id="new-id", local_key="secret-key-two", sec_key="secret-two")
+    mgr = _manager()
+    mgr._manager.device_map = {"first": first, "second": second}  # pylint: disable=protected-access
+
+    with caplog.at_level(logging.WARNING, logger="custom_components.tuya_ble.cloud"):
+        assert await mgr.get_cloud_device_by_uuid("uuid") is None
+
+    assert "Several cloud records share Tuya UUID uuid" in caplog.text
+    for secret in ("secret-key-one", "secret-key-two", "secret-one", "secret-two"):
+        assert secret not in caplog.text
+
+
 async def test_get_cloud_device_by_uuid_force_update_refreshes_cache() -> None:
     """force_update asks the SDK to refresh its device cache first."""
     mgr = _manager()

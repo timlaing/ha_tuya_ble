@@ -27,6 +27,7 @@ from custom_components.tuya_ble.const import (
     CONF_STATUS_RANGE,
     CONF_TERMINAL_ID,
     CONF_TOKEN_INFO,
+    CONF_UNVERIFIED,
     CONF_USER_CODE,
     CONF_UUID,
     DOMAIN,
@@ -190,6 +191,7 @@ async def test_config_entry_diagnostics_shape(hass: HomeAssistant) -> None:
     assert payload["cloud_info"] == {}
     assert payload["schema_captured_at"] == "2026-09-30T00:00:00+00:00"
     assert payload["identity"]["uuid"] == "1234567890abcdef"
+    assert payload["identity"]["cloud_device_id_mismatch"] is False
     assert payload["descriptor"]["resolved"] is True
     assert payload["home_assistant"]["devices"] == []
 
@@ -225,6 +227,47 @@ async def test_exact_cloud_uuid_matches_exported_pairing_uuid(
     payload = await async_get_config_entry_diagnostics(hass, entry)
     assert payload["identity"][CONF_CLOUD_UUID] == data[CONF_UUID]
     assert payload["identity"]["uuid"] == data[CONF_UUID]
+
+
+@pytest.mark.parametrize(
+    ("stored", "expected"),
+    [(None, False), (False, False), (True, True)],
+)
+async def test_identity_unverified_flag_defaults_to_false(
+    hass: HomeAssistant, stored: bool | None, expected: bool
+) -> None:
+    """Only an explicitly marked entry is reported as unverified."""
+    data = _entry_data()
+    if stored is not None:
+        data[CONF_UNVERIFIED] = stored
+    entry = _add_entry(hass, data=data)
+
+    payload = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert payload["identity"]["unverified"] is expected
+
+
+@pytest.mark.parametrize(
+    ("cloud_id", "expected"),
+    [("device123", False), ("other-cloud-id", True)],
+)
+async def test_diagnostics_reports_refreshed_cloud_id_mismatch(
+    hass: HomeAssistant, cloud_id: str, expected: bool
+) -> None:
+    """A refreshed record for another cloud ID is flagged without secrets."""
+    entry = _add_entry(hass, options={CONF_TOKEN_INFO: {"access_token": "access-abc"}})
+    cloud_device = SimpleNamespace(**vars(_CLOUD_DEVICE), id=cloud_id)
+
+    with patch(
+        "custom_components.tuya_ble.diagnostics.HASSTuyaBLEDeviceManager"
+    ) as manager_cls:
+        manager_cls.return_value.get_cloud_device_by_uuid = AsyncMock(
+            return_value=cloud_device
+        )
+        payload = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert payload["identity"]["cloud_device_id_mismatch"] is expected
+    assert "access-abc" not in repr(payload)
 
 
 async def test_diagnostics_export_full_unfiltered_strategy(hass: HomeAssistant) -> None:

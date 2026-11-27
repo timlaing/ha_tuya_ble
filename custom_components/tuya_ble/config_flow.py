@@ -267,6 +267,16 @@ class TuyaBLEConfigFlow(
                 await self._async_refresh_cloud(self._manager, address),
             )
         self._abort_if_flow_removed()
+        if credentials is not None and self._device_id_configured(
+            credentials.device_id
+        ):
+            # An exact UUID match is not ownership: another entry may already
+            # use this cloud ID. Only an authenticated probe can associate it.
+            _LOGGER.debug(
+                "%s: cloud device already configured, verifying over Bluetooth",
+                address,
+            )
+            credentials = None
         pairing_uuid: str | None = None
         self._verified_profile = None
         self._verified_security_mode = None
@@ -365,10 +375,11 @@ class TuyaBLEConfigFlow(
         advertisement: TuyaBLEAdvertisementInfo,
         credentials: TuyaBLEDeviceCredentials,
         pairing_uuid: str | None,
+        unverified: bool = False,
     ) -> ConfigFlowResult:
         """Persist both original identities and the verified BLE pairing UUID."""
         entry_data = build_entry_data(
-            discovery_info, advertisement, credentials, pairing_uuid
+            discovery_info, advertisement, credentials, pairing_uuid, unverified
         )
         entry_data.update(self._mobile_entry_updates())
         _LOGGER.debug(
@@ -505,6 +516,13 @@ class TuyaBLEConfigFlow(
             discovery, advertisement, credentials, pairing_uuid
         )
 
+    def _device_id_configured(self, device_id: str) -> bool:
+        """Return whether a config entry already claims this cloud device ID."""
+        return any(
+            entry.data.get(CONF_DEVICE_ID) == device_id
+            for entry in self.hass.config_entries.async_entries(DOMAIN)
+        )
+
     def _create_verified_entry(
         self,
         discovery: BluetoothServiceInfoBleak,
@@ -521,10 +539,7 @@ class TuyaBLEConfigFlow(
             and claim[0] is self._probe_claim_owner
             and claim[1] == discovery.address
             and claim[2] > time.monotonic()
-            and not any(
-                entry.data.get(CONF_DEVICE_ID) == credentials.device_id
-                for entry in self.hass.config_entries.async_entries(DOMAIN)
-            )
+            and not self._device_id_configured(credentials.device_id)
         )
         if still_owned:
             return self._create_device_entry(

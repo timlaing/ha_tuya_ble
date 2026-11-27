@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning].
 
 - **Drawer Lock CTL20H (`jtmspro` / `y2yaegze`, #218, experimental)**: owner-verified lock state from DP47, lock on DP46 and unlock on DP71 built from the stored cloud `ble_unlock_check`, ported from ha-tuya-ble/ha_tuya_ble#361. The lock command and cloud-flow check fetch were not hardware-confirmed; CTL20H_8018 (`qcrilcpr`) is unchanged.
 
+### Fixed
+
+- **Cloud identity ambiguity (#211)**: reject UUID lookups that match multiple distinct cloud device IDs, and require Bluetooth verification before storing credentials for a cloud ID another entry already claims. Diagnostics now report whether a setup was accepted without Bluetooth verification and whether the refreshed cloud record has a different device ID.
+
 ## [2.10.0] - 2026-11-22
 
 This full release gathers the six 2.10.0 beta builds into one stable release. It adds Tuya BLE protocol v4 support with Security V2 login, broader device and descriptor coverage, on-demand connections, and lock, light, climate and event platforms. The experimental devices still need physical hardware validation on this integration; Security V2 and the newer protocol-4 firmware have not been confirmed on real hardware.
