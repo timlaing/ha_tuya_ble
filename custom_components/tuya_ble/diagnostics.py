@@ -50,6 +50,7 @@ from .const import (
     CONF_STATUS_RANGE,
     CONF_TERMINAL_ID,
     CONF_TOKEN_INFO,
+    CONF_UNVERIFIED,
     CONF_USER_CODE,
     CONF_UUID,
     DOMAIN,
@@ -133,6 +134,19 @@ async def _async_refresh_cloud_device(
         return None
 
     return device
+
+
+def _cloud_device_id_mismatch(
+    cloud_device: CustomerDevice | None, entry: ConfigEntry
+) -> bool:
+    """Return whether a refreshed cloud record belongs to a different cloud ID.
+
+    Device IDs identify devices but are not credentials, so the boolean is safe
+    to export. The captured schema is left untouched by this comparison.
+    """
+    return cloud_device is not None and getattr(
+        cloud_device, "id", None
+    ) != entry.data.get(CONF_DEVICE_ID)
 
 
 def _schema_has_content(schema: Any) -> bool:
@@ -371,6 +385,10 @@ async def _async_diagnostics(
             CONF_ADVERTISED_UUID: entry.data.get(CONF_ADVERTISED_UUID),
             CONF_CLOUD_UUID: entry.data.get(CONF_CLOUD_UUID),
             "device_id": entry.data.get(CONF_DEVICE_ID),
+            "cloud_device_id_mismatch": _cloud_device_id_mismatch(cloud_device, entry),
+            # An unverified entry keeps its credentials on purpose: runtime
+            # still tries the link, and key presence is diagnostic evidence.
+            "unverified": bool(entry.data.get(CONF_UNVERIFIED, False)),
             "category": category,
             "product_id": product_id,
             "device_name": entry.data.get(CONF_DEVICE_NAME),

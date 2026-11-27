@@ -29,6 +29,7 @@ from .const import (
     CONF_SEC_KEY,
     CONF_SECURITY_MODE,
     CONF_STATUS_RANGE,
+    CONF_UNVERIFIED,
     CONF_UUID,
     DOMAIN,
 )
@@ -80,11 +81,14 @@ def build_entry_data(
     advertisement: TuyaBLEAdvertisementInfo,
     credentials: TuyaBLEDeviceCredentials,
     pairing_uuid: str | None,
+    unverified: bool = False,
 ) -> dict[str, Any]:
-    """Return the config entry data for a verified device.
+    """Return the config entry data for a device.
 
     Keeps both original identities and the verified BLE pairing UUID, and only
-    the secrets the device actually needs.
+    the secrets the device actually needs. The unverified marker is persisted
+    only for entries accepted without a successful Bluetooth handshake; older
+    entries have no marker and are treated as verified.
     """
     entry_data: dict[str, Any] = {
         CONF_ADDRESS: discovery_info.address,
@@ -105,6 +109,8 @@ def build_entry_data(
     }
     entry_data.update(verified_login_data(credentials))
     entry_data.update(sec_key_data(credentials, advertisement.security_v2))
+    if unverified:
+        entry_data[CONF_UNVERIFIED] = True
     if credentials.ble_unlock_check is not None:
         # Already validated by the cloud manager; a lock needs it to open.
         entry_data[CONF_BLE_UNLOCK_CHECK] = credentials.ble_unlock_check

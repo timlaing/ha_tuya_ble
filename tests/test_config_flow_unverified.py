@@ -22,6 +22,7 @@ from custom_components.tuya_ble.const import (
     CONF_CONNECTION_PROFILE,
     CONF_DEVICE_ID,
     CONF_SEC_KEY,
+    CONF_UNVERIFIED,
     DOMAIN,
 )
 from custom_components.tuya_ble.tuya_ble import ConnectionProfile, ProbeStage
@@ -110,6 +111,7 @@ async def test_submit_adds_unverified_entry_without_profile(
     assert result["type"] == FlowResultType.CREATE_ENTRY
     data = cast(dict[str, Any], result["data"])
     assert CONF_CONNECTION_PROFILE not in data
+    assert data[CONF_UNVERIFIED] is True
     assert (data.get(CONF_SEC_KEY) == SEC_KEY) is stored
     assert flow._unverified_setup is None
 
@@ -133,6 +135,7 @@ async def test_unverified_entry_is_not_offered_after_success(
         result = await flow.async_step_probe_finish()
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_CONNECTION_PROFILE] == profile.value
+    assert CONF_UNVERIFIED not in result["data"]
     assert flow._unverified_setup is None
 
 

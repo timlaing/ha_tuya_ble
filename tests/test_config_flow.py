@@ -23,17 +23,19 @@ from custom_components.tuya_ble.const import (
     CONF_CATEGORY,
     CONF_CLOUD_INFO,
     CONF_CLOUD_UUID,
+    CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
     CONF_LOCAL_SCHEMA,
     CONF_PRODUCT_ID,
     CONF_PRODUCT_NAME,
+    CONF_UNVERIFIED,
     CONF_USER_CODE,
     CONF_UUID,
     DOMAIN,
 )
 from custom_components.tuya_ble.tuya_ble import SERVICE_UUID, TuyaBLEDeviceCredentials
 from custom_components.tuya_ble.tuya_ble.const import MANUFACTURER_DATA_ID
-from tests.conftest import FakeAdvertisementData, make_device
+from tests.conftest import FakeAdvertisementData, make_credentials, make_device
 
 _SCAN_PATCH = (
     "custom_components.tuya_ble.config_flow_scan.bluetooth.async_process_advertisements"
@@ -616,6 +618,55 @@ async def test_discovered_device_setup_scans_original_address(
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["title"] == "Cloud name"
     scan.assert_awaited_once_with(discovery.address)
+
+
+async def test_exact_uuid_entry_created_when_cloud_id_is_free(
+    hass: HomeAssistant,
+) -> None:
+    """An unclaimed cloud ID from an exact UUID match is stored directly."""
+    flow = build_flow(hass)
+    flow.context = {}
+    credentials = make_credentials()
+    flow._manager = FakeManager(credentials)  # type: ignore[assignment]
+    discovery = FakeDiscovery()
+    flow.discovery_info = discovery  # type: ignore[assignment]
+    with patch.object(flow, "_async_scan_device", return_value=discovery):
+        result = await flow.async_step_discovered_device(user_input={})
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_DEVICE_ID] == credentials.device_id
+    assert CONF_UNVERIFIED not in result["data"]
+
+
+async def test_exact_uuid_with_claimed_cloud_id_probes_instead(
+    hass: HomeAssistant,
+) -> None:
+    """A cloud ID owned by another entry never creates a second entry."""
+    credentials = make_credentials()
+    MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="11:22:33:44:55:66",
+        data={CONF_DEVICE_ID: credentials.device_id},
+    ).add_to_hass(hass)
+    flow = build_flow(hass)
+    flow.context = {}
+    flow._manager = FakeManager(credentials)  # type: ignore[assignment]
+    discovery = FakeDiscovery()
+    flow.discovery_info = discovery  # type: ignore[assignment]
+    fallback = AsyncMock(return_value=(None, None, "device_not_registered"))
+    with (
+        patch.object(flow, "_async_scan_device", return_value=discovery),
+        patch.object(flow, "_async_probe_fallback", fallback),
+    ):
+        result = await flow.async_step_discovered_device(user_input={})
+        assert result["type"] == FlowResultType.SHOW_PROGRESS
+        assert flow._probe_task is not None
+        await flow._probe_task
+        result = await flow.async_step_probe_finish()
+
+    fallback.assert_awaited_once()
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"]["base"] == "device_not_registered"  # type: ignore[index]
 
 
 async def test_discovered_device_scan_failure_is_retry_form(
