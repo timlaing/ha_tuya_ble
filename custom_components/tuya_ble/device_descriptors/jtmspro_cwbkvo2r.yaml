@@ -1,0 +1,44 @@
+category: jtmspro
+product_id: cwbkvo2r
+device_name: FB61
+model_name: cwbkvo2r
+entities:
+  switch:
+    - dp_id: 33
+      translation_key: automatic_lock
+      icon: mdi:lock-clock
+      entity_category: config
+      dp_type: 1
+  number:
+    - dp_id: 36
+      translation_key: auto_lock_time
+      icon: mdi:lock-clock
+      unit: s
+      min_value: 1
+      max_value: 1800
+      step: 1
+      entity_category: config
+      dp_type: 2
+  select:
+    - dp_id: 31
+      translation_key: beep_volume
+      icon: mdi:volume-high
+      options: [mute, low, normal, high]
+      entity_category: config
+      dp_type: 4
+  sensor:
+    - dp_id: 12
+      translation_key: unlock_fingerprint
+      icon: mdi:fingerprint
+    - dp_id: 13
+      translation_key: unlock_password
+      icon: mdi:keyboard-outline
+    - dp_id: 14
+      translation_key: unlock_dynamic
+      icon: mdi:form-textbox-password
+    - dp_id: 15
+      translation_key: unlock_card
+      icon: mdi:nfc-variant
+    - dp_id: 19
+      translation_key: unlock_ble
+      icon: mdi:bluetooth
