@@ -30,15 +30,25 @@ entities:
     - dp_id: 12
       translation_key: unlock_fingerprint
       icon: mdi:fingerprint
+      suggested_display_precision: 0
+      entity_category: diagnostic
     - dp_id: 13
       translation_key: unlock_password
       icon: mdi:keyboard-outline
+      suggested_display_precision: 0
+      entity_category: diagnostic
     - dp_id: 14
       translation_key: unlock_dynamic
       icon: mdi:form-textbox-password
+      suggested_display_precision: 0
+      entity_category: diagnostic
     - dp_id: 15
       translation_key: unlock_card
       icon: mdi:nfc-variant
+      suggested_display_precision: 0
+      entity_category: diagnostic
     - dp_id: 19
       translation_key: unlock_ble
       icon: mdi:bluetooth
+      suggested_display_precision: 0
+      entity_category: diagnostic

@@ -99,7 +99,7 @@ integration options (link your Smart Life or Tuya account with **Log in again wi
 the QR code** there first if no cloud login is stored), without removing the device.
 Never share that check or DP71 values.
 
-**FB61 keypad lock** (`cwbkvo2r`) is hardware-tested via a Bluetooth proxy on Home Assistant with Tuya BLE v2.10.0. It exposes last-used fingerprint, password, dynamic, card and Bluetooth user IDs (DP 12/13/14/15/19), volume (DP 31: mute/low/normal/high), an automatic-lock switch (DP 33) and auto-lock time (DP 36, 1–1800 s). Unlocks on this keypad trigger a separate smart lock, and no truthful locked-state data point has been confirmed, so the descriptor has no lock entity.
+**FB61 keypad lock** (`cwbkvo2r`) is reported working via a Bluetooth proxy on Home Assistant with Tuya BLE v2.10.0 (contributor hardware report; DP range and enum order not independently verified). It exposes last-used fingerprint, password, dynamic, card and Bluetooth user IDs (DP 12/13/14/15/19), volume (DP 31: mute/low/normal/high), an automatic-lock switch (DP 33) and auto-lock time (DP 36, 1–1800 s as reported). Unlocks on this keypad trigger a separate smart lock, and no truthful locked-state data point has been confirmed, so the descriptor has no lock entity.
 
 Additional experimental products ([evidence and limitations](docs/lock-product-audit.md)):
 
