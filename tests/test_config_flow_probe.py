@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, patch
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import AbortFlow, FlowResultType
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.tuya_ble.config_flow import TuyaBLEConfigFlow
 from custom_components.tuya_ble.config_flow_state import probe_state as _probe_state

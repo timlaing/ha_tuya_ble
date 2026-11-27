@@ -11,7 +11,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
 import pytest
-from pytest_homeassistant_custom_component.common import (
+from pytest_homeassistant.common import (
     MockConfigEntry,
     MockEntityPlatform,
 )
@@ -105,8 +105,10 @@ async def test_touch_registry_reload_and_number_service(
         assert current.name == custom_name
         state = hass.states.get(registered.entity_id)
         assert state is not None
+        # HA 2026.11 prefixes a registry override with the device name for
+        # entities that opt into has_entity_name.
         assert state.attributes["friendly_name"] == (
-            custom_name or "Device Touch duration 1"
+            f"Device {custom_name}" if custom_name else "Device Touch duration 1"
         )
         if connected:
             with pytest.raises(HomeAssistantError):

@@ -10,7 +10,7 @@ from homeassistant.components.select import SelectEntityDescription
 from homeassistant.core import HomeAssistant, State
 from homeassistant.exceptions import ServiceValidationError
 import pytest
-from pytest_homeassistant_custom_component.common import mock_restore_cache
+from pytest_homeassistant.common import mock_restore_cache
 
 from custom_components.tuya_ble import select
 from custom_components.tuya_ble.devices import (

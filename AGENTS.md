@@ -30,7 +30,7 @@ Set up with `python3 -m venv .venv && . .venv/bin/activate && pip install -r req
 - Exercise public entry points. Setting internals (`_client`, `_session_key`, `_manager`, protected `_qr_*`) as **setup state** is acceptable.
 - Tests build a real `TuyaBLEDevice` + `TuyaBLECoordinator` with `send_datapoints` stubbed (no BLE I/O); drive reports through `TuyaBLEDataPoints.update_from_device`.
 - Entities register their coordinator listener in `async_added_to_hass()`, not `__init__` — `await entity.async_added_to_hass()` before asserting on coordinator updates.
-- The `hass` fixture is from `pytest-homeassistant-custom-component`; config-flow tests call `async_step_*` directly with `config_flow.HASSTuyaBLEDeviceManager` and the single-underscore `_qr_*` attributes patched with fakes (no name mangling).
+- The `hass` fixture is from `pytest-homeassistant`; config-flow tests call `async_step_*` directly with `config_flow.HASSTuyaBLEDeviceManager` and the single-underscore `_qr_*` attributes patched with fakes (no name mangling).
 - Fakes/helpers (`make_device`, `make_credentials`, `add_dp`) are in `tests/conftest.py`; packet-building helpers in `tests/protocol_harness.py`. Tests mirror module names (`test_<module>.py`).
 - Tests mocking `asyncio.create_task`/`sleep` need module-level `pytestmark = pytest.mark.filterwarnings("ignore::RuntimeWarning")` and a `_close_task()` helper calling `coro.close()` to avoid unawaited-coroutine warnings leaking via `gc.collect()`.
 - Most modules log at `debug`; `caplog` does not capture DEBUG unless raised — use `caplog.at_level(logging.DEBUG)` for each debug assertion and `caplog.clear()` between phases of one test.

@@ -96,7 +96,7 @@ repos:
           - tuya-mobile==1.2.0
           - aiousbwatcher
           - dbus-fast
-          - homeassistant==2026.10.4
+          - homeassistant==2026.11.3
           - mypy
           - prek
           - pycryptodome
@@ -104,7 +104,8 @@ repos:
           - pytest
           - pytest-asyncio
           - pytest-cov
-          - pytest-homeassistant-custom-component==0.13.375
+          - pytest-homeassistant[bluetooth]==2026.11.3
+          - pytest-timeout==2.4.0
           - ruff
           - serialx
           - tuya-device-handlers
@@ -124,7 +125,7 @@ repos:
           - tuya-mobile==1.2.0
           - aiousbwatcher
           - dbus-fast
-          - homeassistant==2026.10.4
+          - homeassistant==2026.11.3
           - mypy
           - prek
           - pycryptodome
@@ -132,7 +133,8 @@ repos:
           - pytest
           - pytest-asyncio
           - pytest-cov
-          - pytest-homeassistant-custom-component==0.13.375
+          - pytest-homeassistant[bluetooth]==2026.11.3
+          - pytest-timeout==2.4.0
           - ruff
           - serialx
           - tuya-device-handlers
@@ -154,7 +156,7 @@ repos:
           - tuya-mobile==1.2.0
           - aiousbwatcher
           - dbus-fast
-          - homeassistant==2026.10.4
+          - homeassistant==2026.11.3
           - mypy
           - prek
           - pycryptodome
@@ -162,7 +164,8 @@ repos:
           - pytest
           - pytest-asyncio
           - pytest-cov
-          - pytest-homeassistant-custom-component==0.13.375
+          - pytest-homeassistant[bluetooth]==2026.11.3
+          - pytest-timeout==2.4.0
           - ruff
           - serialx
           - tuya-device-handlers
