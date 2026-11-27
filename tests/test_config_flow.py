@@ -14,7 +14,7 @@ from Crypto.Cipher import AES
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.tuya_ble.config_flow import TuyaBLEConfigFlow
 from custom_components.tuya_ble.config_flow_options import TuyaBLEOptionsFlow

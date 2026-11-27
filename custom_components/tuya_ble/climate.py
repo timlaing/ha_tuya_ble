@@ -219,7 +219,7 @@ class TuyaBLEClimate(TuyaBLEEntity, ClimateEntity):
             climate_mapping.target_temperature_dp_id != 0
             or climate_mapping.current_temperature_dp_id != 0
         ):
-            self._attr_temperature_unit = climate_mapping.temperature_unit
+            self._attr_native_temperature_unit = climate_mapping.temperature_unit
 
         if climate_mapping.target_temperature_dp_id != 0:
             self._attr_supported_features |= ClimateEntityFeature.TARGET_TEMPERATURE

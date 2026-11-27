@@ -17,7 +17,7 @@ from homeassistant.data_entry_flow import AbortFlow, FlowResultType
 from homeassistant.helpers import selector
 import probatio
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.tuya_ble.config_flow_mobile import (
     CONF_APP,

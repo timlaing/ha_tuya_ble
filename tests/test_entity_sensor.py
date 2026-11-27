@@ -14,7 +14,7 @@ from homeassistant.components.sensor import (
 from homeassistant.const import UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant, State
 import pytest
-from pytest_homeassistant_custom_component.common import (
+from pytest_homeassistant.common import (
     mock_restore_cache_with_extra_data,
 )
 

@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from homeassistant.core import HomeAssistant
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.tuya_ble import (
     binary_sensor,
