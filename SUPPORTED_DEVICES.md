@@ -63,8 +63,9 @@ doorbell event; other lock doorbell mappings await device evidence.
 
 ## Smart Locks (category_id `ms`)
 
-- Smart Lock (product_ids `ludzroix`, `isk2p555`, `gumrixyt`, `uamrw6h3`, `sidhzylo`, `mqc2hevy`, `a6nttc41`, `okkyfgfs`, `k53ok3u9`). Supports lock/unlock, alarm events, door status, and per-device unlock tracking (BLE, fingerprint, password, card, phone remote, dynamic code).
-- Unnamed lock (product_id `bvclwu9b`). Identical coverage to `gumrixyt` — lock/unlock on DP 47 from the `_category_ms.yaml` default, plus battery, door status and lock alarm status — minus the lock motor-state switch.
+- Smart Lock (product_ids `ludzroix`, `isk2p555`, `uamrw6h3`, `sidhzylo`, `mqc2hevy`, `a6nttc41`, `okkyfgfs`, `k53ok3u9`). Supports lock/unlock, alarm events, door status, and per-device unlock tracking (BLE, fingerprint, password, card, phone remote, dynamic code).
+- Unnamed lock (product_id `bvclwu9b`). Lock/unlock on DP 47 from the `_category_ms.yaml` default, plus battery, door status and lock alarm status.
+- Bluetooth Cabinet Lock (`gumrixyt`, experimental, #220). The firmware's numbered cloud schema has no DP 40 or 47: battery on DP 8, low-battery alarm on DP 21, the automatic-lock setting on DP 33, and the passwordless key pair on DP 60/61. Lock and unlock send a one-time key command; Open briefly releases the latch. The lock state stays unknown because no bolt report is known. DP 60/61 values are redacted. The device does not answer status requests, so on-demand status polling is not recommended.
 - TenixLox KB150A (product_id `0binhnjg`). Lock/unlock on DP 47, plus battery, alarm events and the lock motor-state switch.
 - Pulido P13 (product_id `kdq0tdbz`). Lock/unlock on DP 47, plus alarm events and the lock motor-state switch.
 

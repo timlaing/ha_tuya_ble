@@ -57,3 +57,12 @@ def passage_or_bolt(lock: TuyaBLELock, _product: TuyaBLEProductInfo) -> bool | N
     if passage is False and bolt is False:
         return True
     return None
+
+
+def unknown(_lock: TuyaBLELock, _product: TuyaBLEProductInfo) -> None:
+    """Report unknown when the product exposes no bolt-state data point.
+
+    The lock entity can still offer its verified commands, but neither a
+    command nor a raw command data point is treated as physical bolt state.
+    """
+    return None

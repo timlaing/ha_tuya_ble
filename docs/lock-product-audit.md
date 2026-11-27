@@ -104,6 +104,40 @@ unconfirmed. No product inherits another product's commands.
 | `y2yaegze` issue154            | 21 alarm ENUM, 31 beep_volume ENUM, 44 rtc_lock BOOL, 71 ble_unlock_check RAW                                                                                                                                                                         | Need actual numeric enum order, working setting writes and successful unlock capture. No bolt DP in supplied status.                 |
 | `qcrilcpr` issue304            | 21 alarm ENUM confirmed ID; card/BLE/remote numbers VALUE scale0 0–999; automatic_lock BOOL; beep_volume ENUM mute/normal; 71 proposed unlock RAW                                                                                                     | Remaining numeric IDs/enum order and actual unlock payload not established; connection success proves neither unlock nor bolt state. |
 
+## Issue 220: `ms` / `gumrixyt` cabinet lock
+
+The reporter's numbered `local_strategy` and BLE logs replace the inherited
+`_category_ms.yaml` DP 47 lock and the former DP 40 door sensor. There is no
+evidence of a bolt-state report, so the lock entity deliberately reports
+unknown state. DP 60/61 commands follow the standard passwordless BLE-lock key
+pair documented by tuya-local (`set_unlock_code` / `code_unlock`); no DP 71
+command is copied, and no key material is logged or exported.
+
+Wire types: Raw, BOOL and VALUE/Integer. Scaling is 1 unless stated.
+"Unspecified" is not a guessed range, unit or access mode.
+
+| DP  | Cloud code / meaning             | Wire  | Unit; scaling; range                  | Access / evidence                                                                  |
+| --- | -------------------------------- | ----- | ------------------------------------- | ---------------------------------------------------------------------------------- |
+| 1   | `unlock_method_create`           | Raw   | none; 1; payload length unspecified   | Cloud schema only; write access not confirmed; not mapped                          |
+| 2   | `unlock_method_delete`           | Raw   | none; 1; payload length unspecified   | Cloud schema only; write access not confirmed; not mapped                          |
+| 3   | `unlock_method_modify`           | Raw   | none; 1; payload length unspecified   | Cloud schema only; write access not confirmed; not mapped                          |
+| 8   | `residual_electricity` / battery | VALUE | %; 1; 0–100                           | R, reported `decoded=100`; battery sensor                                          |
+| 19  | `unlock_ble`                     | VALUE | user number; 1; 0–999                 | Cloud schema only; access not observed; not mapped                                 |
+| 21  | `alarm_lock`                     | ENUM  | none; 1; only `low_battery`           | Cloud schema only; no report observed; enum sensor                                 |
+| 33  | `automatic_lock`                 | BOOL  | none; 1; false/true                   | R/W, write False returned result 0 and reported raw `00`; configuration switch     |
+| 60  | `remote_no_pd_setkey`            | Raw   | none; 1; one-time key installation    | W via standard key-pair protocol; auxiliary to the lock; redacted                  |
+| 61  | `remote_no_dp_key`               | Raw   | none; 1; one-time lock/unlock command | W via standard key-pair protocol; lock entity DP; redacted, not used as bolt state |
+| 62  | `unlock_phone_remote`            | VALUE | user number; 1; 0–999                 | Cloud schema only; access not observed; not mapped                                 |
+| 69  | `record`                         | —     | unspecified                           | Mentioned in the issue summary, not in the numbered schema; not mapped             |
+| 70  | `check_code_set`                 | —     | unspecified                           | Mentioned in the issue summary, not in the numbered schema; not mapped             |
+| 71  | `ble_unlock_check`               | —     | unspecified                           | Mentioned in the issue summary, not in the numbered schema; no DP71 command mapped |
+| 73  | `remote_pd_setkey_check`         | —     | unspecified                           | Mentioned in the issue summary, not in the numbered schema; not mapped             |
+
+The same report notes that DP 8 and 33 arrive over `FUN_RECEIVE_DP` on connect,
+while `FUN_SENDER_DEVICE_STATUS` times out and triggers a reconnect. No
+descriptor-level status-poll exemption exists; leave on-demand status polling
+disabled for this product until a firmware/protocol fix is established.
+
 ## Physical verification still required
 
 No physical BLE device was used for this port. Tests mock BLE and network.
@@ -114,6 +148,11 @@ No physical BLE device was used for this port. Tests mock BLE and network.
   battery and user-number reads on this integration.
 - H13: verify both volume/language indices, auto-lock on/off, repeated lock-only
   button writes, and battery/password/motor reads. Unlock remains unavailable.
+- Cabinet Lock (`gumrixyt`): verify DP 8 and 21 reports, DP 33 on/off writes,
+  and that the DP 60/61 one-time key actually locks, unlocks and momentarily
+  releases the latch. Confirm whether any bolt-status DP exists before ever
+  reporting a locked state. Capture whether status requests are ignored on all
+  firmware versions; no simulated write proves physical operation.
 - Pirnar/CTL20H/CTL20H_8018: verify every enabled read and reconnect behaviour.
   Resolve RAW versus BOOL before adding Pirnar commands. CTL20H_8018 needs a
   separate handshake fix tested on its hardware before reliable connection.
