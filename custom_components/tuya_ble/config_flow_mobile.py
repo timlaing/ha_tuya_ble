@@ -372,7 +372,14 @@ class _MobileLoginMixin:
                 return await self.async_step_mobile_login()
             if flow.source == SOURCE_RECONFIGURE:
                 return await flow.async_step_reconfigure()
-            flow._unverified_setup = self._mobile_pending  # pylint: disable=protected-access
+            discovery, advertisement, credentials, error = self._mobile_pending
+            # A staged app pair carries the Security V2 key needed at runtime.
+            flow._unverified_setup = (  # pylint: disable=protected-access
+                discovery,
+                advertisement,
+                self._mobile_staged_credentials or credentials,
+                error,
+            )
             return await flow.async_step_unverified()
         return flow.async_show_form(
             step_id="mobile_result",
