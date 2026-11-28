@@ -34,6 +34,7 @@ Programming (series of actions) is implemented for Fingerbot Plus. Exposed entit
 - Soil Thermo-Hygrometer (product_id `tv6peegl`).
 - **SS302 Temperature Humidity Sensor** (product_id `6lbesej0`) — experimental: temperature (DP 1, tenths of a degree), humidity (DP 2) and battery (DP 4). No calibration or temperature-unit entities, because the source mapping deliberately left them out. Not yet verified on a device through this integration.
 - **TH05 / TH05F Temperature Humidity Sensor** (product_ids `vyfoip9h`, `1jvidcsf`) — experimental: temperature (DP 1, tenths of a degree), humidity (DP 2) and battery (DP 4), a disabled-by-default °C/°F select (DP 9) that the temperature sensor follows, and disabled-by-default temperature (DP 23, −2.0 to 2.0 °C) and humidity (DP 24, −10 to 10 %) calibration. DP layout from the tuya-local TH05-BLE definition; not yet verified on a device through this integration.
+- **RainPoint TCS024B Soil Moisture Sensor** (product_id `j5mynqs3`) — experimental: soil temperature (DP 1, whole degrees Celsius), soil moisture (DP 2) and battery percentage (DP 4). DP layout from the Tuya cloud schema and the tuya-local TCS024B definition. The cloud schema claims one decimal for DP 1; it is mapped unscaled, as tuya-local does, because the cloud reported 14 for an outdoor soil reading. No °C/°F select: this product's cloud schema has no DP 9. Not yet verified on a device through this integration.
 
 ## CO2 sensors (category_id `co2bj`)
 
@@ -213,6 +214,10 @@ Entities: open/close/stop, battery, work state and cover speed.
 - SGS01B-JR Soil Sensor (product_id `gpkyrocn`). Also has a disabled-by-default °C/°F select (DP 9) that the soil temperature sensor follows, from the cloud schema in ha-tuya-ble/ha_tuya_ble#328. Whether the device converts its reported temperature when set to °F is not yet verified on a device.
 
 Entities: soil temperature, soil moisture, battery state, battery percentage. Soil moisture (DP 3) uses the moisture device class; existing installs keep its entity ID.
+
+## Electric blankets (category_id `dr`)
+
+- **Goldair Platinum SmartSleep multi-zone electric blanket** (product_id `mqcffjumdpuahxmi`) — experimental: power switch (DP 1), body and feet heat levels 0–6 (DPs 14/15, ENUM `level_1`–`level_7`), body and feet timers (DPs 16/17, ENUM) and body and feet time remaining in seconds (DPs 18/19). DP layout from the Tuya cloud schema and the tuya-local Goldair SmartSleep definition. The cloud schema lists timers 1–6 h; tuya-local maps 1–12 h and the device reported 12 h over Wi-Fi, so all twelve are readable but only 1–6 h can be set until the higher ENUM indices are verified over BLE. Whether level 0 means off is not verified. Not yet verified on a device through this integration.
 
 ## Cooking thermometers (category_id `swtz`)
 

@@ -44,6 +44,7 @@ is how most of the categories below got their first device.
 | `slj`     | _not in Tuya's list_                       | Not in Tuya's published list. RESTMO FML026A water meter.                                                                                                                                                           |
 | `swtz`    | Cooking thermometer (undocumented)         | Cooking thermometers (GRILLMEISTER / SK-T100, BTH08). No category default; each product declares its own probes.                                                                                                    |
 | `sh`      | _not verified_                             | Yieryi BLE-YL01 water quality monitor, experimental read-only gateway-schema subset. No category default; direct BLE operation remains untested.                                                                    |
+| `dr`      | Electric blanket                           | Electric blanket. Goldair Platinum SmartSleep, experimental. No category default.                                                                                                                                   |
 
 To see the products in a category:
 
@@ -102,7 +103,7 @@ documentation at all, so they have no row here — they are in the table above.
 | `dgnbj`       | Multi-functional alarm                                             |           |
 | `dj`          | Light                                                              |     ✓     |
 | `dlq`         | Circuit breaker                                                    |           |
-| `dr`          | Electric blanket                                                   |           |
+| `dr`          | Electric blanket                                                   |     ✓     |
 | `ds`          | TV set                                                             |           |
 | `dsd`         | Filament Light                                                     |           |
 | `fs`          | Fan                                                                |           |
