@@ -5,7 +5,8 @@ Part of [#181](https://github.com/timlaing/ha_tuya_ble/issues/181) /
 These are **schema-backed subsets, not physically tested support in this
 integration**. Gateway schemas establish candidate IDs, types and scales, not
 successful direct BLE authentication or transport. No writable entities are
-offered. Product sensors are created only if the corresponding wire type is
+offered, except for the AQUA CREATIV TITAN PRO 300 below, which has since been
+tested on hardware. Product sensors are created only if the corresponding wire type is
 present during platform setup; collect diagnostics and reload after reports
 arrive if initially only RSSI appears. A later type mismatch makes a reading
 unknown rather than coercing it.
@@ -56,21 +57,24 @@ all units and actual valve-report semantics remain untested here.
 
 ## AQUA CREATIV TITAN PRO 300 — `dj/e2kdgdsu`
 
-Source: @vrnoleg's [issue 357](https://github.com/ha-tuya-ble/ha_tuya_ble/issues/357):
-classic GATT service 1910 with 2B11 write / 2B10 notify, DP101 BOOL true after
-Manual and DP102 ENUM 1 after Auto. These are preliminary **physical BLE
-observations in the source report**, not full mode semantics or tests here.
+Source: @vrnoleg's [issue 357](https://github.com/ha-tuya-ble/ha_tuya_ble/issues/357),
+which reported classic GATT service 1910 with 2B11 write / 2B10 notify, DP101
+BOOL true after Manual and DP102 ENUM 1 after Auto, followed by hardware testing
+in [issue 222](https://github.com/timlaing/ha_tuya_ble/issues/222). The profile
+started as a report-only research subset and now has tested controls.
 
-Only DP101's reported boolean and a disabled-by-default, unlabeled numeric
-DP102 diagnostic are exposed. Unknown enum indices remain numbers; 1 is not
-assigned an invented “Auto” enum label. DP101 false is not assumed to mean
-Auto or power off.
+Exposed: light on DP101 with total brightness on DP3 (writing DP3 sets all four
+channels to the same value), channel numbers DP105–108 (0–100 %), light-mode
+select DP102 (0 manual, 1 auto, 2 simple setup), effect-demo select DP103 (0 none,
+1 auto, 2 simple setup, 3 moon, 4 thunderstorm, 5 cloudy), 24-hour clock switch
+DP104, and the DP101 BOOL and disabled-by-default DP102 numeric diagnostics. The
+generic `dj` DP20–24 defaults do nothing on this lamp and stay blocked.
 
-Omitted: power, overall intensity, CH-A–CH-D, demo and Light_mode controls,
-RGB/channel writes and all other writes. The published brightness range
-0–1000 step 10 lacks a DP ID. The explicit empty light override blocks generic
-`dj` DP20–24; this is a **report-only research profile**, not a controllable
-standard light.
+Not exposed: the raw programs DP109–113 and accessory data points DP114–120. The
+programs have a documented layout (an enable byte followed by times and levels)
+but need a raw writer. The Moon option of DP103 showed no effect over BLE even
+inside the program's time window; the Moon effect itself is started by the
+enable flag of DP111.
 
 ## KC8B105 — `gcj/7yr5iwga`: deferred
 
