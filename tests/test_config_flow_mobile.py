@@ -315,6 +315,65 @@ async def test_cloud_success_bluetooth_failure_still_allows_diagnostics(
     assert CONF_MOBILE_SNAPSHOT in result["data"]
 
 
+async def test_continue_after_mobile_login_persists_staged_keys(
+    hass: HomeAssistant,
+) -> None:
+    """Continuing after a failed app probe saves the staged Security V2 pair."""
+    flow, _ = await eligible_flow(hass)
+    staged = replace(make_credentials(), local_key="app-provided-key", sec_key=SEC)
+    with (
+        patch(FETCH, return_value=MobileResult(staged, snapshot())),
+        patch(DETECT, side_effect=verified_by(None)),
+    ):
+        await flow.async_step_mobile_login(FORM)
+        await flow._mobile_task
+        await flow.async_step_mobile_finish()
+        await flow._probe_task
+        await flow.async_step_probe_finish()
+    assert flow._mobile_staged_credentials is not None
+    result = await flow.async_step_mobile_result({"next_action": "continue"})
+    assert result["step_id"] == "unverified"
+    result = await flow.async_step_unverified({})
+    assert result["data"][CONF_LOCAL_KEY] == "app-provided-key"
+    assert result["data"][CONF_SEC_KEY] == SEC
+    assert result["data"][CONF_CREDENTIAL_SOURCE] == "mobile_app"
+
+
+async def test_continue_without_staged_keys_uses_original(
+    hass: HomeAssistant,
+) -> None:
+    """No app login leaves the original cloud pair as the unverified fallback."""
+    flow, _ = await eligible_flow(hass)
+    assert flow._mobile_staged_credentials is None
+    result = await flow.async_step_mobile_result({"next_action": "continue"})
+    assert result["step_id"] == "unverified"
+    result = await flow.async_step_unverified({})
+    assert result["data"][CONF_LOCAL_KEY] == LOCAL
+    assert CONF_SEC_KEY not in result["data"]
+    assert CONF_CREDENTIAL_SOURCE not in result["data"]
+
+
+async def test_retry_after_staged_login_reopens_login_form(
+    hass: HomeAssistant,
+) -> None:
+    """Retry keeps the staged pair and returns to the app login form."""
+    flow, _ = await eligible_flow(hass)
+    staged = replace(make_credentials(), local_key="app-provided-key", sec_key=SEC)
+    with (
+        patch(FETCH, return_value=MobileResult(staged, snapshot())),
+        patch(DETECT, side_effect=verified_by(None)),
+    ):
+        await flow.async_step_mobile_login(FORM)
+        await flow._mobile_task
+        await flow.async_step_mobile_finish()
+        await flow._probe_task
+        await flow.async_step_probe_finish()
+    result = await flow.async_step_mobile_result({"next_action": "retry"})
+    assert result["step_id"] == "mobile_login"
+    assert flow._mobile_staged_credentials is not None
+    assert flow._mobile_staged_credentials.local_key == "app-provided-key"
+
+
 @pytest.mark.parametrize(
     "error", ["mobile_invalid_auth", "mobile_missing_key", "mobile_invalid_keys"]
 )
