@@ -60,7 +60,12 @@ async def _setup(
     return added.call_args.args[0], coordinator
 
 
-@pytest.mark.parametrize(("category", "product_id", "expected"), PRODUCTS)
+# The aquarium light has since gained hardware-tested controls, so it no longer belongs
+# to the read-only profile checks (see tests/test_descriptor_e2kdgdsu.py).
+READ_ONLY_PRODUCTS = [item for item in PRODUCTS if item[1] != "e2kdgdsu"]
+
+
+@pytest.mark.parametrize(("category", "product_id", "expected"), READ_ONLY_PRODUCTS)
 async def test_only_verified_report_ids_and_no_write_entities(
     hass: HomeAssistant, category: str, product_id: str, expected: set[int]
 ) -> None:
@@ -214,9 +219,8 @@ async def test_absent_reports_stay_unknown(hass: HomeAssistant) -> None:
 
 
 def test_unrelated_light_defaults_and_deferred_mower_unchanged() -> None:
-    """The empty override affects only the aquarium, not existing generic lights."""
+    """The aquarium's own light mapping leaves existing generic lights alone."""
     assert light.get_mapping_by_device(_device("dj", "unknown")[0])
-    assert not light.get_mapping_by_device(_device("dj", "e2kdgdsu")[0])
     assert not light.get_mapping_by_device(_device("xdd", "unknown")[0])
     assert get_registry().get("gcj", "7yr5iwga") is None
     assert not get_mapped_dp_ids("gcj", "7yr5iwga")

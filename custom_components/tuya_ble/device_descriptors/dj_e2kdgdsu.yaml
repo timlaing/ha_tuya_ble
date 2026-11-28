@@ -1,11 +1,104 @@
-# Actual preliminary BLE reports, not verified commands or mode meanings.
-# Source: ha-tuya-ble/ha_tuya_ble issue 357 by vrnoleg.
+# AQUA CREATIV TITAN PRO 300 aquarium light (Tuya BLE, category dj).
+#
+# Data point ids and types come from the Tuya cloud thing model of this product
+# (GET /v2.0/cloud/thing/{device_id}/model). Verified on the real device over BLE:
+# power (DP 101), the four channels (DP 105-108), the mode select (DP 102), the
+# effect demo select (DP 103), the 24-hour clock switch (DP 104) and total brightness (DP 3).
+#
+#   DP   code           type   meaning
+#   3    bright_value   value  total brightness 0-1000, step 10; sets ALL four channels to one value
+#   101  Switch_all     bool   master power switch
+#   102  Light_mode     enum   0 manual, 1 auto, 2 acclimation (the app calls it "Simple setup")
+#   103  preview        enum   demo of a program: 0 none, 1 auto, 2 simple setup, 3 moon,
+#                              4 thunderstorm (cloud code "lighting"), 5 cloudy
+#                              (3 had no visible effect when selected over BLE)
+#   104  hour_system    bool   ON = 24 h clock
+#   105-108 CH1-CH4     value  channels A-D, 0-100 % (A white, B blue, C green, D red)
+#
+# Deliberately NOT mapped: the raw programs DP 109-113 (auto schedule, simple setup, moon,
+# thunderstorm, cloudy; they need a raw writer), the raw accessory DPs 114-117, DP 118 expand,
+# DP 119 signal and DP 120 broad (accessory / pairing related).
+# When the light is switched off the other channels read 0 %, but the lamp restores its own
+# stored channel values on switch-on, so write the channels explicitly after turning it on.
 category: dj
 product_id: e2kdgdsu
 manufacturer: AQUA CREATIV
 model_name: TITAN PRO 300
-device_name: Aquarium light reports
+device_name: Aquarium light
 entities:
+  light:
+    - translation_key: switch_led
+      name: Light
+      switch_dp_id: 101
+      brightness_dp_id: 3
+      brightness_min: 0
+      brightness_max: 1000
+  number:
+    - dp_id: 105
+      translation_key: channel_a
+      name: Channel A
+      icon: mdi:led-strip-variant
+      mode: slider
+      min_value: 0
+      max_value: 100
+      step: 1
+      unit: "%"
+    - dp_id: 106
+      translation_key: channel_b
+      name: Channel B
+      icon: mdi:led-strip-variant
+      mode: slider
+      min_value: 0
+      max_value: 100
+      step: 1
+      unit: "%"
+    - dp_id: 107
+      translation_key: channel_c
+      name: Channel C
+      icon: mdi:led-strip-variant
+      mode: slider
+      min_value: 0
+      max_value: 100
+      step: 1
+      unit: "%"
+    - dp_id: 108
+      translation_key: channel_d
+      name: Channel D
+      icon: mdi:led-strip-variant
+      mode: slider
+      min_value: 0
+      max_value: 100
+      step: 1
+      unit: "%"
+  select:
+    - dp_id: 102
+      dp_type: 4 # ENUM: the index follows the option order below.
+      translation_key: light_mode
+      name: Light mode
+      icon: mdi:calendar-clock
+      options:
+        - Manual
+        - Auto
+        - Simple setup
+    - dp_id: 103
+      dp_type: 4 # ENUM: the index follows the option order below.
+      translation_key: preview
+      name: Effect demo
+      icon: mdi:play-circle-outline
+      options:
+        - None
+        - Auto
+        - Simple setup
+        - Moon
+        - Thunderstorm
+        - Cloudy
+  switch:
+    - dp_id: 104
+      translation_key: hour_system_24h
+      name: 24-hour clock
+      icon: mdi:clock-time-twelve-outline
+      entity_category: config
+  # Diagnostic reports kept from the research subset (#210).
   binary_sensor:
     - dp_id: 101
       name: DP101 manual report
@@ -24,9 +117,3 @@ entities:
       force_add: false
       handlers:
         read: reported.numeric
-  # Explicitly suppress unrelated generic dj DP20-24 controls.
-  light: []
-  number: []
-  select: []
-  switch: []
-  button: []

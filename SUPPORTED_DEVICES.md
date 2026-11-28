@@ -4,7 +4,6 @@
 
 - **Yieryi BLE-YL01 (`sh/v1jqz5cy`)**: read-only TDS, temperature, battery, pH, EC, ORP, chlorine and salinity. Gateway-schema-backed; direct BLE transport/types and hardware operation are unverified. No calibration, thresholds, backlight, actions or enum writes.
 - **HCT-626 (`sfkzq/smd9kj1n`)**: read-only valve and smart-weather BOOL reports, weather-delay remaining and runtime/spray-time sensors. Gateway-schema-backed; not tested over direct BLE. No valves/switches, timers, battery-scale guesses, schedules or enum writes.
-- **AQUA CREATIV TITAN PRO 300 (`dj/e2kdgdsu`)**: report-only DP101 BOOL and disabled-by-default DP102 raw numeric diagnostic, based on preliminary source BLE observations. No standard light, power, brightness, RGB or channel controls; generic DP20–24 are explicitly blocked.
 - **KC8B105 (`gcj/7yr5iwga`) remains unsupported**: missing DP types/scales; no sibling mower profile or provisioning changes.
 
 Entities require matching reported types at platform setup. These subsets are **not physically tested support in this integration**. See [evidence, every omission and hardware acceptance](docs/research-device-subsets.md).
@@ -179,6 +178,7 @@ Entities: on/off, brightness, color temperature. `work_mode` is driven internall
 - MiBoxer BS64 Stair Light Controller (product_id `c2twgywo`). Experimental. Mode-based on/off, atomic white-mode brightness writes and mode/auto-effect selects. Auto reads as off. Temperature and timing controls are deferred pending schema/calibration; see [DP evidence and physical verification](docs/devices/miboxer-bs64.md). The source author tested their implementation on hardware, not this port.
 - Tuya Smart LED Wall Lamp (product_id `joe8qqgiwhpqgwex`).
 - LED BULB B509Z2 (product_id `bpqbwf8y`). Experimental. On/off, brightness and colour temperature only (no RGB), on the standard `dj` DPs 20–23 because the cloud report has no DP IDs. The countdown (`countdown_1`) is not exposed until its DP ID is known; diagnostics are welcome.
+- AQUA CREATIV TITAN PRO 300 aquarium light (product_id `e2kdgdsu`). Tested on the real device over BLE. Power (DP101) and total brightness (DP3, which sets all four channels to one value), four 0–100 % channel numbers (DP105–108: A white, B blue, C green, D red), a light-mode select (Manual / Auto / Simple setup, DP102), an effect-demo select (DP103) and a 24-hour clock switch (DP104). The DP101 BOOL and DP102 numeric diagnostics from the research subset are kept. The raw schedule and effect programs (DP109–113) and the accessory data points are not exposed. The Moon option of the demo select showed no effect when tested; see [the device notes](docs/research-device-subsets.md#aqua-creativ-titan-pro-300--dj--e2kdgdsu).
 
 Entities: on/off, brightness, color temperature, RGB color (where the light has it).
 
