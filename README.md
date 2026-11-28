@@ -295,6 +295,7 @@ The integration supports a broad range of Tuya BLE devices across the following 
 | Ceiling lights (`xdd`)                   | Globo WiFi/BLE CCT ceiling light                                          |
 | Blinds & curtains (`cl`)                 | Blind/curtain controllers, venetian blind motors                          |
 | Plant sensors (`zwjcy`)                  | Soil moisture / plant sensors                                             |
+| Electric blankets (`dr`)                 | Goldair SmartSleep multi-zone blanket (experimental)                      |
 | Generators (`qt`)                        | MaXpeedingRods MXR4000GT inverter generator                               |
 | Window cleaning robots (`ccjqr`)         | CHYW200.ABIR window cleaner (experimental)                                |
 | Water meters (`slj`)                     | RESTMO FML026A Bluetooth water meter                                      |

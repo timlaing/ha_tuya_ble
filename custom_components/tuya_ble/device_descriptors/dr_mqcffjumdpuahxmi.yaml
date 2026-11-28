@@ -1,0 +1,101 @@
+category: dr
+product_id: mqcffjumdpuahxmi
+entities:
+  switch:
+    - dp_id: 1
+      translation_key: switch
+      icon: mdi:bed
+  select:
+    # DP 14/15 are ENUMs level_1..level_7, shown as 0..6 like tuya-local.
+    # Whether 0 means off is not verified.
+    - dp_id: 14
+      translation_key: body_level
+      icon: mdi:bed
+      dp_type: 4
+      options:
+        - "0"
+        - "1"
+        - "2"
+        - "3"
+        - "4"
+        - "5"
+        - "6"
+    - dp_id: 15
+      translation_key: feet_level
+      icon: mdi:bed
+      dp_type: 4
+      options:
+        - "0"
+        - "1"
+        - "2"
+        - "3"
+        - "4"
+        - "5"
+        - "6"
+    # DP 16/17 are ENUMs. The cloud schema lists 1h..6h; tuya-local maps
+    # 1h..12h and this device reported 12h over Wi-Fi. Indices above 5 are
+    # unverified over BLE, so 7h..12h are readable but not settable.
+    - dp_id: 16
+      translation_key: body_timer
+      icon: mdi:timer-outline
+      dp_type: 4
+      options:
+        - 1h
+        - 2h
+        - 3h
+        - 4h
+        - 5h
+        - 6h
+        - 7h
+        - 8h
+        - 9h
+        - 10h
+        - 11h
+        - 12h
+      settable_options:
+        - 1h
+        - 2h
+        - 3h
+        - 4h
+        - 5h
+        - 6h
+    - dp_id: 17
+      translation_key: feet_timer
+      icon: mdi:timer-outline
+      dp_type: 4
+      options:
+        - 1h
+        - 2h
+        - 3h
+        - 4h
+        - 5h
+        - 6h
+        - 7h
+        - 8h
+        - 9h
+        - 10h
+        - 11h
+        - 12h
+      settable_options:
+        - 1h
+        - 2h
+        - 3h
+        - 4h
+        - 5h
+        - 6h
+  sensor:
+    - dp_id: 18
+      translation_key: body_time_left
+      device_class: duration
+      unit: s
+      state_class: measurement
+      entity_category: diagnostic
+    - dp_id: 19
+      translation_key: feet_time_left
+      device_class: duration
+      unit: s
+      state_class: measurement
+      entity_category: diagnostic
+device_name: Multi-zone Electric Blanket
+model_name: mqcffjumdpuahxmi
+manufacturer: Goldair

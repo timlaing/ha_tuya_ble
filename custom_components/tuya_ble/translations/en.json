@@ -393,6 +393,64 @@
           "up": "Up",
           "down": "Down"
         }
+      },
+      "body_level": {
+        "name": "Body level",
+        "state": {
+          "0": "0",
+          "1": "1",
+          "2": "2",
+          "3": "3",
+          "4": "4",
+          "5": "5",
+          "6": "6"
+        }
+      },
+      "feet_level": {
+        "name": "Feet level",
+        "state": {
+          "0": "0",
+          "1": "1",
+          "2": "2",
+          "3": "3",
+          "4": "4",
+          "5": "5",
+          "6": "6"
+        }
+      },
+      "body_timer": {
+        "name": "Body timer",
+        "state": {
+          "1h": "1 hour",
+          "2h": "2 hours",
+          "3h": "3 hours",
+          "4h": "4 hours",
+          "5h": "5 hours",
+          "6h": "6 hours",
+          "7h": "7 hours",
+          "8h": "8 hours",
+          "9h": "9 hours",
+          "10h": "10 hours",
+          "11h": "11 hours",
+          "12h": "12 hours"
+        }
+      },
+      "feet_timer": {
+        "name": "Feet timer",
+        "state": {
+          "1h": "1 hour",
+          "2h": "2 hours",
+          "3h": "3 hours",
+          "4h": "4 hours",
+          "5h": "5 hours",
+          "6h": "6 hours",
+          "7h": "7 hours",
+          "8h": "8 hours",
+          "9h": "9 hours",
+          "10h": "10 hours",
+          "11h": "11 hours",
+          "12h": "12 hours"
+        }
       }
     },
     "sensor": {
@@ -679,6 +737,12 @@
       },
       "upper_temperature_limit": {
         "name": "Upper temperature limit"
+      },
+      "body_time_left": {
+        "name": "Body time remaining"
+      },
+      "feet_time_left": {
+        "name": "Feet time remaining"
       }
     },
     "switch": {
